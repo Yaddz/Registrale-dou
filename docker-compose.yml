@@ -154,6 +154,20 @@ services:
       - smtp4dev-data:/smtp4dev
     environment:
       - ServerOptions__HostName=smtp4dev
+
+  dashboard:
+    build:
+      context: ./rodou_dashboard
+    container_name: rodou-dashboard
+    ports:
+      - "5000:5000"
+    environment:
+      - AIRFLOW_URL=http://airflow-webserver:8080
+    volumes:
+      - ./dag_confs:/dag_confs
+      - ./data:/data
+    restart: always
+
 # selenium:
 #     image: ghcr.io/gestaogovbr/selenium:ro-dou
 #     volumes:

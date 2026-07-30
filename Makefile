@@ -1,5 +1,6 @@
 .PHONY: run
 run: \
+create-env-file \
 create-logs-dir \
 build \
 setup-containers \
@@ -18,8 +19,12 @@ create-azure-openai-api-version-variable \
 create-azure-openai-deployment-variable \
 create-azure-openai-api-key-variable
 
+create-env-file:
+	-cp -n .env.example .env
+	-cmd /c "if not exist .env copy .env.example .env"
+
 create-logs-dir:
-	mkdir -p ./mnt/airflow-logs -m a=rwx
+	-mkdir .\mnt\airflow-logs
 
 
 AI_PROVIDERS ?=
@@ -86,7 +91,7 @@ create-path-tmp-variable:
 
 create-inlabs-db:
 	@echo "Creating 'inlabs' database"
-	@docker exec -e PGPASSWORD=airflow ro-dou-postgres-1 sh -c "psql -q -U airflow -f /sql/init-db.sql > /dev/null"
+	@docker exec -e PGPASSWORD=airflow registrale-dou-postgres-1 sh -c "psql -q -U airflow -f /sql/init-db.sql > /dev/null"
 
 create-inlabs-db-connection:
 	@echo "Creating 'inlabs_db' Airflow connection"
@@ -102,7 +107,7 @@ create-inlabs-db-connection:
 			\"connection_id\": \"inlabs_db\", \
 			\"conn_type\": \"postgres\", \
 			\"schema\": \"inlabs\", \
-			\"host\": \"ro-dou-postgres-1\", \
+			\"host\": \"postgres\", \
 			\"login\": \"airflow\", \
 			\"password\": \"airflow\", \
 			\"port\": 5432 \
@@ -128,62 +133,6 @@ create-inlabs-portal-connection:
 			\"password\": \"password\" \
 			}' > /dev/null; \
 		fi"
-
-create-opensearch-variable:
-	@echo "Creating 'opensearch' Airflow variables"
-	@docker exec airflow-webserver sh -c \
-		"if ! curl -f -s -LI 'http://localhost:8080/api/v1/variables/ro_dou_inlabs_use_opensearch' --user \"airflow:airflow\" > /dev/null; \
-		then \
-			curl -s -X 'POST' \
-			'http://localhost:8080/api/v1/variables' \
-			-H 'accept: application/json' \
-			-H 'Content-Type: application/json' \
-			--user \"airflow:airflow\" \
-			-d '{ \
-			\"key\": \"RO_DOU_INLABS_USE_OPENSEARCH\", \
-			\"value\": \"False\" \
-			}' > /dev/null; \
-		fi"
-	@docker exec airflow-webserver sh -c \
-		"if ! curl -f -s -LI 'http://localhost:8080/api/v1/variables/opensearch_host' --user \"airflow:airflow\" > /dev/null; \
-		then \
-			curl -s -X 'POST' \
-			'http://localhost:8080/api/v1/variables' \
-			-H 'accept: application/json' \
-			-H 'Content-Type: application/json' \
-			--user \"airflow:airflow\" \
-			-d '{ \
-			\"key\": \"OPENSEARCH_HOST\", \
-			\"value\": \"http://opensearch:9200\" \
-			}' > /dev/null; \
-		fi"
-	@docker exec airflow-webserver sh -c \
-		"if ! curl -f -s -LI 'http://localhost:8080/api/v1/variables/opensearch_user' --user \"airflow:airflow\" > /dev/null; \
-		then \
-			curl -s -X 'POST' \
-			'http://localhost:8080/api/v1/variables' \
-			-H 'accept: application/json' \
-			-H 'Content-Type: application/json' \
-			--user \"airflow:airflow\" \
-			-d '{ \
-			\"key\": \"OPENSEARCH_USER\", \
-			\"value\": \"OPENSEARCH_USER\" \
-			}' > /dev/null; \
-		fi"
-	@docker exec airflow-webserver sh -c \
-		"if ! curl -f -s -LI 'http://localhost:8080/api/v1/variables/opensearch_pass' --user \"airflow:airflow\" > /dev/null; \
-		then \
-			curl -s -X 'POST' \
-			'http://localhost:8080/api/v1/variables' \
-			-H 'accept: application/json' \
-			-H 'Content-Type: application/json' \
-			--user \"airflow:airflow\" \
-			-d '{ \
-			\"key\": \"OPENSEARCH_PASS\", \
-			\"value\": \"OPENSEARCH_PASS\" \
-			}' > /dev/null; \
-		fi"
-
 
 activate-inlabs-load-dag:
 	@echo "Activating 'dou_inlabs_load_pg' Airflow DAG"
@@ -269,12 +218,13 @@ down:
 tests:
 	docker exec airflow-webserver sh -c "cd /opt/airflow/tests/ && pytest -vvv --color=yes"
 
-#PYTHONWARNINGS=ignore evita deprecation warnings do próprio Airflow poluindo o terminal interativo.
-.PHONY: gerar-yml
-gerar-yml:
-	@docker inspect -f '{{.State.Running}}' airflow-webserver >/dev/null 2>&1 || { \
-		echo "Erro: o container airflow-webserver não está rodando."; \
-		echo "Suba o ambiente primeiro com: make run"; \
-		exit 1; \
-	}
-	docker exec -it -e PYTHONWARNINGS=ignore airflow-webserver python3 /opt/airflow/tools/gerador_cli.py
+.PHONY: clean
+clean: down
+	@echo "Limpando logs e dados..."
+	-rm -rf ./mnt/airflow-logs/*
+	-rm -rf ./mnt/pgdata/*
+	-rm -rf ./data/database.db
+	-rm -rf ./flask_sessions/*
+
+.PHONY: clean-install
+clean-install: clean run
