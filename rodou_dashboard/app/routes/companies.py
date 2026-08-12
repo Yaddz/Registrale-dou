@@ -65,7 +65,7 @@ def api_companies():
             db.session.rollback()
             return jsonify({"status": "error", "message": str(e)}), 500
 
-@companies_bp.route('/companies/<int:cnpj_id>', methods=['PUT'])
+@companies_bp.route('/companies/<int:cnpj_id>', methods=['PUT', 'DELETE'])
 @login_required
 def update_company(cnpj_id):
     if session['user']['role'] != 'master':
@@ -73,6 +73,18 @@ def update_company(cnpj_id):
     company = Company.query.get(cnpj_id)
     if not company:
         return jsonify({"status": "error", "message": "Empresa não encontrada."}), 404
+        
+    if request.method == 'DELETE':
+        try:
+            db.session.delete(company)
+            db.session.commit()
+            from ..services.dag_config_service import rebuild_yaml_from_db
+            rebuild_yaml_from_db()
+            return jsonify({"status": "success", "message": "Empresa removida com sucesso!"})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"status": "error", "message": str(e)}), 500
+
     data = request.json
     try:
         company.nome = data.get('nome', company.nome)
@@ -82,6 +94,8 @@ def update_company(cnpj_id):
         company.status = data.get('status', company.status)
         company.origem = 'Manual'
         db.session.commit()
+        from ..services.dag_config_service import rebuild_yaml_from_db
+        rebuild_yaml_from_db()
         return jsonify({"status": "success", "message": "Empresa atualizada!"})
     except Exception as e:
         db.session.rollback()

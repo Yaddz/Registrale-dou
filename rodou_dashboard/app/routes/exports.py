@@ -294,6 +294,7 @@ def export_pdf():
 @login_required
 def export_mentions_pdf():
     import tempfile
+    import re
     data = request.json
     mentions = data.get('mentions', [])
     
@@ -320,7 +321,9 @@ def export_mentions_pdf():
     
     table_data = [['Data', 'Empresa', 'CNPJ', 'Seção', 'Trecho', 'Link']]
     for m in mentions:
-        trecho = (m.get('trecho', '') or '')[:80] + ('...' if len(m.get('trecho', '') or '') > 80 else '')
+        raw_trecho = m.get('trecho', '') or ''
+        clean_trecho = re.sub(r'<[^>]+>', ' ', raw_trecho).strip()
+        trecho = clean_trecho[:80] + ('...' if len(clean_trecho) > 80 else '')
         link = m.get('link', '')
         link_para = Paragraph(f'<a href="{link}">Abrir</a>', link_style) if link else ''
         table_data.append([
@@ -388,8 +391,14 @@ def export_mentions_pdf():
 def export_mentions_excel():
     import pandas as pd
     import tempfile
+    import re
     data = request.json
     mentions = data.get('mentions', [])
+    
+    # Strip HTML tags from trecho
+    for m in mentions:
+        if 'trecho' in m and m['trecho']:
+            m['trecho'] = re.sub(r'<[^>]+>', ' ', m['trecho']).strip()
     
     df = pd.DataFrame(mentions)
     if not df.empty:

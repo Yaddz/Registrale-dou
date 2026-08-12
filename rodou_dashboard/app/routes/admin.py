@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, session
 import os
 import shutil
-from dotenv import set_key
+from dotenv import set_key, unset_key
 from .auth import login_required
 from ..models import db, User, Settings, Company, SyncHistory, Mention
 from ..services.mention_service import clear_mentions_cache
@@ -25,6 +25,9 @@ def save_settings():
         db.session.commit()
         
         env_path = os.path.join(BASE_DIR, '.env')
+        # Create empty .env if it doesn't exist to avoid errors
+        if not os.path.exists(env_path):
+            open(env_path, 'a').close()
         
         if 'api_keys' in data:
             ak = data['api_keys']
@@ -37,8 +40,11 @@ def save_settings():
             for key, env_var in mappings.items():
                 val = ak.get(key)
                 if val:
-                    set_key(env_path, env_var, val)
-                    os.environ[env_var] = val
+                    set_key(env_path, env_var, str(val))
+                    os.environ[env_var] = str(val)
+                elif key in ak: # user sent empty string
+                    unset_key(env_path, env_var)
+                    os.environ.pop(env_var, None)
         
         if 'smtp' in data:
             smtp = data['smtp']
@@ -54,6 +60,9 @@ def save_settings():
                 if val:
                     set_key(env_path, env_var, str(val))
                     os.environ[env_var] = str(val)
+                elif key in smtp: # user sent empty string
+                    unset_key(env_path, env_var)
+                    os.environ.pop(env_var, None)
             
             if not smtp.get('from_email') and smtp.get('user') and "@" in smtp.get('user'):
                 set_key(env_path, "AIRFLOW__SMTP__SMTP_MAIL_FROM", smtp.get('user'))
@@ -137,11 +146,22 @@ def admin_clear_data():
     action_type = data.get('type')
     
     try:
+        from ..models import DeletedMention
+        all_mentions = Mention.query.all()
+        for m in all_mentions:
+            if not DeletedMention.query.get(m.id):
+                db.session.add(DeletedMention(id=m.id))
+                
         if action_type == 'all':
             Company.query.delete()
             SyncHistory.query.delete()
             Mention.query.delete()
-            Settings.query.filter_by(key='mentions_cache_meta').delete()
+            import time
+            cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
+            if not cache_meta:
+                cache_meta = Settings(key='mentions_cache_meta')
+                db.session.add(cache_meta)
+            cache_meta.set_value({"last_parsed_at": time.time()})
             db.session.commit()
             clear_mentions_cache()
             
@@ -155,14 +175,24 @@ def admin_clear_data():
         elif action_type == 'history':
             SyncHistory.query.delete()
             Mention.query.delete()
-            Settings.query.filter_by(key='mentions_cache_meta').delete()
+            import time
+            cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
+            if not cache_meta:
+                cache_meta = Settings(key='mentions_cache_meta')
+                db.session.add(cache_meta)
+            cache_meta.set_value({"last_parsed_at": time.time()})
             db.session.commit()
             clear_mentions_cache()
             return jsonify({"status": "success", "message": "Histórico e cache removidos."})
             
         elif action_type == 'mentions':
             Mention.query.delete()
-            Settings.query.filter_by(key='mentions_cache_meta').delete()
+            import time
+            cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
+            if not cache_meta:
+                cache_meta = Settings(key='mentions_cache_meta')
+                db.session.add(cache_meta)
+            cache_meta.set_value({"last_parsed_at": time.time()})
             db.session.commit()
             clear_mentions_cache()
             return jsonify({"status": "success", "message": "Mentions (alertas) removidas do painel."})
@@ -191,49 +221,9 @@ def manual_sync_route():
                 executar_sincronizacao()
                 
                 # Sincronizar JSON com o banco de dados
-                metadata_file = os.path.join(BASE_DIR, "data", "monitored_companies.json")
-                if os.path.exists(metadata_file):
-                    import json
-                    try:
-                        with open(metadata_file, 'r', encoding='utf-8') as f:
-                            empresas = json.load(f)
-                            
-                        with app_context:
-                            count_new = 0
-                            count_updated = 0
-                            for emp in empresas:
-                                cnpj = emp.get('cnpj', '')
-                                if not cnpj: continue
-                                from ..services.dag_config_service import normalize_cnpj
-                                cnpj_norm = normalize_cnpj(cnpj)
-                                existing = Company.query.filter_by(cnpj_norm=cnpj_norm).first()
-                                if not existing:
-                                    existing = Company(
-                                        cnpj=cnpj,
-                                        cnpj_norm=cnpj_norm,
-                                        nome=emp.get('razao_social', emp.get('nome', 'N/A')),
-                                        uf=emp.get('uf', ''),
-                                        cidade=emp.get('cidade', ''),
-                                        email=emp.get('email', ''),
-                                        telefone=emp.get('telefone', ''),
-                                        situacao=emp.get('situacao', 'Ativa'),
-                                        origem='GestaoClick'
-                                    )
-                                    db.session.add(existing)
-                                    count_new += 1
-                                else:
-                                    if existing.origem == 'Manual': continue
-                                    existing.nome = emp.get('razao_social', emp.get('nome', existing.nome))
-                                    existing.uf = emp.get('uf', existing.uf)
-                                    existing.cidade = emp.get('cidade', existing.cidade)
-                                    existing.email = emp.get('email', existing.email)
-                                    existing.telefone = emp.get('telefone', existing.telefone)
-                                    existing.situacao = emp.get('situacao', existing.situacao)
-                                    count_updated += 1
-                            db.session.commit()
-                            logging.info(f"Sync JSON->DB: {count_new} novas, {count_updated} atualizadas")
-                    except Exception as e:
-                        logging.error(f"Erro ao ler JSON de empresas: {e}")
+                with app_context:
+                    from ..services.dag_config_service import sync_json_to_db
+                    sync_json_to_db()
                         
                 from datetime import datetime, timezone, timedelta
                 with app_context:
@@ -293,32 +283,49 @@ def api_health_dou():
 @admin_bp.route('/status', methods=['GET'])
 @login_required
 def api_status():
-    from ..models import Company, SyncHistory
+    from ..services.dag_config_service import get_last_search_time, get_next_search_time, get_monitored_cnpjs
     from ..services.mention_service import get_real_mentions
-    from ..services.dag_config_service import get_last_search_time
-    import glob
+    from ..models import db, SyncHistory, Company
     from datetime import datetime, timezone, timedelta
-    all_mentions = get_real_mentions()
+    import glob
+    import os
     
+    now = datetime.now(timezone(timedelta(hours=-3)))
+    all_mentions = get_real_mentions()
+
+    try:
+        history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(5).all()]
+    except:
+        history = []
+
+    kpis = {
+        "cnpjs": Company.query.count(),
+        "ativos": len(get_monitored_cnpjs()),
+        "mencoes_hoje": len([m for m in all_mentions if m.get('data') == now.strftime('%d/%m/%Y')]),
+        "este_mes": len([m for m in all_mentions if now.strftime('/%m/%Y') in m.get('data', '')]),
+        "mencoes_total": len(all_mentions)
+    }
+
     dag_confs_path = os.path.join(BASE_DIR, "dag_confs")
     yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
     if not yaml_files: 
         yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
-    
+    if not yaml_files:
+        base = os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
+        if os.path.exists(base):
+            yaml_files = [base]
+            
     last_sync = "N/A"
     if yaml_files:
         mtime = os.path.getmtime(yaml_files[0])
         last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
-        
-    last_search = get_last_search_time()
-    history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(5).all()]
-    
+
     return jsonify({
         "last_sync": last_sync,
-        "last_search": last_search,
+        "last_search": get_last_search_time(),
+        "next_search": get_next_search_time(),
         "historico": history,
-        "mentions_count": len(all_mentions),
-        "companies_count": Company.query.count()
+        "kpis": kpis
     })
 
 @admin_bp.route('/history/add', methods=['POST'])
@@ -345,3 +352,23 @@ def api_history_add():
         return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success"})
+
+@admin_bp.route('/inlabs_stats', methods=['GET'])
+@login_required
+def get_inlabs_stats():
+    from sqlalchemy import create_engine, text
+    import logging
+    try:
+        engine = create_engine('postgresql+pg8000://airflow:airflow@postgres:5432/inlabs')
+        with engine.connect() as conn:
+            size_res = conn.execute(text("SELECT pg_size_pretty(pg_database_size('inlabs'))")).scalar()
+            days_res = conn.execute(text("SELECT COUNT(DISTINCT pubdate::date) FROM dou_inlabs.article_raw")).scalar()
+            
+        return jsonify({
+            "status": "success",
+            "size": size_res,
+            "days_stored": days_res
+        })
+    except Exception as e:
+        logging.error(f"Erro ao consultar DB Inlabs: {e}")
+        return jsonify({"status": "error", "message": "Não foi possível conectar ao banco de dados INLABS."}), 500

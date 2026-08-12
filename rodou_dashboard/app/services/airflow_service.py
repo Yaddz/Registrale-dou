@@ -4,7 +4,7 @@ import subprocess
 import json
 from datetime import datetime, timezone
 
-def trigger_airflow_dag(dag_id, logical_date=None):
+def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
     """Tenta disparar uma DAG no Airflow via API REST ou Docker CLI."""
     try:
         airflow_url = os.getenv('AIRFLOW_URL', 'http://localhost:8080')

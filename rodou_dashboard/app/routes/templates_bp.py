@@ -38,8 +38,8 @@ def delete_template(t_id):
         if not template:
             return jsonify({"status": "error", "message": "Template não encontrado."}), 404
         if template:
-            if template.name == 'Padrão Registrale':
-                return jsonify({"status": "error", "message": "Template padrão não pode ser excluído."}), 400
+            if template.name in ('Padrão Registrale', 'Relatório Mensal Registrale'):
+                return jsonify({"status": "error", "message": "Este template do sistema não pode ser excluído."}), 400
             db.session.delete(template)
             db.session.commit()
         return jsonify({"status": "success"})

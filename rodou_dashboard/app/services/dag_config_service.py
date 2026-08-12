@@ -22,6 +22,10 @@ def get_monitored_cnpjs():
     yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
     if not yaml_files:
         yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
+    if not yaml_files:
+        base = os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
+        if os.path.exists(base):
+            yaml_files = [base]
     active_cnpjs = set()
     for f_path in yaml_files:
         try:
@@ -159,9 +163,19 @@ def get_routines():
                     total_cnpjs += len(s.get('terms', []))
         except: continue
     
-    if sync_base_data and isinstance(sync_base_data.get('terms'), list):
-        if "_part_" not in sync_base_data['file'] and "_sync" not in sync_base_data['file']:
-             total_cnpjs += len(sync_base_data['terms'])
+    if total_cnpjs == 0 and sync_base_data:
+        base_yaml = os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
+        if os.path.exists(base_yaml):
+            try:
+                with open(base_yaml, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                    search = data.get('dag', {}).get('search', [])
+                    if isinstance(search, list):
+                        for block in search:
+                            total_cnpjs += len(block.get('terms', []))
+                    else:
+                        total_cnpjs += len(search.get('terms', []))
+            except: pass
 
     sync_routine = {
         "id": "Sincronização Automática (GestãoClick)",
@@ -183,3 +197,105 @@ def get_routines():
     
     routines.insert(0, sync_routine)
     return routines
+
+def rebuild_yaml_from_db():
+    import copy, math
+    from ..models import Company
+
+    # 1. Buscar CNPJs ativos
+    active_companies = Company.query.filter_by(situacao='Ativa', status=True).all()
+    all_cnpjs = sorted(set(normalize_cnpj(c.cnpj) for c in active_companies if c.cnpj))
+
+    # 2. Carregar YAML base como template
+    base_yaml = os.path.join(BASE_DIR, "dag_confs", "Pesquisa_cnpj.yaml")
+    if not os.path.exists(base_yaml):
+        logger.warning("Pesquisa_cnpj.yaml não encontrado, impossível rebuild.")
+        return
+
+    with open(base_yaml, 'r', encoding='utf-8') as f:
+        template_data = yaml.safe_load(f)
+
+    dag = template_data.get('dag', {})
+    search_template = dag.get('search', [{}])
+    if isinstance(search_template, list):
+        search_template = search_template[0] if len(search_template) > 0 else {}
+
+    # 3. Limpar arquivos de partes isoladas que foram gerados indevidamente
+    dag_confs_path = os.path.join(BASE_DIR, "dag_confs")
+    for f in glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml")):
+        try: os.remove(f)
+        except: pass
+    for f in glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml")):
+        try: os.remove(f)
+        except: pass
+
+    # 4. Dividir em chunks de 1500
+    CHUNK_SIZE = 1500
+    header_base = search_template.get('header', 'Pesquisa CNPJ')
+    
+    class QuotedString(str): pass
+    def quoted_scalar_representer(dumper, data):
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style="'")
+    yaml.SafeDumper.add_representer(QuotedString, quoted_scalar_representer)
+
+    chunks = [[QuotedString(c) for c in all_cnpjs[i:i+CHUNK_SIZE]] for i in range(0, max(len(all_cnpjs), 1), CHUNK_SIZE)]
+
+    search_blocks = []
+    for idx, chunk in enumerate(chunks, 1):
+        block = copy.deepcopy(search_template)
+        block['terms'] = chunk
+        block['header'] = f"{header_base} - PARTE {idx}" if len(chunks) > 1 else header_base
+        block['is_exact_search'] = True
+        block['force_rematch'] = True
+        block['full_text'] = False
+        search_blocks.append(block)
+
+    dag['search'] = search_blocks
+    template_data['dag'] = dag
+
+    # 5. Escrita atômica no arquivo único
+    tmp_path = base_yaml + '.tmp'
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        yaml.safe_dump(template_data, f, allow_unicode=True, sort_keys=False)
+    os.replace(tmp_path, base_yaml)
+
+    logger.info(f"YAML reconstruído com {len(all_cnpjs)} CNPJs em 1 arquivo com {len(chunks)} parte(s).")
+
+def sync_json_to_db():
+    import json
+    from ..models import db, Company
+
+    metadata_file = os.path.join(BASE_DIR, "data", "monitored_companies.json")
+    if not os.path.exists(metadata_file):
+        return
+
+    with open(metadata_file, 'r', encoding='utf-8') as f:
+        empresas = json.load(f)
+
+    count_new, count_updated = 0, 0
+    for emp in empresas:
+        cnpj = emp.get('cnpj', '')
+        if not cnpj: continue
+        cnpj_norm = normalize_cnpj(cnpj)
+        existing = Company.query.filter_by(cnpj_norm=cnpj_norm).first()
+        if not existing:
+            existing = Company(
+                cnpj=cnpj, cnpj_norm=cnpj_norm,
+                nome=emp.get('razao_social', emp.get('nome', 'N/A')),
+                uf=emp.get('uf', ''), cidade=emp.get('cidade', ''),
+                email=emp.get('email', ''), telefone=emp.get('telefone', ''),
+                situacao=emp.get('situacao', 'Ativa'), origem='GestaoClick'
+            )
+            db.session.add(existing)
+            count_new += 1
+        else:
+            if existing.origem == 'Manual': continue
+            existing.nome = emp.get('razao_social', emp.get('nome', existing.nome))
+            existing.uf = emp.get('uf', existing.uf)
+            existing.cidade = emp.get('cidade', existing.cidade)
+            existing.email = emp.get('email', existing.email)
+            existing.telefone = emp.get('telefone', existing.telefone)
+            existing.situacao = emp.get('situacao', existing.situacao)
+            count_updated += 1
+    db.session.commit()
+    logger.info(f"Sync JSON->DB: {count_new} novas, {count_updated} atualizadas")

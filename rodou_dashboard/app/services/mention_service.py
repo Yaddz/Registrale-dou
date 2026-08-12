@@ -19,16 +19,78 @@ def normalize_cnpj(cnpj):
     if not cnpj: return ""
     return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
 
+import html as html_module
+
+def clean_abstract_for_dashboard(raw_text, search_term=''):
+    """Limpa o abstract removendo HTML e marcadores, centralizando no termo buscado."""
+    if not raw_text:
+        return ''
+    
+    # Preservar highlights de CNPJ e outros spans
+    import uuid
+    highlights = {}
+    def preserve_highlight(match):
+        key = f"__HL_{uuid.uuid4().hex[:8]}__"
+        highlights[key] = match.group(0)
+        return key
+    
+    # Limpa apenas marcadores internos obscuros
+    text = text.replace("<%>", "").replace("</%>", "")
+    
+    # Extrai os spans highlight temporariamente
+    text = re.sub(r"<span[^>]*class=['\"]highlight['\"][^>]*>.*?</span>", preserve_highlight, text)
+    
+    # Remove placeholders de tabela
+    text = re.sub(r'\[Tabela de \d+ linhas omitida\]', '', text)
+    
+    # Remove TODAS as outras tags HTML
+    text = re.sub(r'<[^>]+>', ' ', text)
+    
+    # Decodifica entidades HTML
+    text = html_module.unescape(text)
+    
+    # Colapsa espaços múltiplos e quebras de linha
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # Restaura highlights
+    for key, val in highlights.items():
+        text = text.replace(key, val)
+    
+    # Centralizar no termo buscado (CNPJ ou nome)
+    if search_term:
+        term_clean = re.sub(r'[^A-Za-z0-9]', '', search_term).upper()
+        text_upper = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+        pos = text_upper.find(term_clean)
+        if pos >= 0:
+            # Mapear posição normalizada de volta ao texto original
+            char_count = 0
+            original_pos = 0
+            for i, ch in enumerate(text):
+                if re.match(r'[A-Za-z0-9]', ch):
+                    if char_count == pos:
+                        original_pos = i
+                        break
+                    char_count += 1
+            
+            start = max(0, original_pos - 250)
+            end = min(len(text), original_pos + 250)
+            excerpt = text[start:end]
+            if start > 0:
+                excerpt = '...' + excerpt
+            if end < len(text):
+                excerpt = excerpt + '...'
+            return excerpt.strip()
+    
+    # Se não encontrou o termo, retorna os primeiros 500 chars
+    if len(text) > 500:
+        return text[:500] + '...'
+    return text
+
 def get_real_mentions():
     """Varre os logs do Airflow para extrair as menções reais encontradas, com cache otimizado."""
     global _mentions_cache, _mentions_cache_time, _mentions_deleted_at
     
     now = time.time()
-    if _mentions_cache and (now - _mentions_cache_time) < 300:
-        return _mentions_cache
-    
-    if now - _mentions_deleted_at < 60:
-        return []
     
     if not os.path.exists(LOGS_DIR): return []
 
@@ -53,7 +115,9 @@ def get_real_mentions():
     if cache_data["last_parsed_at"] >= latest_log_mtime:
         cached_mentions = Mention.query.all()
         if cached_mentions:
-            result = [m.to_dict() for m in cached_mentions]
+            from ..models import DeletedMention
+            deleted_ids = {dm.id for dm in DeletedMention.query.all()}
+            result = [m.to_dict() for m in cached_mentions if m.id not in deleted_ids]
             _mentions_cache = result
             _mentions_cache_time = now
             return result
@@ -82,8 +146,10 @@ def get_real_mentions():
                         results = result_dict.get('result', {}).get('single_group', {})
                         if not results: continue
 
-                        for cnpj_log, content_group in results.items():
-                            cnpj_norm = normalize_cnpj(cnpj_log)
+                        for cnpj_raw_key, content_group in results.items():
+                            cnpjs = [c.strip() for c in cnpj_raw_key.split(',')]
+                            for cnpj_log in cnpjs:
+                                cnpj_norm = normalize_cnpj(cnpj_log)
                             for dept_name, depts in content_group.items():
                                 for pub in depts:
                                     import hashlib
@@ -95,13 +161,9 @@ def get_real_mentions():
                                     unique_key = f"{cnpj_norm}_{pub_id}"
                                     
                                     if unique_key not in mentions_dict or log_time > mentions_dict[unique_key]['detected_at']:
-                                        raw_trecho = raw_abstract.replace("<span class='highlight' style='background:#FFA;'>", "").replace("</span>", "").replace("<span class='highlight'>", "")
+                                        raw_trecho = raw_abstract
 
-                                        try:
-                                            from notification.email_sender import EmailSender
-                                            formatted_trecho = EmailSender.format_abstract(raw_trecho, cnpj_norm)
-                                        except:
-                                            formatted_trecho = raw_trecho
+                                        formatted_trecho = clean_abstract_for_dashboard(raw_trecho, cnpj_norm)
 
                                         empresa_nome = cnpj_map.get(cnpj_norm)
                                         if not empresa_nome:
@@ -111,7 +173,7 @@ def get_real_mentions():
                                             empresa_nome = comp.nome if comp and comp.nome != 'N/A' else cnpj_log
 
                                         mentions_dict[unique_key] = {
-                                            "id": pub_id,
+                                            "id": unique_key,
                                             "empresa": empresa_nome,
                                             "cnpj": cnpj_log,
                                             "cnpj_norm": cnpj_norm,
@@ -135,11 +197,16 @@ def get_real_mentions():
 
     try:
         Mention.query.delete()
-        import uuid
+        
+        from ..models import DeletedMention
+        deleted_ids = {dm.id for dm in DeletedMention.query.all()}
+        
+        filtered_mentions = []
         for m in mentions:
-            m['id'] = str(uuid.uuid4())
-            new_m = Mention(**m)
-            db.session.add(new_m)
+            if m['id'] not in deleted_ids:
+                new_m = Mention(**m)
+                db.session.add(new_m)
+                filtered_mentions.append(m)
         
         cache_setting = Settings.query.filter_by(key='mentions_cache_meta').first()
         if not cache_setting:
@@ -151,9 +218,9 @@ def get_real_mentions():
         logger.error(f"Erro ao salvar cache de menções no BD: {e}")
         db.session.rollback()
 
-    _mentions_cache = mentions
+    _mentions_cache = filtered_mentions
     _mentions_cache_time = time.time()
-    return mentions
+    return filtered_mentions
 
 def clear_mentions_cache():
     global _mentions_cache, _mentions_cache_time, _mentions_deleted_at

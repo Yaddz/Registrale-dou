@@ -184,8 +184,13 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
         alvo_busca_template = sessao_busca[0] if isinstance(sessao_busca, list) else sessao_busca
         
         lista_buscas = []
+        class QuotedString(str): pass
+        def quoted_scalar_representer(dumper, data):
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data, style="'")
+        yaml.SafeDumper.add_representer(QuotedString, quoted_scalar_representer)
+
         for i in range(num_chunks):
-            chunk = cnpjs_ativos[i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE]
+            chunk = [QuotedString(c) for c in cnpjs_ativos[i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE]]
             alvo_busca = copy.deepcopy(alvo_busca_template)
             alvo_busca['terms'] = chunk
             alvo_busca['is_exact_search'] = True

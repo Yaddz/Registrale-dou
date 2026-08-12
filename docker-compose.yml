@@ -166,6 +166,7 @@ services:
     volumes:
       - ./dag_confs:/dag_confs
       - ./data:/data
+      - ./mnt/airflow-logs:/mnt/airflow-logs
     restart: always
 
 # selenium:

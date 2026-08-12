@@ -59,6 +59,13 @@ class SyncHistory(db.Model):
             "detalhes": self.detalhes
         }
 
+class InlabsDownloadLog(db.Model):
+    __tablename__ = 'inlabs_download_log'
+    id = db.Column(db.Integer, primary_key=True)
+    date_str = db.Column(db.String(10), unique=True, nullable=False)
+    downloaded_at = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.String(20), default='success')
+
 class Mention(db.Model):
     __tablename__ = 'mentions'
     id = db.Column(db.String(255), primary_key=True) # pub_id ou fallback_id
@@ -83,6 +90,11 @@ class Mention(db.Model):
             "trecho": self.trecho,
             "link": self.link
         }
+
+class DeletedMention(db.Model):
+    __tablename__ = 'deleted_mentions'
+    id = db.Column(db.String(255), primary_key=True)
+    deleted_at = db.Column(db.DateTime, server_default=db.func.now())
 
 class Settings(db.Model):
     __tablename__ = 'settings'

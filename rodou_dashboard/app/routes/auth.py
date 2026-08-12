@@ -93,7 +93,8 @@ def index():
             "cnpjs": Company.query.count(),
             "ativos": len(get_monitored_cnpjs()),
             "mencoes_hoje": len([m for m in all_mentions if m['data'] == datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y')]),
-            "este_mes": len([m for m in all_mentions if datetime.now(timezone(timedelta(hours=-3))).strftime('/%m/%Y') in m['data']])
+            "este_mes": len([m for m in all_mentions if datetime.now(timezone(timedelta(hours=-3))).strftime('/%m/%Y') in m['data']]),
+            "mencoes_total": len(all_mentions)
         }
     }
 

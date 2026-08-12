@@ -122,7 +122,8 @@
             </button>
             <button @click="activeTab = 'mentions'" :class="activeTab === 'mentions' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50'" class="w-full flex items-center gap-4 p-3 rounded-xl transition-all">
                 <i data-lucide="megaphone" class="w-5 h-5"></i>
-                <span x-show="sidebarOpen" class="text-sm font-semibold">Todas as Menções</span>
+                <span x-show="sidebarOpen" class="text-sm font-semibold flex-1 text-left">Todas as Menções</span>
+                <span x-show="unseenMentionsCount > 0" class="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse" x-text="unseenMentionsCount"></span>
             </button>
             <button @click="activeTab = 'routines'" :class="activeTab === 'routines' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50'" class="w-full flex items-center gap-4 p-3 rounded-xl transition-all">
                 <i data-lucide="calendar-clock" class="w-5 h-5"></i>
@@ -253,8 +254,10 @@
                     <h2 class="font-bold text-lg text-slate-900 mb-6">Histórico de Eventos</h2>
                     <div class="space-y-6">
                         {% for h in historico %}
-                        <div class="relative pl-6 border-l-2 border-slate-100 pb-2">
-                            <div class="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-slate-100"></div>
+                        <div class="relative pl-6 border-l-2 pb-2" :class="`border-${getHistoryColor('{{ h.evento }}')}-100`">
+                            <div class="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-white flex items-center justify-center border-[3px]" :class="`border-${getHistoryColor('{{ h.evento }}')}-100`">
+                                <i :data-lucide="getHistoryIcon('{{ h.evento }}')" class="w-3 h-3" :class="`text-${getHistoryColor('{{ h.evento }}')}-500`"></i>
+                            </div>
                             <p class="text-[10px] font-bold text-slate-400 uppercase">{{ h.data }}</p>
                             <p class="text-sm font-bold text-slate-900 mt-1">{{ h.evento }}</p>
                             <p class="text-xs text-slate-500 mt-1 leading-relaxed">{{ h.detalhes }}</p>
@@ -293,6 +296,15 @@
                     <table class="w-full text-left">
                         <thead class="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
                             <tr>
+                                <th class="px-4 py-5 w-10 text-center">
+                                    <input type="checkbox" 
+                                        @change="mentionSelectAll = $event.target.checked; 
+                                                 selectedMentionIds = mentionSelectAll 
+                                                     ? filteredAllMentions.slice(0,100).map(m => m.id) 
+                                                     : []"
+                                        :checked="selectedMentionIds.length > 0 && selectedMentionIds.length === filteredAllMentions.slice(0,100).length"
+                                        class="rounded border-slate-300 w-4 h-4 cursor-pointer">
+                                </th>
                                 <th class="px-8 py-5">Empresa / CNPJ</th>
                                 <th class="px-8 py-5 text-center">Publicação</th>
                                 <th class="px-8 py-5">Trecho Identificado</th>
@@ -307,8 +319,16 @@
                             </template>
                             <template x-for="m in filteredAllMentions.slice(0, 100)" :key="m.cnpj + '_' + m.id">
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-4 py-5 text-center">
+                                        <input type="checkbox" :value="m.id" x-model="selectedMentionIds" class="rounded border-slate-300 w-4 h-4 cursor-pointer">
+                                    </td>
                                     <td class="px-8 py-5">
-                                        <p class="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors" x-text="m.empresa"></p>
+                                        <div class="flex items-center gap-2">
+                                            <span x-show="isMentionNew(m)" 
+                                                  class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0"
+                                                  title="Menção identificada hoje"></span>
+                                            <p class="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors" x-text="m.empresa"></p>
+                                        </div>
                                         <p class="text-[10px] text-slate-400 font-mono mt-0.5" x-text="m.cnpj"></p>
                                     </td>
                                     <td class="px-8 py-5 text-center">
@@ -329,12 +349,23 @@
                                             <a :href="m.link" target="_blank" class="p-2.5 bg-slate-50 text-slate-400 hover:bg-stone-700 hover:text-white rounded-xl transition-all shadow-sm">
                                                 <i data-lucide="external-link" class="w-4 h-4"></i>
                                             </a>
+                                            <button @click="deleteMention(m.id)" class="p-2.5 bg-slate-50 text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm" title="Excluir Menção">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
                             </template>
                         </tbody>
                     </table>
+                </div>
+                
+                <!-- Barra flutuante de ações em lote -->
+                <div x-show="selectedMentionIds.length > 0" x-transition class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 z-50 border border-slate-700">
+                    <span class="text-sm font-bold"><span x-text="selectedMentionIds.length"></span> selecionada(s)</span>
+                    <button @click="deleteSelectedMentions()" class="bg-red-500 hover:bg-red-600 px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Excluir Selecionadas
+                    </button>
                 </div>
             </div>
         </div>
@@ -434,6 +465,7 @@
                 <button @click="settingsSubTab = 'integrations'" :class="settingsSubTab === 'integrations' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-white hover:shadow-sm'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="plug-zap" class="w-4 h-4"></i> Integrações</button>
                 <button @click="settingsSubTab = 'templates'" :class="settingsSubTab === 'templates' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-white hover:shadow-sm'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="mail" class="w-4 h-4"></i> Templates de E-mail</button>
                 <button @click="settingsSubTab = 'clean'" :class="settingsSubTab === 'clean' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white hover:shadow-sm'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="trash-2" class="w-4 h-4"></i> Limpeza de Sistema</button>
+                <button @click="settingsSubTab = 'storage'" :class="settingsSubTab === 'storage' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-white hover:shadow-sm'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="hard-drive" class="w-4 h-4"></i> Armazenamento</button>
             </div>
             
             <div class="flex-1 space-y-8">
@@ -529,6 +561,7 @@
                         <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Usuário INLABS</label><input type="text" x-model="settings.inlabs.user" placeholder="E-mail ou CPF" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
                         <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Senha INLABS</label><input type="password" x-model="settings.inlabs.password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
                     </div>
+                    </div>
                 </div>
                     <div class="pt-6 flex justify-end">
                         <button @click="saveSettings(settings)" class="bg-slate-900 text-white px-10 py-4 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">Salvar Configurações</button>
@@ -571,22 +604,34 @@
 
                         <hr class="my-8 border-slate-100">
 
-                        <table class="w-full text-left">
+                        <table class="w-full text-left table-fixed">
                             <thead class="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b">
                                 <tr>
                                     <th class="px-6 py-4">Nome</th>
                                     <th class="px-6 py-4">Assunto</th>
-                                    <th class="px-6 py-4 text-right">Ação</th>
+                                    <th class="px-6 py-4 text-right w-32">Ação</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
                                 <template x-for="t in emailTemplates" :key="t.id">
-                                    <tr class="hover:bg-slate-50/50">
-                                        <td class="px-6 py-4 text-sm font-bold" x-text="t.name"></td>
-                                        <td class="px-6 py-4 text-sm text-slate-500" x-text="t.subject"></td>
-                                        <td class="px-6 py-4 text-right">
+                                    <tr class="hover:bg-slate-50/50 cursor-pointer transition-colors" @click="previewTemplateId = (previewTemplateId === t.id ? null : t.id)">
+                                        <td class="px-6 py-4 text-sm font-bold flex items-center gap-2 truncate">
+                                            <i data-lucide="chevron-right" class="w-4 h-4 transition-transform shrink-0" :class="previewTemplateId === t.id && 'rotate-90'"></i>
+                                            <span x-text="t.name"></span>
+                                        </td>
+                                        <td class="px-6 py-4 text-sm text-slate-500 truncate" x-text="t.subject"></td>
+                                        <td class="px-6 py-4 text-right" @click.stop>
                                             <button @click="editTemplate(t)" class="text-blue-500 hover:text-blue-700 p-2"><i data-lucide="edit" class="w-4 h-4"></i></button>
                                             <button x-show="t.name !== 'Padrão Registrale'" @click="deleteTemplate(t.id)" class="text-red-400 hover:text-red-600 p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-for="t in emailTemplates" :key="'preview_'+t.id">
+                                    <tr x-show="previewTemplateId === t.id" x-transition>
+                                        <td colspan="3" class="p-0">
+                                            <div class="p-4 bg-slate-50 border-t border-slate-100">
+                                                <iframe class="w-full bg-white rounded-xl border border-slate-200" style="min-height:300px;border:none;" :srcdoc="t.body_html"></iframe>
+                                            </div>
                                         </td>
                                     </tr>
                                 </template>
@@ -615,6 +660,58 @@
                             <span class="font-black text-sm">Limpar Menções</span>
                             <span class="text-[10px] opacity-80 uppercase tracking-widest">Apagar lidas do painel</span>
                         </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sub Tab: Armazenamento -->
+    <div x-show="settingsSubTab === 'storage'" class="space-y-8" x-cloak>
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm" x-data="{
+            stats: null,
+            loading: false,
+            error: false,
+            fetchStats() {
+                this.loading = true;
+                this.error = false;
+                fetch('/api/inlabs_stats')
+                    .then(r => r.json())
+                    .then(data => {
+                        if(data.status === 'success') {
+                            this.stats = data;
+                        } else {
+                            this.error = true;
+                        }
+                    })
+                    .catch(() => { this.error = true; })
+                    .finally(() => { this.loading = false; });
+            }
+        }" x-init="fetchStats()">
+            <div class="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                <div>
+                    <h3 class="font-bold text-slate-800 text-sm tracking-tight">Banco de Dados INLABS</h3>
+                    <p class="text-xs text-slate-500 mt-1">Armazenamento das capturas históricas do Diário Oficial.</p>
+                </div>
+                <button @click="fetchStats()" class="p-2 bg-white rounded-lg border border-slate-200 text-slate-500 hover:text-blue-600 shadow-sm">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading && 'animate-spin'"></i>
+                </button>
+            </div>
+            <div class="p-6 grid grid-cols-2 gap-6">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Tamanho Utilizado</div>
+                    <div class="text-2xl font-black text-slate-800">
+                        <span x-show="!loading && !error" x-text="stats ? stats.size : '—'"></span>
+                        <span x-show="loading" class="text-slate-300">...</span>
+                        <span x-show="error && !loading" class="text-red-400 text-sm">Indisponível</span>
+                    </div>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Dias Armazenados</div>
+                    <div class="text-2xl font-black text-blue-600">
+                        <span x-show="!loading && !error" x-text="stats ? stats.days_stored : '—'"></span>
+                        <span x-show="loading" class="text-slate-300">...</span>
+                        <span x-show="error && !loading" class="text-red-400 text-sm">Indisponível</span>
                     </div>
                 </div>
             </div>
@@ -671,7 +768,7 @@
                                         <button @click="triggerRoutine(r.file)" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm active:scale-95">
                                             <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Pesquisar no DOU
                                         </button>
-                                        <button @click="monthlySearchModal = true" class="bg-stone-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-stone-800 transition-all flex items-center gap-2 shadow-sm active:scale-95">
+                                        <button @click="openMonthlySearch(r.file)" class="bg-stone-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-stone-800 transition-all flex items-center gap-2 shadow-sm active:scale-95">
                                             <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Busca Mensal
                                         </button>
                                     </div>
@@ -741,6 +838,68 @@
             </div>
         </div>
 
+        <!-- Modal: Confirmação INLABS (dias faltantes) -->
+        <div x-show="monthlyInlabsConfirmModal" x-cloak
+             class="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+             x-transition.opacity>
+            <div @click.away="monthlyInlabsConfirmModal = false"
+                 class="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+                
+                <!-- Header -->
+                <div class="p-6 border-b border-slate-100 bg-amber-50">
+                    <div class="flex items-start gap-4">
+                        <div class="bg-amber-100 p-3 rounded-2xl">
+                            <i data-lucide="alert-triangle" class="w-6 h-6 text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-lg text-slate-900">Dados INLABS Incompletos</h3>
+                            <p class="text-sm text-amber-700 mt-1">
+                                <span x-text="monthlyInlabsCheck?.missing_count"></span> dia(s) do mês não possuem dados INLABS baixados.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Body: lista de dias faltantes -->
+                <div class="p-6 space-y-4">
+                    <div class="bg-slate-50 rounded-xl p-4 max-h-40 overflow-y-auto">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Dias sem dados INLABS:</p>
+                        <div class="flex flex-wrap gap-2">
+                            <template x-for="d in (monthlyInlabsCheck?.missing_days || [])" :key="d">
+                                <span class="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-lg" 
+                                      x-text="d.split('-').reverse().join('/')"></span>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <p class="text-sm text-slate-600">Como deseja prosseguir com esses dias?</p>
+                </div>
+                
+                <!-- Actions: 3 botões -->
+                <div class="p-4 bg-slate-50 border-t border-slate-100 grid grid-cols-1 gap-2">
+                    <!-- Opção 1: Confirmar (INLABS + API-DOU) -->
+                    <button @click="monthlySearchMode='full'; monthlyInlabsConfirmModal=false; startMonthlySearch();"
+                            class="w-full bg-slate-900 text-white px-5 py-3 rounded-xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="check-circle" class="w-4 h-4"></i>
+                        Confirmar — Buscar INLABS + API-DOU
+                    </button>
+                    
+                    <!-- Opção 2: Só INLABS -->
+                    <button @click="monthlySearchMode='inlabs_only'; monthlyInlabsConfirmModal=false; startMonthlySearch();"
+                            class="w-full bg-blue-50 text-blue-700 border border-blue-200 px-5 py-3 rounded-xl text-sm font-bold hover:bg-blue-100 transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="database" class="w-4 h-4"></i>
+                        Buscar somente dias com INLABS
+                    </button>
+                    
+                    <!-- Opção 3: Cancelar -->
+                    <button @click="monthlyInlabsConfirmModal=false"
+                            class="w-full text-slate-500 px-5 py-3 rounded-xl text-sm font-bold hover:bg-slate-100 transition-all">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Modal: Busca Mensal -->
         <div x-show="monthlySearchModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" x-transition.opacity>
             <div @click.away="!monthlySearchRunning && (monthlySearchModal = false)" class="bg-white rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col animate-in zoom-in duration-200">
@@ -792,8 +951,8 @@
                 </div>
                 <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 shrink-0">
                     <button @click="!monthlySearchRunning && (monthlySearchModal = false)" class="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-all" :disabled="monthlySearchRunning">Fechar</button>
-                    <button @click="startMonthlySearch()" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center gap-2 active:scale-95" :disabled="monthlySearchRunning" x-show="!monthlySearchRunning">
-                        <i data-lucide="play" class="w-4 h-4 fill-current"></i> Iniciar
+                    <button @click="checkAndStartMonthly()" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center gap-2 active:scale-95" :disabled="monthlySearchRunning" x-show="!monthlySearchRunning">
+                        <i data-lucide="play" class="w-4 h-4 fill-current"></i> Verificar e Iniciar
                     </button>
                 </div>
             </div>
@@ -1091,7 +1250,10 @@
                 <div><label class="text-[10px] font-bold text-slate-400 uppercase">Trecho Localizado</label><div class="mt-3 p-6 bg-slate-50 rounded-2xl border border-slate-100 text-slate-600 text-[13px] leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap font-mono" x-text="selectedMention.trecho"></div></div>
                 <div x-show="selectedMention.link"><a :href="selectedMention.link" target="_blank" class="flex items-center justify-center gap-2 w-full bg-blue-50 text-blue-700 py-4 rounded-2xl font-bold hover:bg-blue-100 transition-all border border-blue-100"><i data-lucide="external-link" class="w-4 h-4"></i> Abrir Publicação Oficial</a></div>
             </div>
-            <div class="p-8 border-t border-slate-50 flex justify-end bg-slate-50/50 shrink-0">
+            <div class="p-8 border-t border-slate-50 flex justify-between items-center bg-slate-50/50 shrink-0">
+                <button @click="deleteCompanyFromMention(selectedMention.cnpj)" class="text-red-500 hover:bg-red-50 hover:text-red-700 font-bold text-sm px-4 py-2 border border-red-200 rounded-lg flex items-center gap-2 transition-colors">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i> Parar de Monitorar Empresa
+                </button>
                 <button @click="modalOpen = false" class="bg-slate-900 text-white px-10 py-3 rounded-xl font-bold hover:shadow-lg active:scale-95 transition-all">Fechar</button>
             </div>
         </div>
@@ -1153,6 +1315,7 @@
                 modalOpen: false,
                 historyModalOpen: false,
                 selectedMention: {},
+                seenMentionIds: JSON.parse(localStorage.getItem('seenMentionIds') || '[]'),
                 companyHistory: [],
                 selectedCompany: {},
                 searchQuery: '',
@@ -1163,10 +1326,15 @@
                 mentionsDateFilter: '',
                 allMentions: [],
                 loadingMentions: false,
-                                companies: [],
+                mentionsLoaded: false,
+                filteredAllMentions: [],
+                selectedMentionIds: [],
+                mentionSelectAll: false,
+                companies: [],
                 newCompany: {nome:'', cnpj:'', uf:'', cidade:'', email:'', telefone:'', situacao:'Ativa', status:true, origem:'Manual'},
                 showAddCompanyModal: false,
                 emailTemplates: [],
+                previewTemplateId: null,
                 editingTemplate: {id:null, name:'', subject:'', body_html:'', showHtml: false},
                 showEmailModal: false,
                 emailForm: {mentions:[], to_emails:'', subject:'', body_html:'', templateId:'', showHtml:false},
@@ -1174,10 +1342,44 @@
                 internalUsers: {{ users | tojson | safe }},
                 settings: Object.assign({smtp:{}, api_keys:{}, }, {{ settings | tojson | safe }}),
                 kpis: {{ init_data.kpis | tojson | safe }},
+                mencoes: {{ mencoes | tojson | safe }},
                 newU: {username: '', password: '', role: 'user'},
                 timeLeft: {{ time_left }},
                 isSyncing: false,
                 alert: { show: false, message: '', type: 'success' },
+                unseenMentionsCount: 0,
+                lastSeenMentionsTotal: {{ init_data.kpis.mencoes_total if init_data else 0 }},
+
+                async refreshKpis() {
+                    try {
+                        const r = await fetch('/api/status');
+                        const data = await r.json();
+                        if (data.kpis) {
+                            if (data.kpis.mencoes_total > this.lastSeenMentionsTotal) {
+                                this.unseenMentionsCount += (data.kpis.mencoes_total - this.lastSeenMentionsTotal);
+                                this.showAlert(`${this.unseenMentionsCount} nova(s) menção(ões) encontrada(s)!`, 'success');
+                            }
+                            this.lastSeenMentionsTotal = data.kpis.mencoes_total;
+                            this.kpis = data.kpis;
+                        }
+                    } catch(e) { }
+                },
+
+                init() {
+                    if(this.mencoes.length > 0) this.activeTab = 'mentions';
+                    
+                    this.$watch('activeTab', value => {
+                        if (value === 'mentions') {
+                            this.unseenMentionsCount = 0;
+                            if(this.kpis) this.lastSeenMentionsTotal = this.kpis.mencoes_total;
+                        }
+                    });
+
+                    setInterval(() => {
+                        this.timeLeft = Math.max(0, this.timeLeft - 1);
+                    }, 1000);
+                    setInterval(() => this.refreshKpis(), 60000);
+                },
 
                 // Routine management
                 routines: [],
@@ -1188,6 +1390,9 @@
                 triggerDateFile: '',
                 triggerLogicalDate: '',
                 monthlySearchModal: false,
+                monthlyInlabsConfirmModal: false,
+                monthlyInlabsCheck: null,
+                monthlySearchMode: 'full',
                 monthlySearchMonth: new Date().getMonth() + 1,
                 monthlySearchYear: new Date().getFullYear(),
                 monthlySearchRunning: false,
@@ -1381,6 +1586,7 @@
                 showAlert(msg, type = 'success') {
                     this.alert = { show: true, message: msg, type: type };
                     setTimeout(() => { this.alert.show = false }, 5000);
+                    this.$nextTick(() => { if(window.lucide) lucide.createIcons(); });
                 },
 
                 extendSession() {
@@ -1393,7 +1599,23 @@
                         });
                 },
 
+                markMentionSeen(id) {
+                    if (!this.seenMentionIds.includes(id)) {
+                        this.seenMentionIds.push(id);
+                        localStorage.setItem('seenMentionIds', JSON.stringify(this.seenMentionIds));
+                    }
+                },
+
+                isMentionNew(m) {
+                    const today = new Date();
+                    const todayStr = String(today.getDate()).padStart(2,'0') + '/' 
+                                   + String(today.getMonth()+1).padStart(2,'0') + '/' 
+                                   + today.getFullYear();
+                    return m.data === todayStr && !this.seenMentionIds.includes(m.id);
+                },
+
                 openDetails(m) {
+                    this.markMentionSeen(m.id);
                     this.selectedMention = m;
                     this.modalOpen = true;
                     this.$nextTick(() => lucide.createIcons());
@@ -1426,6 +1648,8 @@
                         const res = await r.json();
                         this.showAlert(res.message, res.status);
                         if(res.status === 'success') {
+                            this.isSyncing = false;
+                            this.refreshKpis();
                             setTimeout(() => {
                                 this.fetchCompanies();
                                 this.showAlert('Lista de empresas atualizada!');
@@ -1464,11 +1688,12 @@
                             type: r.type,
                             description: r.description,
                             is_exact_search: r.is_exact_search !== undefined ? r.is_exact_search : true,
+                            source: r.source || 'DOU',
                             terms_ignore_raw: (r.terms_ignore || []).join('\n')
                         };
                     } else {
                         this.editMode = false;
-                        this.currentR = { id: '', name: '', file: '', schedule: '0 5 * * *', simple_schedule: '0 5 * * *', terms_raw: '', organs_raw: '', sections: ['SECAO_1', 'SECAO_2', 'SECAO_3'], emails_raw: '', subject: '', type: 'custom', is_exact_search: true, terms_ignore_raw: '' };
+                        this.currentR = { id: '', name: '', file: '', schedule: '0 5 * * *', simple_schedule: '0 5 * * *', terms_raw: '', organs_raw: '', sections: ['SECAO_1', 'SECAO_2', 'SECAO_3'], emails_raw: '', subject: '', type: 'custom', is_exact_search: true, source: 'DOU', terms_ignore_raw: '' };
                     }
                     this.routineModal = true;
                     this.$nextTick(() => lucide.createIcons());
@@ -1560,17 +1785,24 @@
                     this.monthlySearchModal = true;
                 },
 
+                async checkAndStartMonthly() {
+                    const resp = await fetch(
+                        `/api/routines/monthly_inlabs_check?month=${this.monthlySearchMonth}&year=${this.monthlySearchYear}&routine=${this.monthlySearchFile}`
+                    );
+                    this.monthlyInlabsCheck = await resp.json();
+                    
+                    if (!this.monthlyInlabsCheck.uses_inlabs || this.monthlyInlabsCheck.missing_count === 0) {
+                        this.monthlySearchMode = 'full';
+                        this.startMonthlySearch();
+                        return;
+                    }
+                    
+                    this.monthlyInlabsConfirmModal = true;
+                },
+
                 async startMonthlySearch() {
                     const year = this.monthlySearchYear;
                     const month = this.monthlySearchMonth;
-                    const now = new Date();
-                    const currentYear = now.getFullYear();
-                    const currentMonth = now.getMonth() + 1;
-                    
-                    let lastDay = new Date(year, month, 0).getDate();
-                    if (year === currentYear && month === currentMonth) {
-                        lastDay = now.getDate();
-                    }
                     
                     let routinesToSearch = [];
                     const routine = this.routines.find(r => r.file === this.monthlySearchFile);
@@ -1583,49 +1815,118 @@
                         return;
                     }
                     
-                    const totalTriggers = lastDay * routinesToSearch.length;
-                    
                     this.monthlySearchRunning = true;
-                    this.monthlySearchProgress = 'Preparando busca mensal...';
-                    this.monthlySearchPercent = 0;
-                    this.monthlySearchDetail = `${routinesToSearch.length} rotina(s) × ${lastDay} dias = ${totalTriggers} disparos`;
+                    this.monthlySearchProgress = 'Disparando busca mensal unificada...';
+                    this.monthlySearchPercent = 50;
+                    this.monthlySearchDetail = `Consolidando rotinas para o mês ${month}/${year}.`;
                     
-                    let successCount = 0;
-                    let errorCount = 0;
-                    let triggerCount = 0;
+                    const routinesList = routinesToSearch.map(r => r.file);
                     
-                    for (const routine of routinesToSearch) {
-                        for (let day = 1; day <= lastDay; day++) {
-                            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            this.monthlySearchProgress = `${routine.name} — Dia ${day}/${lastDay} (${dateStr})`;
-                            this.monthlySearchPercent = Math.round((triggerCount / totalTriggers) * 100);
-                            
-                            try {
-                                const r = await fetch(`/api/routines/trigger/${encodeURIComponent(routine.file)}`, {
-                                    method: 'POST',
-                                    headers: {'Content-Type': 'application/json'},
-                                    body: JSON.stringify({ logical_date: dateStr })
-                                });
-                                const res = await r.json();
-                                if (res.status === 'success') successCount++;
-                                else errorCount++;
-                            } catch(e) {
-                                errorCount++;
-                            }
-                            
-                            triggerCount++;
-                            
-                            if (triggerCount < totalTriggers) {
-                                await new Promise(resolve => setTimeout(resolve, 1500));
-                            }
+                    try {
+                        const r = await fetch(`/api/routines/trigger_monthly`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ 
+                                year: year, 
+                                month: month, 
+                                routines: routinesList,
+                                mode: this.monthlySearchMode
+                            })
+                        });
+                        const res = await r.json();
+                        if (res.status === 'success') {
+                            this.showAlert(res.message, 'success');
+                        } else {
+                            this.showAlert('Houve um erro no disparo consolidado.', 'error');
                         }
+                    } catch(e) {
+                        this.showAlert('Erro ao disparar busca mensal consolidada.', 'error');
                     }
                     
-                    this.monthlySearchProgress = `Concluído! ${successCount} disparos com sucesso, ${errorCount} erros.`;
                     this.monthlySearchPercent = 100;
                     this.monthlySearchDetail = '';
                     this.monthlySearchRunning = false;
-                    this.showAlert(`Busca mensal concluída! ${successCount} disparos realizados.`, successCount > 0 ? 'success' : 'error');
+                    this.monthlySearchModal = false;
+                    this.refreshKpis();
+                },
+
+                async deleteMention(id) {
+                    if(!confirm('Tem certeza que deseja excluir esta menção?')) return;
+                    try {
+                        const r = await fetch(`/api/mentions`, {
+                            method: 'DELETE',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ids: [id]})
+                        });
+                        const res = await r.json();
+                        this.showAlert(res.message, res.status);
+                        if(res.status === 'success') {
+                            this.filteredAllMentions = this.filteredAllMentions.filter(m => m.id !== id);
+                            this.allMentions = this.allMentions.filter(m => m.id !== id);
+                        }
+                    } catch(e) { this.showAlert('Erro ao excluir menção', 'error'); }
+                },
+
+                getHistoryIcon(evento) {
+                    if (evento.includes('INLABS')) return 'download-cloud';
+                    if (evento.includes('Busca Mensal')) return 'calendar-search';
+                    if (evento.includes('Busca')) return 'search';
+                    if (evento.includes('Sincronização') || evento.includes('Sync')) return 'refresh-cw';
+                    if (evento.includes('Email') || evento.includes('E-mail')) return 'mail';
+                    if (evento.includes('Erro') || evento.includes('Falha') || evento.includes('⚠️')) return 'alert-circle';
+                    if (evento.includes('Rotina')) return 'settings';
+                    return 'clock';
+                },
+
+                getHistoryColor(evento) {
+                    if (evento.includes('Erro') || evento.includes('Falha') || evento.includes('⚠️')) return 'red';
+                    if (evento.includes('Concluíd') || evento.includes('OK') || evento.includes('Sucesso') || evento.includes('✅')) return 'green';
+                    if (evento.includes('Iniciada') || evento.includes('Agendada')) return 'blue';
+                    if (evento.includes('INLABS') || evento.includes('⬇️')) return 'amber';
+                    return 'slate';
+                },
+
+                async deleteSelectedMentions() {
+                    const idsToDelete = [...this.selectedMentionIds];
+                    if(!confirm(`Deseja excluir ${idsToDelete.length} menção(ões)?`)) return;
+                    try {
+                        const r = await fetch(`/api/mentions`, {
+                            method: 'DELETE',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ids: idsToDelete})
+                        });
+                        this.selectedMentionIds = [];
+                        this.mentionSelectAll = false;
+                        const res = await r.json();
+                        this.showAlert(res.message, res.status);
+                        if(res.status === 'success') {
+                            this.allMentions = this.allMentions.filter(m => !idsToDelete.includes(m.id));
+                            this.filteredAllMentions = this.filteredAllMentions.filter(m => !idsToDelete.includes(m.id));
+                        }
+                    } catch(e) { this.showAlert('Erro ao excluir menções', 'error'); }
+                },
+
+                async deleteCompanyFromMention(cnpj) {
+                    if(!confirm('Tem certeza que deseja remover esta empresa do monitoramento? Ela não será mais buscada nas próximas execuções.')) return;
+                    
+                    // Encontrar o ID da empresa baseado no CNPJ
+                    let cnpjNumbers = cnpj.replace(/[^0-9]/g, '');
+                    let company = this.companies.find(c => c.cnpj.replace(/[^0-9]/g, '') === cnpjNumbers);
+                    
+                    if(!company) {
+                        this.showAlert('Empresa não encontrada na base de dados.', 'error');
+                        return;
+                    }
+
+                    try {
+                        const r = await fetch(`/api/companies/${company.id}`, { method: 'DELETE' });
+                        const res = await r.json();
+                        this.showAlert(res.message, res.status);
+                        if(res.status === 'success') {
+                            this.modalOpen = false;
+                            this.loadCompanies();
+                        }
+                    } catch(e) { this.showAlert('Erro ao deletar empresa', 'error'); }
                 },
 
                 async deleteRoutine(file) {
@@ -1640,7 +1941,7 @@
                     } catch(e) { this.showAlert('Erro ao excluir rotina', 'error'); }
                 },
 
-                async                 openAddCompanyModal() {
+                async openAddCompanyModal() {
                     this.newCompany = {nome:'', cnpj:'', uf:'', cidade:'', email:'', telefone:'', situacao:'Ativa', status:true, origem:'Manual'};
                     this.showAddCompanyModal = true;
                 },
@@ -1985,7 +2286,7 @@
                         }
                     }, 1000);
                     this.$watch('activeTab', value => {
-                        if((value === 'mentions' || value === 'reports') && this.allMentions.length === 0) {
+                        if((value === 'mentions' || value === 'reports') && !this.mentionsLoaded) {
                             this.loadingMentions = true;
                             fetch('/api/mentions')
                                 .then(r => r.json())
@@ -1996,6 +2297,7 @@
                                         }
                                         return m;
                                     });
+                                    this.mentionsLoaded = true;
                                 })
                                 .catch(e => { this.showAlert('Erro ao carregar menções', 'error'); })
                                 .finally(() => { 
