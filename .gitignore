@@ -19,6 +19,8 @@ __pycache__/
 *credentials*.json
 *service_account*.json
 client_secret*.json
+CONFIGURACOES_SISTEMA.md
+*CONFIGURACOES*.md
 
 # Virtual Environments
 .venv/
