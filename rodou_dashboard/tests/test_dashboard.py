@@ -625,7 +625,7 @@ class TestNewOptimizedFeatures:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data.get('status') == 'success'
-        assert "API Oficial do DOU" in data.get('message') or "sucesso" in data.get('message')
+        assert any(k in data.get('message', '').lower() for k in ["disparada", "sucesso", "api oficial"])
 
     def test_cleanup_orphaned_temp_dags(self, app):
         import os

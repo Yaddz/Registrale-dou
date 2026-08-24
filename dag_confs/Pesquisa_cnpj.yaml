@@ -1,17 +1,21 @@
 dag:
   id: pesquisa_cnpj_anvisa
-  description: Busca padrão diária vinculada às empresas com monitoramento ativo na base.
+  description: Busca padrão diária vinculada às empresas com monitoramento ativo na
+    base.
   tags:
-    - pesquisa_cnpj
-    - inlabs
+  - pesquisa_cnpj
+  - inlabs
   owner:
-    - CNPJ_SYNC
+  - CNPJ_SYNC
   schedule: 0 8 * * MON-FRI
   search:
-    - header: MONITORAMENTO PADRÃO (EMPRESAS ATIVAS)
-      is_exact_search: true
-      force_rematch: true
-      department:
-        - ANVISA
-        - Agência Nacional de Vigilância Sanitária
-      terms: []
+  - header: MONITORAMENTO PADRÃO (EMPRESAS ATIVAS)
+    is_exact_search: true
+    force_rematch: true
+    department:
+    - ANVISA
+    - Agência Nacional de Vigilância Sanitária
+    terms:
+    - '55666777000188'
+    - '66777888000199'
+    full_text: false
