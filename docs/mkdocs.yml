@@ -13,6 +13,12 @@ nav:
     - Usuários internos e externos: como_utilizar/usuarios.md
     - Notificação de erros: como_utilizar/notificacao_de_erros.md
     - Habilitando IA nos resumos: como_utilizar/habilitando_ia.md
+  - Dashboard Web (Ro-DOU Dashboard):
+    - Visão Geral e Arquitetura: dashboard/01_visao_geral.md
+    - Guia de Funcionalidades: dashboard/02_funcionalidades.md
+    - Integrações (Sheets, ERP, SMTP, INLABS): dashboard/03_integracoes.md
+    - Referência da API REST: dashboard/04_api.md
+    - Guia Operacional e Deploy: dashboard/05_deploy.md
   - Como funciona:
     - Introdução: como_funciona/intro_funcionamento.md
     - Compreendendo a pesquisa no D.O.U.: como_funciona/pesquisa_dou.md

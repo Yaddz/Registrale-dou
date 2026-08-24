@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 import json
 
 db = SQLAlchemy()
@@ -22,27 +23,18 @@ class Company(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(255), nullable=False, default="N/A")
     cnpj = db.Column(db.String(20), unique=True, nullable=False)
-    cnpj_norm = db.Column(db.String(20), unique=True, nullable=False)
-    uf = db.Column(db.String(2), default='N/A')
-    cidade = db.Column(db.String(100), default='N/A')
-    email = db.Column(db.String(255), default='N/A')
-    telefone = db.Column(db.String(50), default='N/A')
-    situacao = db.Column(db.String(50), default='Ativa') 
-    status = db.Column(db.Boolean, default=True) # Monitorado Sim/Não
+    cnpj_norm = db.Column(db.String(20), unique=True, nullable=False, index=True)
     origem = db.Column(db.String(50), default='GestãoClick')
+    status = db.Column(db.Boolean, default=True) # Monitorado Sim/Não
 
     def to_dict(self):
         return {
+            "id": self.id,
             "nome": self.nome,
             "cnpj": self.cnpj,
             "cnpj_norm": self.cnpj_norm,
-            "uf": self.uf,
-            "cidade": self.cidade,
-            "email": self.email,
-            "telefone": self.telefone,
-            "situacao": self.situacao,
-            "status": self.status,
-            "origem": self.origem
+            "origem": self.origem,
+            "status": self.status
         }
 
 class SyncHistory(db.Model):
@@ -52,8 +44,31 @@ class SyncHistory(db.Model):
     evento = db.Column(db.String(255), nullable=False)
     detalhes = db.Column(db.Text, nullable=True)
 
+    @classmethod
+    def log_event(cls, evento, detalhes="", max_history=50):
+        """Registra um evento de histórico mantendo no máximo max_history registros (FIFO)."""
+        try:
+            now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            hist = cls(data=now_str, evento=evento, detalhes=detalhes)
+            db.session.add(hist)
+            db.session.commit()
+            
+            total = cls.query.count()
+            if total > max_history:
+                oldest_ids = [
+                    h.id for h in cls.query.order_by(cls.id.asc()).limit(total - max_history).all()
+                ]
+                if oldest_ids:
+                    cls.query.filter(cls.id.in_(oldest_ids)).delete(synchronize_session=False)
+                    db.session.commit()
+            return hist
+        except Exception:
+            db.session.rollback()
+            return None
+
     def to_dict(self):
         return {
+            "id": self.id,
             "data": self.data,
             "evento": self.evento,
             "detalhes": self.detalhes
@@ -90,11 +105,6 @@ class Mention(db.Model):
             "trecho": self.trecho,
             "link": self.link
         }
-
-class DeletedMention(db.Model):
-    __tablename__ = 'deleted_mentions'
-    id = db.Column(db.String(255), primary_key=True)
-    deleted_at = db.Column(db.DateTime, server_default=db.func.now())
 
 class Settings(db.Model):
     __tablename__ = 'settings'

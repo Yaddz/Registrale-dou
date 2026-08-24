@@ -56,45 +56,47 @@ class DOUHook(BaseHook):
             return f"{field.value}-{term}"
 
 
-    def _request_page(self, with_retry: bool, payload: dict):
+    def _request_page(self, with_retry: bool, payload: dict, max_retries: int = 3):
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; Ro-DOU/0.7; +https://github.com/gestaogovbr/Ro-dou)",
-            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
             "Cache-Control": "no-cache",
         }
 
-        try:
-            # First try with HTTPS
-            response = requests.get(self.IN_API_BASE_URL, params=payload, headers=headers, timeout=10)
-
-            # Extra Validation
-            if not response.url.startswith("https://"):
-                logging.warning("Response redirected to HTTP! Final URL: %s", response.url)
-
-            response.raise_for_status()
-            return response
-
-        except requests.exceptions.SSLError as ssl_err:
-            logging.error("SSL Error: %s", ssl_err)
-            logging.info("Trying fallback to HTTP…")
-
-            # Fallback for HTTP
-            http_url = self.IN_API_BASE_URL.replace("https://", "http://")
+        timeout = 35
+        for attempt in range(1, max_retries + 1):
             try:
-                response = requests.get(http_url, params=payload, headers=headers, timeout=10)
-                response.raise_for_status()
-                logging.warning("Using HTTP fallback. Final URL: %s", response.url)
-                return response
-            except requests.exceptions.RequestException as e:
-                logging.error("HTTP Fallback Error: %s", e)
-                raise
+                # First try with HTTPS
+                response = requests.get(self.IN_API_BASE_URL, params=payload, headers=headers, timeout=timeout)
 
-        except requests.exceptions.RequestException as e:
-            logging.error("General Error accessing DOU API: %s", e)
-            if with_retry:
-                logging.info("Sleep. Trying again in 30 seconds...")
-                time.sleep(30)
-                return requests.get(self.IN_API_BASE_URL, params=payload, headers=headers, timeout=10)
+                # Extra Validation
+                if not response.url.startswith("https://"):
+                    logging.warning("Response redirected to HTTP! Final URL: %s", response.url)
+
+                response.raise_for_status()
+                return response
+
+            except requests.exceptions.SSLError as ssl_err:
+                logging.error("SSL Error: %s. Tentando fallback para HTTP...", ssl_err)
+                http_url = self.IN_API_BASE_URL.replace("https://", "http://")
+                try:
+                    response = requests.get(http_url, params=payload, headers=headers, timeout=timeout)
+                    response.raise_for_status()
+                    logging.warning("Using HTTP fallback. Final URL: %s", response.url)
+                    return response
+                except requests.exceptions.RequestException as e:
+                    logging.error("HTTP Fallback Error: %s", e)
+                    if not with_retry or attempt >= max_retries:
+                        raise
+
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.RequestException) as e:
+                logging.warning("Erro/Timeout acessando API DOU (Tentativa %d de %d): %s", attempt, max_retries, e)
+                if not with_retry or attempt >= max_retries:
+                    raise
+                backoff = attempt * 5
+                logging.info("Aguardando %d segundos antes de tentar novamente...", backoff)
+                time.sleep(backoff)
 
     def search_text(
         self,

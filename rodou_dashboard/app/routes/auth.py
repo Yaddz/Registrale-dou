@@ -2,7 +2,7 @@ from flask import Blueprint, request, session, redirect, url_for, render_templat
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 from ..models import db, User, Settings, SyncHistory, Company
-from ..services.mention_service import get_real_mentions
+from ..services.mention_service import get_real_mentions, get_mentions_kpis
 from ..services.dag_config_service import get_monitored_cnpjs, get_last_search_time, get_next_search_time
 import os
 import glob
@@ -68,17 +68,29 @@ def index():
         users_list = [{"username": u.username, "role": u.role} for u in User.query.all()]
         
     history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(50).all()]
-    all_mentions = get_real_mentions()
+    total_m, hoje_m, mes_m = get_mentions_kpis()
     
-    # We will assume BASE_DIR points to root, logic from dag_config_service:
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    dag_confs_path = os.path.join(BASE_DIR, "dag_confs")
-    yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
-    if not yaml_files: yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
-    last_sync = "N/A"
-    if yaml_files:
-        mtime = os.path.getmtime(yaml_files[0])
-        last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+    last_sync_record = SyncHistory.query.filter(
+        (SyncHistory.evento.like('%GestãoClick%')) | 
+        (SyncHistory.evento.like('%Google Sheets%')) |
+        (SyncHistory.evento.like('%Sincronização%')) |
+        (SyncHistory.evento.like('%Sync%'))
+    ).order_by(SyncHistory.id.desc()).first()
+
+    if last_sync_record:
+        last_sync = last_sync_record.data
+    else:
+        from ..services.dag_config_service import get_dag_confs_path, get_base_yaml_path
+        dag_confs_path = get_dag_confs_path()
+        yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
+        if not yaml_files: yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
+        if not yaml_files:
+            base = get_base_yaml_path()
+            if os.path.exists(base): yaml_files = [base]
+        last_sync = "N/A"
+        if yaml_files:
+            mtime = os.path.getmtime(yaml_files[0])
+            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
 
     last_search = get_last_search_time()
     next_search = get_next_search_time()
@@ -88,20 +100,18 @@ def index():
         time_left = max(0, int(expires_at - datetime.now(timezone(timedelta(hours=-3))).timestamp()))
 
     init_data = {
-        "mencoes_recentes": all_mentions[:20],
         "kpis": {
             "cnpjs": Company.query.count(),
             "ativos": len(get_monitored_cnpjs()),
-            "mencoes_hoje": len([m for m in all_mentions if m['data'] == datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y')]),
-            "este_mes": len([m for m in all_mentions if datetime.now(timezone(timedelta(hours=-3))).strftime('/%m/%Y') in m['data']]),
-            "mencoes_total": len(all_mentions)
+            "mencoes_hoje": hoje_m,
+            "este_mes": mes_m,
+            "mencoes_total": total_m
         }
     }
 
     return render_template('index.html', 
                            user=session['user'],
                            init_data=init_data,
-                           mencoes=all_mentions[:20],
                            last_sync=last_sync,
                            last_search=last_search,
                            next_search=next_search,

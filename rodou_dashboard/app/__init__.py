@@ -1,6 +1,7 @@
 import os
 from flask import Flask
 from flask_session import Session
+from dotenv import load_dotenv
 from .models import db, User, EmailTemplate
 from sqlalchemy import event
 
@@ -25,7 +26,7 @@ def _init_default_data():
         * { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; box-sizing: border-box; }
         body { margin: 0; padding: 20px; background-color: #f8f9fa; line-height: 1.6; color: #333; }
         h3 { color: #545b61; font-size: 16px; font-weight: normal; }
-        .highlight { background-color: #FFA; }
+        .highlight, mark { background-color: #FFA !important; font-weight: bold; padding: 1px 4px; border-radius: 2px; color: #000; }
         .ext_header { max-width: 1200px; margin: 0 auto 30px auto; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); padding: 30px; border-left: 4px solid #06acff; }
         .container { max-width: 1200px; margin: 0 auto 20px auto; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); overflow: hidden; }
         .content { padding: 5px; }
@@ -95,14 +96,22 @@ def create_app(config=None):
     # Configuração base
     app.secret_key = os.getenv("SECRET_KEY", "rodou-secret-key-123")
     
-    DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data')
+    DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data'))
     os.makedirs(DATA_DIR, exist_ok=True)
+    
+    # Carrega variáveis persistidas no volume montado /data/.env
+    _data_env = os.path.join(DATA_DIR, '.env')
+    if os.path.exists(_data_env):
+        try:
+            load_dotenv(_data_env, override=True)
+        except Exception:
+            pass
     
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(DATA_DIR, 'database.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config.update(
         SESSION_TYPE='filesystem',
-        SESSION_FILE_DIR=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'flask_sessions'),
+        SESSION_FILE_DIR=os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'flask_sessions')),
         SESSION_PERMANENT=True,
         SESSION_REFRESH_EACH_REQUEST=False,
         SESSION_USE_SIGNER=True,
@@ -151,6 +160,21 @@ def create_app(config=None):
         db.create_all()
         _init_default_data()
         
+    # Limpeza de DAGs temporárias órfãs na inicialização
+    try:
+        from .services.dag_config_service import cleanup_orphaned_temp_dags
+        cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=True)
+    except Exception as e:
+        app.logger.warning(f"Erro ao limpar DAGs temporárias na inicialização: {e}")
+
+    # Inicializar scheduler em background para Google Sheets (se não for modo teste)
+    if not app.config.get('TESTING'):
+        try:
+            from .services.sheets_service import start_sheets_scheduler
+            start_sheets_scheduler(app)
+        except Exception as e:
+            app.logger.error(f"Erro ao iniciar scheduler do Google Sheets: {e}")
+
     @app.after_request
     def add_header(response):
         """Previne o cache do navegador para evitar que páginas logadas apareçam após logout."""
@@ -160,3 +184,4 @@ def create_app(config=None):
         return response
     
     return app
+

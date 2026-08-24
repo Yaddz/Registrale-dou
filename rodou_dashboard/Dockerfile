@@ -18,5 +18,5 @@ COPY templates/ templates/
 # Expõe a porta do Flask
 EXPOSE 5000
 
-# Comando para iniciar o Dashboard em produção usando Gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:create_app()"]
+# Comando para iniciar o Dashboard em produção usando Gunicorn com reciclagem de memória
+CMD ["gunicorn", "-w", "2", "--max-requests", "200", "--max-requests-jitter", "30", "--timeout", "120", "-b", "0.0.0.0:5000", "app:create_app()"]

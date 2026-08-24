@@ -91,6 +91,7 @@ x-airflow-common: &airflow-common
 services:
   postgres:
     image: postgres:17.5-alpine
+    container_name: postgres
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -145,6 +146,7 @@ services:
 
   smtp4dev:
     image: rnwood/smtp4dev:v3
+    container_name: smtp4dev
     restart: always
     ports:
       - '5001:80'
@@ -163,10 +165,14 @@ services:
       - "5000:5000"
     environment:
       - AIRFLOW_URL=http://airflow-webserver:8080
+      - SECRET_KEY=${SECRET_KEY:-registrale-dou-super-secret-key-2026}
     volumes:
+      - ./rodou_dashboard/app:/app/app
+      - ./rodou_dashboard/templates:/app/templates
       - ./dag_confs:/dag_confs
       - ./data:/data
       - ./mnt/airflow-logs:/mnt/airflow-logs
+      - ./flask_sessions:/flask_sessions
     restart: always
 
 # selenium:

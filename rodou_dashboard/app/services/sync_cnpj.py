@@ -3,7 +3,10 @@ import re
 import yaml
 import json
 import logging
+import time
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import math
 import copy
 from typing import List, Dict
@@ -34,51 +37,114 @@ def formatar_cnpj(cnpj_bruto: str):
         return f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
     return cnpj_bruto
 
-def extrair_cnpj(cnpj_bruto: str):
-    return formatar_cnpj(cnpj_bruto)
-
 def get_monitored_data(url_base: str, endpoint: str, headers: dict) -> List[Dict]:
     clientes_completos = []
     pagina_atual = 1
     url_completa = f"{url_base.rstrip('/')}/{endpoint.lstrip('/')}"
     
+    # Configuração de sessão persistente com retry exponencial automático
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=5,
+        backoff_factor=1.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    
     while True:
         logging.info(f"Buscando {url_completa} - Página {pagina_atual}")
         try:
-            resposta = requests.get(url_completa, params={"pagina": pagina_atual}, headers=headers, timeout=30)
-            if resposta.status_code == 404: break
+            resposta = session.get(
+                url_completa,
+                params={"pagina": pagina_atual, "limite": 100},
+                headers=headers,
+                timeout=45
+            )
+            
+            if resposta.status_code == 404:
+                logging.info(f"Fim dos registros atingido na página {pagina_atual} (Status 404).")
+                break
+                
             resposta.raise_for_status()
             
             dados_json = resposta.json()
+            if not isinstance(dados_json, dict):
+                logging.warning(f"Resposta inesperada na página {pagina_atual}: tipo {type(dados_json)}")
+                break
+                
             itens = dados_json.get("data", [])
             
-            if not itens: break
+            if not itens:
+                logging.info(f"Nenhum registro retornado na página {pagina_atual}. Sincronização concluída.")
+                break
             
             for item in itens:
+                if not isinstance(item, dict):
+                    continue
                 cnpj = item.get("cnpj")
                 if cnpj:
-                    endereco = {}
-                    if item.get("enderecos") and len(item.get("enderecos")) > 0:
-                        endereco = item.get("enderecos")[0].get("endereco", {})
-
                     clientes_completos.append({
                         "nome": item.get("razao_social") or item.get("nome") or "N/A",
                         "cnpj": formatar_cnpj(str(cnpj).strip()),
-                        "uf": endereco.get("estado") or "N/A",
-                        "cidade": endereco.get("nome_cidade") or "N/A",
-                        "email": item.get("email") or "N/A",
-                        "telefone": item.get("telefone") or item.get("celular") or "N/A",
-                        "situacao": "Ativa" if str(item.get("ativo")) == "1" else "Inativa"
+                        "status": str(item.get("ativo", "1")) == "1"
                     })
-                    
-            proxima_pagina = dados_json.get("meta", {}).get("proxima_pagina")
-            if not proxima_pagina or int(proxima_pagina) <= pagina_atual: break
-            pagina_atual = int(proxima_pagina)
+            
+            # Controle de paginação com suporte a múltiplos padrões da API
+            meta = dados_json.get("meta")
+            if isinstance(meta, dict):
+                total_paginas = meta.get("total_paginas") or meta.get("paginas")
+                if total_paginas:
+                    try:
+                        if pagina_atual >= int(total_paginas):
+                            logging.info(f"Última página alcançada ({pagina_atual}/{total_paginas}).")
+                            break
+                    except (ValueError, TypeError):
+                        pass
 
+                proxima_pagina = meta.get("proxima_pagina")
+                if proxima_pagina is not None:
+                    # Se for numérico
+                    try:
+                        prox_num = int(proxima_pagina)
+                        if prox_num <= pagina_atual:
+                            logging.info(f"Próxima página ({prox_num}) menor ou igual à atual ({pagina_atual}). Fim.")
+                            break
+                        pagina_atual = prox_num
+                        time.sleep(0.3)
+                        continue
+                    except (ValueError, TypeError):
+                        # Caso venha como URL ou string
+                        if isinstance(proxima_pagina, str) and "pagina=" in proxima_pagina:
+                            match = re.search(r'pagina=(\d+)', proxima_pagina)
+                            if match:
+                                prox_num = int(match.group(1))
+                                if prox_num <= pagina_atual:
+                                    break
+                                pagina_atual = prox_num
+                                time.sleep(0.3)
+                                continue
+
+            # Se não houver indicador explícito no meta, incrementa pagina_atual
+            pagina_atual += 1
+            
+            # Pequeno intervalo para respeitar o Rate Limit da API
+            time.sleep(0.3)
+
+        except requests.exceptions.RequestException as erro:
+            logging.error(f"Erro persistente de rede/API na página {pagina_atual}: {erro}")
+            if not clientes_completos:
+                raise
+            # Se já coletamos páginas anteriores mas houve falha irrecuperável, loga e interrompe
+            break
         except Exception as erro:
-            logging.error(f"Erro na página {pagina_atual}: {erro}")
+            logging.error(f"Erro inesperado no processamento da página {pagina_atual}: {erro}")
             break
         
+    logging.info(f"Total de registros obtidos da API: {len(clientes_completos)}")
     return clientes_completos
 
 def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
@@ -124,7 +190,6 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
     def _norm(cnpj): return re.sub(r'[^0-9]', '', str(cnpj))
 
     from flask import current_app
-    # Evitando duplicação de lógica sqlite3 crua se estamos no Flask context
     if current_app:
         from app.models import db, Company
         try:
@@ -133,42 +198,33 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
                 cnpj = item.get('cnpj')
                 if not cnpj: continue
                 cnpj_norm = _norm(cnpj)
-                situacao = item.get('situacao', 'Ativa')
+                status = item.get('status', True)
                 
                 existing = Company.query.filter_by(cnpj_norm=cnpj_norm).first()
                 if not existing:
                     new_comp = Company(
-                        nome=item.get('nome','N/A'),
+                        nome=item.get('nome', 'N/A'),
                         cnpj=cnpj,
                         cnpj_norm=cnpj_norm,
-                        uf=item.get('uf',''),
-                        cidade=item.get('cidade',''),
-                        email=item.get('email',''),
-                        telefone=item.get('telefone',''),
-                        situacao=situacao,
                         origem='GestãoClick',
-                        status=True
+                        status=status
                     )
                     db.session.add(new_comp)
                 else:
                     if existing.origem != 'Manual':
-                        existing.nome = item.get('nome', 'N/A')
-                        existing.uf = item.get('uf', '')
-                        existing.cidade = item.get('cidade', '')
-                        existing.email = item.get('email', '')
-                        existing.telefone = item.get('telefone', '')
-                        existing.situacao = situacao
+                        existing.nome = item.get('nome', existing.nome)
+                        existing.status = status
             
             db.session.commit()
             
             # Puxa apenas CNPJs ativos e monitorados (status=True)
-            active_comps = Company.query.filter_by(situacao='Ativa', status=True).all()
+            active_comps = Company.query.filter_by(status=True).all()
             cnpjs_ativos = sorted(list(set([c.cnpj for c in active_comps])))
         except Exception as e:
             logging.error(f"Erro no banco de dados via SQLAlchemy: {e}")
-            cnpjs_ativos = sorted(list(set([c['cnpj'] for c in clientes if c.get('situacao') == 'Ativa'])))
+            cnpjs_ativos = sorted(list(set([c['cnpj'] for c in clientes if c.get('status', True)])))
     else:
-        cnpjs_ativos = sorted(list(set([c['cnpj'] for c in clientes if c.get('situacao') == 'Ativa'])))
+        cnpjs_ativos = sorted(list(set([c['cnpj'] for c in clientes if c.get('status', True)])))
 
     if not cnpjs_ativos:
         logging.warning("Nenhum CNPJ ativo para monitorar.")
@@ -219,21 +275,7 @@ def executar_sincronizacao():
     secret_token = os.getenv("SECRET_ACCESS_TOKEN")
     arquivo_yaml = os.getenv("YAML_PATH")
 
-    if not all([url_api, access_token, secret_token]):
-        try:
-            settings_path = os.path.join(DATA_DIR, "settings.json")
-            if os.path.exists(settings_path):
-                with open(settings_path, 'r') as f:
-                    settings = json.load(f)
-                    ak = settings.get('api_keys', {})
-                    url_api = url_api or ak.get('gestaoclick_base_url')
-                    access_token = access_token or ak.get('gestaoclick_access_token')
-                    secret_token = secret_token or ak.get('gestaoclick_secret_token')
-                    arquivo_yaml = arquivo_yaml or ak.get('yaml_path')
-        except Exception as e:
-            logging.error(f"Erro ao tentar ler settings.json: {e}")
-
-    # Outro fallback se as settings estiverem no DB (dashboard)
+    # Fallback para configurações salvas no banco SQLite (dashboard)
     if not all([url_api, access_token, secret_token]):
         from flask import current_app
         if current_app:

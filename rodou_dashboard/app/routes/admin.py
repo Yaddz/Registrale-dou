@@ -8,6 +8,8 @@ from ..services.mention_service import clear_mentions_cache
 
 admin_bp = Blueprint('admin', __name__)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
+os.makedirs(DATA_DIR, exist_ok=True)
 LOGS_DIR = os.path.join(BASE_DIR, "mnt", "airflow-logs")
 
 @admin_bp.route('/save_settings', methods=['POST'])
@@ -24,8 +26,8 @@ def save_settings():
         settings_record.set_value(data)
         db.session.commit()
         
-        env_path = os.path.join(BASE_DIR, '.env')
-        # Create empty .env if it doesn't exist to avoid errors
+        env_path = os.path.join(DATA_DIR, '.env')
+        # Create empty .env in persistent data dir if it doesn't exist
         if not os.path.exists(env_path):
             open(env_path, 'a').close()
         
@@ -48,25 +50,81 @@ def save_settings():
         
         if 'smtp' in data:
             smtp = data['smtp']
-            smtp_mappings = {
-                "server": "AIRFLOW__SMTP__SMTP_HOST",
-                "port": "AIRFLOW__SMTP__SMTP_PORT",
-                "user": "AIRFLOW__SMTP__SMTP_USER",
-                "password": "AIRFLOW__SMTP__SMTP_PASSWORD",
-                "from_email": "AIRFLOW__SMTP__SMTP_MAIL_FROM"
+            
+            # Sanitizar campos SMTP
+            smtp_server = str(smtp.get('server') or '').strip()
+            smtp_port = str(smtp.get('port') or '').strip()
+            smtp_user = str(smtp.get('user') or '').strip()
+            raw_password = str(smtp.get('password') or '').strip()
+            smtp_password = raw_password
+            if 'gmail.com' in smtp_server.lower() or 'googlemail.com' in smtp_server.lower():
+                smtp_password = raw_password.replace(' ', '')
+            smtp_from = str(smtp.get('from_email') or smtp_user).strip()
+            
+            data['smtp'] = {
+                "server": smtp_server,
+                "port": smtp_port,
+                "user": smtp_user,
+                "password": smtp_password,
+                "from_email": smtp_from
             }
-            for key, env_var in smtp_mappings.items():
-                val = smtp.get(key)
+            # Re-salvar com dados sanitizados
+            settings_record.set_value(data)
+            db.session.commit()
+            
+            smtp_mappings = {
+                "AIRFLOW__SMTP__SMTP_HOST": smtp_server,
+                "AIRFLOW__SMTP__SMTP_PORT": smtp_port,
+                "AIRFLOW__SMTP__SMTP_USER": smtp_user,
+                "AIRFLOW__SMTP__SMTP_PASSWORD": smtp_password,
+                "AIRFLOW__SMTP__SMTP_MAIL_FROM": smtp_from
+            }
+            for env_var, val in smtp_mappings.items():
                 if val:
                     set_key(env_path, env_var, str(val))
                     os.environ[env_var] = str(val)
-                elif key in smtp: # user sent empty string
+                else:
                     unset_key(env_path, env_var)
                     os.environ.pop(env_var, None)
-            
-            if not smtp.get('from_email') and smtp.get('user') and "@" in smtp.get('user'):
-                set_key(env_path, "AIRFLOW__SMTP__SMTP_MAIL_FROM", smtp.get('user'))
-                os.environ["AIRFLOW__SMTP__SMTP_MAIL_FROM"] = smtp.get('user')
+                    
+            if smtp_port in ('587', '25'):
+                set_key(env_path, "AIRFLOW__SMTP__SMTP_STARTTLS", "true")
+                os.environ["AIRFLOW__SMTP__SMTP_STARTTLS"] = "true"
+            elif smtp_port == '465':
+                set_key(env_path, "AIRFLOW__SMTP__SMTP_SSL", "true")
+                os.environ["AIRFLOW__SMTP__SMTP_SSL"] = "true"
+                
+            # Sincronizar conexão smtp_default no Airflow
+            if smtp_server and smtp_user:
+                try:
+                    import requests
+                    import json
+                    airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
+                    auth = ("airflow", "airflow")
+                    
+                    conn_payload = {
+                        "connection_id": "smtp_default",
+                        "conn_type": "smtp",
+                        "host": smtp_server,
+                        "login": smtp_user,
+                        "password": smtp_password,
+                        "port": int(smtp_port) if smtp_port.isdigit() else 587,
+                        "extra": json.dumps({"from_email": smtp_from, "disable_tls": False})
+                    }
+                    
+                    res = requests.get(f"{airflow_url}/api/v1/connections/smtp_default", auth=auth, timeout=5)
+                    if res.status_code == 200:
+                        requests.patch(
+                            f"{airflow_url}/api/v1/connections/smtp_default?update_mask=host,login,password,port,extra",
+                            json=conn_payload,
+                            auth=auth,
+                            timeout=5
+                        )
+                    else:
+                        requests.post(f"{airflow_url}/api/v1/connections", json=conn_payload, auth=auth, timeout=5)
+                except Exception as e:
+                    import logging
+                    logging.error(f"Falha ao atualizar conexão smtp_default no Airflow: {e}")
                 
         # Mapeamento para INLABS
         if 'inlabs' in data:
@@ -146,22 +204,17 @@ def admin_clear_data():
     action_type = data.get('type')
     
     try:
-        from ..models import DeletedMention
-        all_mentions = Mention.query.all()
-        for m in all_mentions:
-            if not DeletedMention.query.get(m.id):
-                db.session.add(DeletedMention(id=m.id))
-                
+        import time
+        
         if action_type == 'all':
             Company.query.delete()
             SyncHistory.query.delete()
             Mention.query.delete()
-            import time
             cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
             if not cache_meta:
                 cache_meta = Settings(key='mentions_cache_meta')
                 db.session.add(cache_meta)
-            cache_meta.set_value({"last_parsed_at": time.time()})
+            cache_meta.set_value({"last_parsed_at": 0})
             db.session.commit()
             clear_mentions_cache()
             
@@ -174,28 +227,27 @@ def admin_clear_data():
             
         elif action_type == 'history':
             SyncHistory.query.delete()
-            Mention.query.delete()
-            import time
-            cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
-            if not cache_meta:
-                cache_meta = Settings(key='mentions_cache_meta')
-                db.session.add(cache_meta)
-            cache_meta.set_value({"last_parsed_at": time.time()})
             db.session.commit()
-            clear_mentions_cache()
-            return jsonify({"status": "success", "message": "Histórico e cache removidos."})
+            return jsonify({"status": "success", "message": "Histórico de sincronização removido."})
             
         elif action_type == 'mentions':
             Mention.query.delete()
-            import time
             cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
             if not cache_meta:
                 cache_meta = Settings(key='mentions_cache_meta')
                 db.session.add(cache_meta)
-            cache_meta.set_value({"last_parsed_at": time.time()})
+            cache_meta.set_value({"last_parsed_at": 0})
             db.session.commit()
             clear_mentions_cache()
-            return jsonify({"status": "success", "message": "Mentions (alertas) removidas do painel."})
+            return jsonify({"status": "success", "message": "Menções (alertas) limpas do painel com sucesso."})
+            
+        elif action_type == 'inlabs_old':
+            try:
+                from ..services.inlabs_service import enforce_inlabs_retention_limit
+                deleted_days = enforce_inlabs_retention_limit(max_days=120)
+                return jsonify({"status": "success", "message": f"Limpeza INLABS concluída: {deleted_days} dia(s) mais antigo(s) removido(s) para manter o limite de 120 dias."})
+            except Exception as inner_e:
+                return jsonify({"status": "error", "message": f"Falha na limpeza INLABS: {str(inner_e)}"}), 500
             
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -207,10 +259,8 @@ import re
 @admin_bp.route('/sync', methods=['POST'])
 @login_required
 def manual_sync_route():
-    from ..services.sync_cnpj import executar_sincronizacao
-    if not executar_sincronizacao:
-        return jsonify({"status": "error", "message": "Função de sincronização não encontrada."}), 500
     try:
+        from ..services.sync_cnpj import executar_sincronizacao
         import threading
         
         def run_sync_in_background(app_context):
@@ -267,31 +317,17 @@ def manual_sync_route():
         logging.error(f"Erro na sincronização: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@admin_bp.route('/health_dou', methods=['GET'])
-@login_required
-def api_health_dou():
-    try:
-        import requests
-        r = requests.get('https://www.in.gov.br/', timeout=5)
-        if r.status_code == 200:
-            return jsonify({"status": "ok"})
-        else:
-            return jsonify({"status": "error", "message": f"Erro {r.status_code}"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
 @admin_bp.route('/status', methods=['GET'])
 @login_required
 def api_status():
     from ..services.dag_config_service import get_last_search_time, get_next_search_time, get_monitored_cnpjs
-    from ..services.mention_service import get_real_mentions
-    from ..models import db, SyncHistory, Company
+    from ..services.mention_service import get_mentions_kpis
+    from ..models import db, SyncHistory, Company, Settings
     from datetime import datetime, timezone, timedelta
     import glob
     import os
-    
-    now = datetime.now(timezone(timedelta(hours=-3)))
-    all_mentions = get_real_mentions()
+
+    total_mentions, hoje_count, mes_count = get_mentions_kpis()
 
     try:
         history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(5).all()]
@@ -301,24 +337,35 @@ def api_status():
     kpis = {
         "cnpjs": Company.query.count(),
         "ativos": len(get_monitored_cnpjs()),
-        "mencoes_hoje": len([m for m in all_mentions if m.get('data') == now.strftime('%d/%m/%Y')]),
-        "este_mes": len([m for m in all_mentions if now.strftime('/%m/%Y') in m.get('data', '')]),
-        "mencoes_total": len(all_mentions)
+        "mencoes_hoje": hoje_count,
+        "este_mes": mes_count,
+        "mencoes_total": total_mentions
     }
 
-    dag_confs_path = os.path.join(BASE_DIR, "dag_confs")
-    yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
-    if not yaml_files: 
-        yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
-    if not yaml_files:
-        base = os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
-        if os.path.exists(base):
-            yaml_files = [base]
-            
-    last_sync = "N/A"
-    if yaml_files:
-        mtime = os.path.getmtime(yaml_files[0])
-        last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+    last_sync_record = SyncHistory.query.filter(
+        (SyncHistory.evento.like('%GestãoClick%')) | 
+        (SyncHistory.evento.like('%Google Sheets%')) |
+        (SyncHistory.evento.like('%Sincronização%')) |
+        (SyncHistory.evento.like('%Sync%'))
+    ).order_by(SyncHistory.id.desc()).first()
+
+    if last_sync_record:
+        last_sync = last_sync_record.data
+    else:
+        from ..services.dag_config_service import get_dag_confs_path, get_base_yaml_path
+        dag_confs_path = get_dag_confs_path()
+        yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
+        if not yaml_files: 
+            yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
+        if not yaml_files:
+            base = get_base_yaml_path()
+            if os.path.exists(base):
+                yaml_files = [base]
+                
+        last_sync = "N/A"
+        if yaml_files:
+            mtime = os.path.getmtime(yaml_files[0])
+            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
 
     return jsonify({
         "last_sync": last_sync,
@@ -328,47 +375,87 @@ def api_status():
         "kpis": kpis
     })
 
-@admin_bp.route('/history/add', methods=['POST'])
-@login_required
-def api_history_add():
-    data = request.get_json() or {}
-    event = data.get('event', 'Evento Dashboard')
-    details = data.get('details', '')
-    
-    try:
-        from datetime import datetime, timezone, timedelta
-        new_event = SyncHistory(
-            data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M'),
-            evento=event,
-            detalhes=details
-        )
-        db.session.add(new_event)
-        if SyncHistory.query.count() >= 50:
-            oldest = SyncHistory.query.order_by(SyncHistory.id.asc()).first()
-            if oldest:
-                db.session.delete(oldest)
-        db.session.commit()
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-    return jsonify({"status": "success"})
+_inlabs_cache = {'time': 0, 'data': None}
 
 @admin_bp.route('/inlabs_stats', methods=['GET'])
 @login_required
 def get_inlabs_stats():
+    global _inlabs_cache
+    import time
+    from flask import request
+    
+    force_refresh = request.args.get('refresh', '').lower() in ('true', '1', 'yes')
+    if not force_refresh and (time.time() - _inlabs_cache['time'] < 10) and _inlabs_cache['data']:
+        return jsonify(_inlabs_cache['data'])
+        
     from sqlalchemy import create_engine, text
     import logging
     try:
         engine = create_engine('postgresql+pg8000://airflow:airflow@postgres:5432/inlabs')
         with engine.connect() as conn:
+            conn.execute(text("SET statement_timeout = 5000"))
             size_res = conn.execute(text("SELECT pg_size_pretty(pg_database_size('inlabs'))")).scalar()
-            days_res = conn.execute(text("SELECT COUNT(DISTINCT pubdate::date) FROM dou_inlabs.article_raw")).scalar()
             
-        return jsonify({
+            try:
+                rows = conn.execute(text(
+                    "SELECT CAST(pubdate AS DATE)::text AS dt, COUNT(*) AS total "
+                    "FROM dou_inlabs.article_raw "
+                    "GROUP BY dt "
+                    "ORDER BY dt DESC"
+                )).fetchall()
+                
+                days_list = [
+                    {
+                        "date": str(row[0]),
+                        "count": int(row[1]),
+                        "status": "Disponível"
+                    }
+                    for row in rows if row[0] is not None
+                ]
+                days_res = len(days_list)
+            except Exception as q_err:
+                logging.error(f"Erro ao listar datas do INLABS: {q_err}")
+                days_list = []
+                days_res = "Desconhecido"
+            
+        _inlabs_cache['data'] = {
             "status": "success",
             "size": size_res,
-            "days_stored": days_res
-        })
+            "days_stored": days_res,
+            "days": days_list
+        }
+        _inlabs_cache['time'] = time.time()
+        return jsonify(_inlabs_cache['data'])
     except Exception as e:
         logging.error(f"Erro ao consultar DB Inlabs: {e}")
         return jsonify({"status": "error", "message": "Não foi possível conectar ao banco de dados INLABS."}), 500
+
+@admin_bp.route('/manual', methods=['GET'])
+@login_required
+def get_user_manual():
+    """Retorna o conteúdo do Manual do Usuário em Markdown ou como download."""
+    from flask import send_file, Response, request
+    manual_candidates = [
+        os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'MANUAL.md'),
+        os.path.join(BASE_DIR, 'MANUAL.md'),
+        os.path.join(BASE_DIR, 'rodou_dashboard', 'docs', 'MANUAL.md'),
+    ]
+    manual_path = None
+    for p in manual_candidates:
+        if os.path.exists(p):
+            manual_path = p
+            break
+            
+    if not manual_path:
+        return jsonify({"status": "error", "message": "Manual não encontrado."}), 404
+        
+    if request.args.get('download', '').lower() in ('true', '1', 'yes'):
+        return send_file(manual_path, as_attachment=True, download_name='MANUAL.md', mimetype='text/markdown')
+        
+    try:
+        with open(manual_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({"status": "success", "content": content})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
