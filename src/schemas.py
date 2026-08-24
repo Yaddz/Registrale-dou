@@ -357,7 +357,8 @@ class DAGConfig(BaseModel):
         default=None,
         description="Configurações de IA"
     )
-    report: ReportConfig = Field(
+    report: Optional[ReportConfig] = Field(
+        default_factory=ReportConfig,
         description="Aceita: `slack`, `discord`, `emails`, `attach_csv`, "
         "`subject`, `skip_null`"
     )

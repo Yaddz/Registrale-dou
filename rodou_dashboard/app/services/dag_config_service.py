@@ -385,7 +385,13 @@ def rebuild_yaml_from_db():
                     'force_rematch': True,
                     'department': ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
                     'terms': []
-                }]
+                }],
+                'report': {
+                    'title': 'MONITORAMENTO PADRÃO',
+                    'subject': '[ro-dou] Relatório de Menções',
+                    'skip_null': True,
+                    'emails': []
+                }
             }
         }
     else:
@@ -393,6 +399,13 @@ def rebuild_yaml_from_db():
             template_data = yaml.safe_load(f) or {}
 
     dag = template_data.get('dag', {})
+    if 'report' not in dag:
+        dag['report'] = {
+            'title': 'MONITORAMENTO PADRÃO',
+            'subject': '[ro-dou] Relatório de Menções',
+            'skip_null': True,
+            'emails': []
+        }
     search_template = dag.get('search', [{}])
     if isinstance(search_template, list):
         search_template = search_template[0] if len(search_template) > 0 else {}
