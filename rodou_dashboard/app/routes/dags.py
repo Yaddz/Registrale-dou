@@ -203,7 +203,8 @@ def manage_routines():
     dag["schedule"] = data.get('schedule', dag.get('schedule', '0 5 * * *'))
     dag["tags"] = dag.get("tags", ["custom"])
     
-    if data.get('source') == 'INLABS':
+    source_input = data.get('source', 'INLABS')
+    if source_input == 'INLABS':
         if "inlabs" not in dag["tags"]:
             dag["tags"].append("inlabs")
         dag["dataset"] = "inlabs"
@@ -240,7 +241,6 @@ def manage_routines():
     search["full_text"] = search.get("full_text", True)
     search["date"] = search.get("date", "DIA")
     
-    source_input = data.get('source', 'DOU')
     if source_input == 'INLABS':
         search["sources"] = ["INLABS"]
     else:
@@ -272,6 +272,295 @@ def manage_routines():
         rebuild_yaml_from_db()
     
     return jsonify({"status": "success", "message": "Rotina salva com sucesso!"})
+
+@dags_bp.route('/system/main_dag_status', methods=['GET'])
+@dags_bp.route('/system/integrations_status', methods=['GET'])
+@login_required
+def api_integrations_status():
+    """Retorna o diagnóstico completo de todas as integrações e pendências do sistema para o assistente/alerta."""
+    from ..services.dag_config_service import get_main_dag_info
+    from ..models import Settings
+    
+    # 1. Rotina Principal (Main DAG)
+    main_info = get_main_dag_info()
+    main_dag_configured = bool(main_info.get("is_configured", False))
+    
+    # 2. Global Settings (SMTP, Google Sheets, INLABS)
+    settings_record = Settings.query.filter_by(key='global_settings').first()
+    settings_data = settings_record.get_value() if settings_record else {}
+    
+    # SMTP
+    smtp_data = settings_data.get('smtp', {})
+    smtp_configured = bool(str(smtp_data.get('server') or '').strip() and str(smtp_data.get('user') or '').strip())
+    
+    # Google Sheets
+    sheets_data = settings_data.get('google_sheets', {})
+    has_creds = bool(str(sheets_data.get('credentials_json') or '').strip())
+    has_sheet = bool(str(sheets_data.get('spreadsheet_url') or sheets_data.get('spreadsheet_id') or sheets_data.get('sheet_url') or '').strip())
+    sheets_configured = has_creds and has_sheet
+    
+    # INLABS
+    inlabs_data = settings_data.get('inlabs', {})
+    inlabs_configured = bool(str(inlabs_data.get('user') or '').strip() and str(inlabs_data.get('password') or '').strip())
+    
+    integrations = [
+        {
+            "id": "main_dag",
+            "name": "Rotina Principal",
+            "title": "E-mails da Rotina Principal",
+            "description": "Defina os e-mails de destino e o assunto para receber o relatório diário de publicações.",
+            "is_configured": main_dag_configured,
+            "action_type": "modal_main_dag",
+            "icon": "calendar-clock",
+            "missing_fields": main_info.get("missing_fields", [])
+        },
+        {
+            "id": "smtp",
+            "name": "Servidor SMTP",
+            "title": "Servidor de Envio (SMTP)",
+            "description": "Configure o servidor de e-mail (Host, Porta, Usuário e Senha) para disparo automático.",
+            "is_configured": smtp_configured,
+            "action_type": "modal_smtp",
+            "icon": "mail",
+            "missing_fields": [f for f in ["server", "user"] if not str(smtp_data.get(f) or '').strip()]
+        },
+        {
+            "id": "google_sheets",
+            "name": "Google Sheets",
+            "title": "Planilha Google Sheets",
+            "description": "Conecte a planilha com credenciais de serviço para sincronização automática de empresas.",
+            "is_configured": sheets_configured,
+            "action_type": "tab_sheets",
+            "icon": "file-spreadsheet",
+            "missing_fields": ([ "credentials_json" ] if not has_creds else []) + ([ "spreadsheet_url" ] if not has_sheet else [])
+        },
+        {
+            "id": "inlabs",
+            "name": "Acesso INLABS",
+            "title": "Credenciais INLABS",
+            "description": "Informe usuário e senha do portal INLABS (Imprensa Nacional) para download do DOU.",
+            "is_configured": inlabs_configured,
+            "action_type": "tab_inlabs",
+            "icon": "newspaper",
+            "missing_fields": [f for f in ["user", "password"] if not str(inlabs_data.get(f) or '').strip()]
+        }
+    ]
+    
+    pending = [i for i in integrations if not i["is_configured"]]
+    
+    missing_all = []
+    for i in pending:
+        missing_all.append(i["id"])
+        
+    main_dag_is_configured = bool(main_dag_configured and smtp_configured)
+    
+    return jsonify({
+        "status": "ok",
+        "is_configured": main_dag_is_configured,
+        "all_configured": len(pending) == 0,
+        "pending_count": len(pending),
+        "next_pending": pending[0] if pending else None,
+        "integrations": integrations,
+        "missing_fields": missing_all,
+        "main_dag": main_info,
+        "smtp_configured": smtp_configured,
+        "smtp": {
+            "server": smtp_data.get("server", ""),
+            "port": smtp_data.get("port", "587"),
+            "user": smtp_data.get("user", ""),
+            "from_email": smtp_data.get("from_email", ""),
+            "has_password": bool(smtp_data.get("password"))
+        }
+    })
+
+@dags_bp.route('/system/configure_main_dag', methods=['POST'])
+@login_required
+def api_configure_main_dag():
+    """Configura atomicamente os e-mails, assunto, agendamento da DAG principal e servidor SMTP."""
+    if session['user']['role'] != 'master':
+        return jsonify({"status": "error", "message": "Apenas administradores podem configurar a rotina principal."}), 403
+        
+    data = request.json or {}
+    
+    # Valida e-mails
+    raw_emails = data.get('emails', [])
+    if isinstance(raw_emails, str):
+        emails = [e.strip() for e in raw_emails.replace('\n', ',').split(',') if e.strip()]
+    elif isinstance(raw_emails, list):
+        emails = [str(e).strip() for e in raw_emails if str(e).strip()]
+    else:
+        emails = []
+        
+    if not emails:
+        return jsonify({"status": "error", "message": "Pelo menos um e-mail de destino é obrigatório para a rotina principal."}), 400
+        
+    # Valida formato dos e-mails
+    email_regex = re.compile(r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    for em in emails:
+        if not email_regex.match(em):
+            return jsonify({"status": "error", "message": f"E-mail inválido: {em}"}), 400
+            
+    subject = str(data.get('subject') or '').strip()
+    if not subject:
+        subject = "[Registrale] Relatório Diário de Publicações do DOU"
+        
+    schedule = str(data.get('schedule') or '0 8 * * MON-FRI').strip()
+    active = bool(data.get('active', True))
+    
+    # 1. Salva configurações no SQLite (persistente no volume /data)
+    from ..models import db, Settings
+    s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+    if not s_rec:
+        s_rec = Settings(key='main_dag_settings')
+        db.session.add(s_rec)
+    s_rec.set_value({
+        "emails": emails,
+        "subject": subject,
+        "schedule": schedule,
+        "active": active
+    })
+    db.session.commit()
+    
+    # 2. Atualiza Pesquisa_cnpj.yaml e reconstrói blocos
+    from ..services.dag_config_service import get_base_yaml_path, get_dag_confs_path, rebuild_yaml_from_db
+    dag_confs_path = get_dag_confs_path()
+    file_path = os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
+    
+    existing_data = {}
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                existing_data = yaml.safe_load(f) or {}
+        except:
+            pass
+            
+    dag = existing_data.get('dag', {})
+    dag["id"] = "pesquisa_cnpj_anvisa"
+    dag["description"] = "Busca padrão diária vinculada às empresas com monitoramento ativo na base."
+    dag["tags"] = ["pesquisa_cnpj", "inlabs"]
+    dag["owner"] = ["CNPJ_SYNC"]
+    dag["schedule"] = schedule
+    dag["dataset"] = "inlabs"
+    dag["active"] = active
+    dag["is_paused"] = not active
+    
+    report = dag.get('report', {})
+    report["title"] = "MONITORAMENTO PADRÃO"
+    report["subject"] = subject
+    report["skip_null"] = True
+    report["emails"] = emails
+    dag["report"] = report
+    
+    existing_data["dag"] = dag
+    
+    tmp_path = file_path + '.tmp'
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        yaml.safe_dump(existing_data, f, allow_unicode=True, sort_keys=False)
+    os.replace(tmp_path, file_path)
+    
+    # Reconstrói para preservar os CNPJs ativos e blocos particionados
+    rebuild_yaml_from_db()
+    
+    # 2. Configurar SMTP se fornecido
+    if 'smtp' in data and isinstance(data['smtp'], dict):
+        smtp = data['smtp']
+        server = str(smtp.get('server') or '').strip()
+        user = str(smtp.get('user') or '').strip()
+        
+        if server and user:
+            from ..models import db, Settings
+            from dotenv import set_key
+            
+            settings_record = Settings.query.filter_by(key='global_settings').first()
+            if not settings_record:
+                settings_record = Settings(key='global_settings')
+                db.session.add(settings_record)
+            current_val = settings_record.get_value() or {}
+            if not isinstance(current_val, dict):
+                current_val = {}
+            
+            port = str(smtp.get('port') or '587').strip()
+            raw_password = str(smtp.get('password') or '').strip()
+            # Se não enviou senha nova, preserva a senha anterior
+            if not raw_password and current_val.get('smtp', {}).get('password'):
+                raw_password = current_val.get('smtp', {}).get('password')
+            if 'gmail.com' in server.lower():
+                raw_password = raw_password.replace(' ', '')
+            from_email = str(smtp.get('from_email') or user).strip()
+            
+            current_val['smtp'] = {
+                "server": server,
+                "port": port,
+                "user": user,
+                "password": raw_password,
+                "from_email": from_email
+            }
+            settings_record.set_value(current_val)
+            db.session.commit()
+            
+            DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
+            env_path = os.path.join(DATA_DIR, '.env')
+            if not os.path.exists(env_path): open(env_path, 'a').close()
+            
+            smtp_mappings = {
+                "AIRFLOW__SMTP__SMTP_HOST": server,
+                "AIRFLOW__SMTP__SMTP_PORT": port,
+                "AIRFLOW__SMTP__SMTP_USER": user,
+                "AIRFLOW__SMTP__SMTP_PASSWORD": raw_password,
+                "AIRFLOW__SMTP__SMTP_MAIL_FROM": from_email
+            }
+            for env_var, val in smtp_mappings.items():
+                if val:
+                    set_key(env_path, env_var, str(val))
+                    os.environ[env_var] = str(val)
+            if port in ('587', '25'):
+                set_key(env_path, "AIRFLOW__SMTP__SMTP_STARTTLS", "true")
+                os.environ["AIRFLOW__SMTP__SMTP_STARTTLS"] = "true"
+            elif port == '465':
+                set_key(env_path, "AIRFLOW__SMTP__SMTP_SSL", "true")
+                os.environ["AIRFLOW__SMTP__SMTP_SSL"] = "true"
+                
+            # Sincronizar conexão smtp_default no Airflow
+            try:
+                import requests
+                import json
+                airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
+                auth = ("airflow", "airflow")
+                
+                conn_payload = {
+                    "connection_id": "smtp_default",
+                    "conn_type": "smtp",
+                    "host": server,
+                    "login": user,
+                    "password": raw_password,
+                    "port": int(port) if port.isdigit() else 587,
+                    "extra": json.dumps({"from_email": from_email, "disable_tls": False})
+                }
+                
+                res = requests.get(f"{airflow_url}/api/v1/connections/smtp_default", auth=auth, timeout=5)
+                if res.status_code == 200:
+                    requests.patch(
+                        f"{airflow_url}/api/v1/connections/smtp_default?update_mask=host,login,password,port,extra",
+                        json=conn_payload,
+                        auth=auth,
+                        timeout=5
+                    )
+                else:
+                    requests.post(f"{airflow_url}/api/v1/connections", json=conn_payload, auth=auth, timeout=5)
+            except Exception as e:
+                import logging
+                logging.error(f"Falha ao atualizar conexão smtp_default no Airflow via assistente: {e}")
+                
+    return jsonify({
+        "status": "success",
+        "message": "Configurações da rotina principal atualizadas com sucesso!",
+        "main_dag": {
+            "emails": emails,
+            "subject": subject,
+            "schedule": schedule,
+            "active": active
+        }
+    })
 
 @dags_bp.route('/routines/toggle/<path:file>', methods=['POST'])
 @login_required
@@ -539,9 +828,12 @@ def trigger_routine(file):
                 # 2. Formatar data de referência
                 if logical_date:
                     try:
-                        target_date_str = datetime.strptime(logical_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+                        target_date_str = datetime.strptime(str(logical_date).strip(), '%Y-%m-%d').strftime('%d/%m/%Y')
                     except Exception:
-                        target_date_str = logical_date
+                        try:
+                            target_date_str = datetime.strptime(str(logical_date).strip(), '%d/%m/%Y').strftime('%d/%m/%Y')
+                        except Exception:
+                            target_date_str = str(logical_date)
                 else:
                     target_date_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y')
 
@@ -892,6 +1184,11 @@ def api_check_date():
     target_date = request.args.get('date', '').strip()
     if not target_date:
         return jsonify({"status": "error", "message": "Parâmetro date é obrigatório."}), 400
+        
+    if '/' in target_date:
+        parts = target_date.split('/')
+        if len(parts) == 3:
+            target_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
     
     already_loaded = False
     articles_count = 0
@@ -965,6 +1262,7 @@ def api_monthly_inlabs_check():
     if not weekdays:
         return jsonify({
             "status": "ok",
+            "scenario": "complete",
             "uses_inlabs": uses_inlabs,
             "total_weekdays": 0,
             "inlabs_days": [],
@@ -988,8 +1286,18 @@ def api_monthly_inlabs_check():
     downloadable_inlabs_days = [d for d in missing_days if is_within_inlabs_retention_window(d, 120)]
     api_dou_days = [d for d in missing_days if not is_within_inlabs_retention_window(d, 120)]
     
+    if not missing_days:
+        scenario = "complete"
+    elif len(inlabs_days) == 0 and len(downloadable_inlabs_days) == 0:
+        scenario = "all_api_dou"
+    elif len(api_dou_days) > 0 and (len(inlabs_days) > 0 or len(downloadable_inlabs_days) > 0):
+        scenario = "mixed"
+    else:
+        scenario = "download_only"
+
     return jsonify({
         "status": "ok",
+        "scenario": scenario,
         "uses_inlabs": uses_inlabs,
         "total_weekdays": len(weekdays),
         "inlabs_days": inlabs_days,
@@ -1052,7 +1360,7 @@ def api_download_missing_inlabs():
                 
             try:
                 hist = SyncHistory(
-                    data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M'),
+                    data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S'),
                     evento="Download INLABS Solicitado",
                     detalhes=f"Disparado download INLABS para {len(target_days)} dia(s) faltantes ({sucessos} DAGs acionadas)."
                 )
@@ -1241,68 +1549,84 @@ def api_trigger_monthly():
         triggered_inlabs_dags = []
         all_triggered_runs = []
         
+        # Coleta os e-mails de todas as rotinas selecionadas
         for routine_file in routines:
             file_path = os.path.join(confs_path, routine_file)
             if not os.path.exists(file_path): continue
-            
-            # Tratamento especial para rotina principal de CNPJ
-            if routine_file == "Pesquisa_cnpj.yaml":
-                parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_sync.yaml"))
-                if not parts:
-                    parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_part_*.yaml"))
-                if not parts:
-                    parts = [file_path]
-                for p in parts:
-                    try:
-                        with open(p, 'r', encoding='utf-8') as pf:
-                            pdata = yaml.safe_load(pf) or {}
-                            pid = pdata.get('dag', {}).get('id')
-                            if pid:
-                                r_emails = pdata.get('dag', {}).get('report', {}).get('emails', [])
-                                if isinstance(r_emails, list): all_emails.update(r_emails)
-                                for date_str in inlabs_days:
-                                    ok, msg, run_info = trigger_airflow_dag(pid, date_str)
-                                    if ok:
-                                        if pid not in triggered_inlabs_dags:
-                                            triggered_inlabs_dags.append(pid)
-                                        if isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                                            all_triggered_runs.append(run_info)
-                                    time.sleep(0.05)
-                    except Exception as e:
-                        logging.error(f"Erro ao disparar parte de Pesquisa_cnpj {p}: {e}")
-                continue
-
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    yaml_data = yaml.safe_load(f)
+                    yaml_data = yaml.safe_load(f) or {}
+                r_emails = yaml_data.get('dag', {}).get('report', {}).get('emails', [])
+                if isinstance(r_emails, list):
+                    all_emails.update(r_emails)
+            except Exception:
+                pass
+
+        if mode != 'api_dou_only' and inlabs_days:
+            for routine_file in routines:
+                file_path = os.path.join(confs_path, routine_file)
+                if not os.path.exists(file_path): continue
                 
-                report = yaml_data.get('dag', {}).get('report', {})
-                routine_emails = report.get('emails', [])
-                if isinstance(routine_emails, list):
-                    all_emails.update(routine_emails)
+                # Tratamento especial para rotina principal de CNPJ
+                if routine_file == "Pesquisa_cnpj.yaml":
+                    parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_sync.yaml"))
+                    if not parts:
+                        parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_part_*.yaml"))
+                    if not parts:
+                        parts = [file_path]
+                    for p in parts:
+                        try:
+                            with open(p, 'r', encoding='utf-8') as pf:
+                                pdata = yaml.safe_load(pf) or {}
+                                pid = pdata.get('dag', {}).get('id')
+                                if pid:
+                                    r_emails = pdata.get('dag', {}).get('report', {}).get('emails', [])
+                                    if isinstance(r_emails, list): all_emails.update(r_emails)
+                                    for date_str in inlabs_days:
+                                        ok, msg, run_info = trigger_airflow_dag(pid, date_str)
+                                        if ok:
+                                            if pid not in triggered_inlabs_dags:
+                                                triggered_inlabs_dags.append(pid)
+                                            if isinstance(run_info, dict) and run_info.get("dag_run_id"):
+                                                all_triggered_runs.append(run_info)
+                                        time.sleep(0.05)
+                        except Exception as e:
+                            logging.error(f"Erro ao disparar parte de Pesquisa_cnpj {p}: {e}")
+                    continue
+
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        yaml_data = yaml.safe_load(f)
                     
-                dag_id = yaml_data.get('dag', {}).get('id')
-                if not dag_id: dag_id = re.sub(r'\.[^.]*$', '', routine_file)
-                
-                for date_str in inlabs_days:
-                    ok, msg, run_info = trigger_airflow_dag(dag_id, date_str)
-                    if ok:
-                        if dag_id not in triggered_inlabs_dags:
-                            triggered_inlabs_dags.append(dag_id)
-                        if isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                            all_triggered_runs.append(run_info)
-                    time.sleep(0.05)
-            except Exception as e:
-                logging.error(f"Erro ao disparar rotina INLABS {routine_file}: {e}")
+                    report = yaml_data.get('dag', {}).get('report', {})
+                    routine_emails = report.get('emails', [])
+                    if isinstance(routine_emails, list):
+                        all_emails.update(routine_emails)
+                        
+                    dag_id = yaml_data.get('dag', {}).get('id')
+                    if not dag_id: dag_id = re.sub(r'\.[^.]*$', '', routine_file)
+                    
+                    for date_str in inlabs_days:
+                        ok, msg, run_info = trigger_airflow_dag(dag_id, date_str)
+                        if ok:
+                            if dag_id not in triggered_inlabs_dags:
+                                triggered_inlabs_dags.append(dag_id)
+                            if isinstance(run_info, dict) and run_info.get("dag_run_id"):
+                                all_triggered_runs.append(run_info)
+                        time.sleep(0.05)
+                except Exception as e:
+                    logging.error(f"Erro ao disparar rotina INLABS {routine_file}: {e}")
 
-        if triggered_inlabs_dags:
-            wait_for_dags(triggered_inlabs_dags)
+            if triggered_inlabs_dags:
+                wait_for_dags(triggered_inlabs_dags)
 
-        # ─── FASE 2: DAG Temporária para dias sem INLABS (modo 'full' ou 'download_and_search') ───
+        # ─── FASE 2: DAG Temporária para dias sem INLABS (modo 'full', 'download_and_search' ou 'api_dou_only') ───
         temp_dag_id = None
         temp_yaml_path = None
         
-        if mode in ('full', 'download_and_search') and missing_days and routines:
+        dou_target_days = weekdays if mode == 'api_dou_only' else missing_days
+        
+        if mode in ('full', 'download_and_search', 'api_dou_only') and dou_target_days and routines:
             try:
                 temp_search_blocks = []
                 for routine_file in routines:
@@ -1384,9 +1708,9 @@ def api_trigger_monthly():
                     triggered_dou_dags = []
                     with app_context:
                         add_history_event("Busca Mensal (API DOU)",
-                            f"Disparando busca via API Oficial do DOU para {len(missing_days)} dia(s) históricos/fora do INLABS.")
+                            f"Disparando busca via API Oficial do DOU para {len(dou_target_days)} dia(s) históricos/fora do INLABS.")
                     
-                    for date_str in missing_days:
+                    for date_str in dou_target_days:
                         ok, msg, run_info = trigger_airflow_dag(temp_dag_id, date_str)
                         if ok:
                             if temp_dag_id not in triggered_dou_dags:
@@ -1397,63 +1721,9 @@ def api_trigger_monthly():
                     
                     if triggered_dou_dags:
                         wait_for_dags(triggered_dou_dags, max_wait=1800)
-                    
-                    if temp_yaml_path and os.path.exists(temp_yaml_path):
-                        try:
-                            os.remove(temp_yaml_path)
-                        except Exception:
-                            pass
-
-                    # Desregistra a DAG temporária da base do Airflow
-                    try:
-                        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-                        auth = get_airflow_auth()
-                        airflow_url = get_airflow_url()
-                        requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=10)
-                    except Exception:
-                        pass
-
-                    try:
-                        generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                        if os.path.exists(generator_path):
-                            os.utime(generator_path, None)
-                    except Exception:
-                        pass
                         
             except Exception as e:
                 logging.error(f"Erro ao criar/executar DAG temporária API-DOU: {e}")
-            finally:
-                from ..services.dag_config_service import cleanup_orphaned_temp_dags
-                if temp_yaml_path and os.path.exists(temp_yaml_path):
-                    try:
-                        os.remove(temp_yaml_path)
-                    except Exception:
-                        pass
-                if temp_dag_id:
-                    try:
-                        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-                        auth = get_airflow_auth()
-                        airflow_url = get_airflow_url()
-                        requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=5)
-                    except Exception:
-                        pass
-                    try:
-                        import shutil
-                        log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
-                        if os.path.exists(log_dir):
-                            shutil.rmtree(log_dir, ignore_errors=True)
-                    except Exception:
-                        pass
-                try:
-                    generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                    if os.path.exists(generator_path):
-                        os.utime(generator_path, None)
-                except Exception:
-                    pass
-                try:
-                    cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
-                except Exception:
-                    pass
 
         # ─── FASE 3: Consolidar menções recém-executadas e enviar e-mails ───
         with app_context:
@@ -1497,8 +1767,13 @@ def api_trigger_monthly():
                 
                 clear_mentions_cache()
                 
-                month_str = f"/{str(month).zfill(2)}/{year}"
-                relevant_monthly_mentions = [m for m in monthly_new_mentions if month_str in m.get('data', '')]
+                month_str_slash = f"/{str(month).zfill(2)}/{year}"
+                month_str_iso = f"{year}-{str(month).zfill(2)}-"
+                month_str_alt = f"-{str(month).zfill(2)}-{year}"
+                relevant_monthly_mentions = [
+                    m for m in monthly_new_mentions
+                    if month_str_slash in m.get('data', '') or month_str_iso in m.get('data', '') or month_str_alt in m.get('data', '')
+                ]
                 if not relevant_monthly_mentions and monthly_new_mentions:
                     relevant_monthly_mentions = monthly_new_mentions
                 
@@ -1538,6 +1813,39 @@ def api_trigger_monthly():
             except Exception as e:
                 logging.error(f"Erro ao consolidar busca mensal: {e}")
                 add_history_event("Erro (Busca Mensal)", str(e))
+            finally:
+                # ─── LIMPEZA DA DAG TEMPORÁRIA (Executada APÓS extração das menções na FASE 3) ───
+                from ..services.dag_config_service import cleanup_orphaned_temp_dags
+                if temp_yaml_path and os.path.exists(temp_yaml_path):
+                    try:
+                        os.remove(temp_yaml_path)
+                    except Exception:
+                        pass
+                if temp_dag_id:
+                    try:
+                        from ..services.airflow_service import get_airflow_auth, get_airflow_url
+                        auth = get_airflow_auth()
+                        airflow_url = get_airflow_url()
+                        requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=5)
+                    except Exception:
+                        pass
+                    try:
+                        import shutil
+                        log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
+                        if os.path.exists(log_dir):
+                            shutil.rmtree(log_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+                try:
+                    generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
+                    if os.path.exists(generator_path):
+                        os.utime(generator_path, None)
+                except Exception:
+                    pass
+                try:
+                    cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
+                except Exception:
+                    pass
 
     app_context = current_app._get_current_object().app_context()
     threading.Thread(target=run_monthly_search_in_background, args=(app_context, routines, month, year, mode), daemon=True).start()

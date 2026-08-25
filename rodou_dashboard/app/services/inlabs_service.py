@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def record_inlabs_download_success(date_str):
         return
     try:
         from ..models import InlabsDownloadLog, db
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S')
         existing = InlabsDownloadLog.query.filter_by(date_str=date_str).first()
         if existing:
             existing.downloaded_at = now_str

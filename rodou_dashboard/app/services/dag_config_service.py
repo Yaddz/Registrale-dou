@@ -123,7 +123,7 @@ def get_last_search_time():
         return "N/A"
     try:
         latest_log = max(log_files, key=os.path.getmtime)
-        res = datetime.fromtimestamp(os.path.getmtime(latest_log), timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+        res = datetime.fromtimestamp(os.path.getmtime(latest_log), timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
         _last_search_cache = {'time': now, 'data': res}
         return res
     except:
@@ -151,7 +151,7 @@ def get_next_search_time():
     while next_run.weekday() > 4:
         next_run += timedelta(days=1)
         
-    return next_run.strftime('%d/%m %H:%M')
+    return next_run.strftime('%d/%m/%Y %H:%M')
 
 def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
     """
@@ -274,7 +274,7 @@ def get_routines():
                                 "is_exact_search": search.get('is_exact_search', True),
                                 "force_rematch": search.get('force_rematch', True),
                                 "terms_ignore": search.get('terms_ignore', []),
-                                "source": search.get('sources', ['DOU'])[0] if isinstance(search.get('sources'), list) and len(search.get('sources')) > 0 else 'DOU'
+                                "source": search.get('sources', ['INLABS'])[0] if isinstance(search.get('sources'), list) and len(search.get('sources')) > 0 else ('INLABS' if 'inlabs' in dag.get('tags', []) else 'DOU')
                             }
                 except: pass
                 continue
@@ -304,7 +304,7 @@ def get_routines():
                     "is_exact_search": search.get('is_exact_search', True),
                     "force_rematch": search.get('force_rematch', True),
                     "terms_ignore": search.get('terms_ignore', []),
-                    "source": search.get('sources', ['DOU'])[0] if isinstance(search.get('sources'), list) and len(search.get('sources')) > 0 else 'DOU'
+                    "source": search.get('sources', ['INLABS'])[0] if isinstance(search.get('sources'), list) and len(search.get('sources')) > 0 else ('INLABS' if 'inlabs' in dag.get('tags', []) else 'DOU')
                 })
         except Exception as e: 
             logger.error(f"Erro ao ler rotina {name}: {e}")
@@ -337,7 +337,7 @@ def get_routines():
         "id": "Monitoramento Padrão (Empresas Ativas)",
         "file": "Pesquisa_cnpj.yaml",
         "description": f"Busca padrão diária vinculada às empresas com monitoramento ativo na base ({total_cnpjs} CNPJs).",
-        "schedule": sync_base_data.get('schedule', '0 5 * * *') if sync_base_data else "0 5 * * *",
+        "schedule": sync_base_data.get('schedule', '0 8 * * MON-FRI') if sync_base_data else "0 8 * * MON-FRI",
         "terms": [f"{total_cnpjs} CNPJs monitorados"],
         "organs": sync_base_data.get('organs', ["Diversos"]) if sync_base_data else ["Diversos"],
         "department": sync_base_data.get('department', ["Diversos"]) if sync_base_data else ["Diversos"],
@@ -349,21 +349,110 @@ def get_routines():
         "is_exact_search": sync_base_data.get('is_exact_search', True) if sync_base_data else True,
         "force_rematch": sync_base_data.get('force_rematch', True) if sync_base_data else True,
         "terms_ignore": sync_base_data.get('terms_ignore', []) if sync_base_data else [],
-        "source": sync_base_data.get('source', 'DOU') if sync_base_data else 'DOU'
+        "source": "INLABS"
     }
     
     routines.insert(0, sync_routine)
     return routines
 
+def get_main_dag_info():
+    """Retorna as configurações atuais da DAG principal (Pesquisa_cnpj.yaml) e indica se configurações obrigatórias estão pendentes."""
+    base_yaml = get_base_yaml_path()
+    dag_confs_path = get_dag_confs_path()
+    
+    # Procura se existe Pesquisa_cnpj.yaml ou partes
+    target_path = base_yaml
+    if not os.path.exists(target_path):
+        parts = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
+        if not parts:
+            parts = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
+        if parts:
+            target_path = parts[0]
+            
+    emails = []
+    subject = ""
+    active = True
+    schedule = "0 8 * * MON-FRI"
+    source = "INLABS"
+    file_exists = os.path.exists(target_path)
+    
+    # 1. Tenta carregar do SQLite (fonte de verdade persistente)
+    try:
+        from ..models import Settings
+        s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+        if s_rec:
+            s_val = s_rec.get_value()
+            if isinstance(s_val, dict):
+                emails = s_val.get('emails', [])
+                subject = s_val.get('subject', '')
+                schedule = s_val.get('schedule', '0 8 * * MON-FRI')
+                active = bool(s_val.get('active', True))
+    except Exception as e:
+        logger.debug(f"Info Settings SQLite: {e}")
+
+    # 2. Se não houver no SQLite, lê do YAML se existir
+    if file_exists and not emails and not subject:
+        try:
+            with open(target_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+            dag = data.get('dag', {})
+            report = dag.get('report', {})
+            yaml_emails = report.get('emails', [])
+            if not isinstance(yaml_emails, list):
+                yaml_emails = [yaml_emails] if yaml_emails else []
+            if yaml_emails:
+                emails = yaml_emails
+            if report.get('subject'):
+                subject = str(report.get('subject', '')).strip()
+            active = bool(dag.get('active', not dag.get('is_paused', False)))
+            schedule = dag.get('schedule', '0 8 * * MON-FRI')
+            tags = dag.get('tags', [])
+            source = "INLABS" if "inlabs" in tags else "DOU"
+        except Exception as e:
+            logger.error(f"Erro ao ler informações da DAG principal: {e}")
+            
+    if not isinstance(emails, list):
+        emails = [emails] if emails else []
+            
+    # Filtra e-mails válidos
+    valid_emails = [str(e).strip() for e in emails if e and str(e).strip()]
+    
+    missing_fields = []
+    if len(valid_emails) == 0:
+        missing_fields.append("emails")
+    if not subject:
+        missing_fields.append("subject")
+        
+    return {
+        "file": "Pesquisa_cnpj.yaml",
+        "file_exists": file_exists,
+        "emails": valid_emails,
+        "subject": subject,
+        "active": active,
+        "schedule": schedule,
+        "source": source,
+        "is_configured": len(missing_fields) == 0,
+        "missing_fields": missing_fields
+    }
+
 def rebuild_yaml_from_db():
     import copy, math, shutil
-    from ..models import Company
+    from ..models import Company, Settings
 
     # 1. Buscar CNPJs ativos
     active_companies = Company.query.filter_by(status=True).all()
     all_cnpjs = sorted(set(normalize_cnpj(c.cnpj) for c in active_companies if c.cnpj))
 
-    # 2. Carregar YAML base como template
+    # 2. Carregar configurações persistentes da DAG principal no SQLite
+    db_main_dag = {}
+    try:
+        s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+        if s_rec:
+            db_main_dag = s_rec.get_value() or {}
+    except Exception:
+        pass
+
+    # 3. Carregar YAML base como template
     base_yaml = get_base_yaml_path()
     dag_confs_path = get_dag_confs_path()
     try:
@@ -378,7 +467,10 @@ def rebuild_yaml_from_db():
                 'description': 'Busca padrão diária vinculada às empresas com monitoramento ativo.',
                 'tags': ['pesquisa_cnpj', 'inlabs'],
                 'owner': ['CNPJ_SYNC'],
-                'schedule': '0 8 * * MON-FRI',
+                'schedule': db_main_dag.get('schedule', '0 8 * * MON-FRI'),
+                'active': db_main_dag.get('active', True),
+                'is_paused': not db_main_dag.get('active', True),
+                'dataset': 'inlabs',
                 'search': [{
                     'header': 'MONITORAMENTO PADRÃO',
                     'is_exact_search': True,
@@ -388,9 +480,9 @@ def rebuild_yaml_from_db():
                 }],
                 'report': {
                     'title': 'MONITORAMENTO PADRÃO',
-                    'subject': '[ro-dou] Relatório de Menções',
+                    'subject': db_main_dag.get('subject', ''),
                     'skip_null': True,
-                    'emails': []
+                    'emails': db_main_dag.get('emails', [])
                 }
             }
         }
@@ -402,10 +494,23 @@ def rebuild_yaml_from_db():
     if 'report' not in dag:
         dag['report'] = {
             'title': 'MONITORAMENTO PADRÃO',
-            'subject': '[ro-dou] Relatório de Menções',
+            'subject': '',
             'skip_null': True,
             'emails': []
         }
+        
+    # Se houver configuração persistida no SQLite, aplica com prioridade máxima
+    if db_main_dag:
+        if 'emails' in db_main_dag:
+            dag['report']['emails'] = db_main_dag.get('emails', [])
+        if 'subject' in db_main_dag:
+            dag['report']['subject'] = db_main_dag.get('subject', '')
+        if 'schedule' in db_main_dag:
+            dag['schedule'] = db_main_dag.get('schedule', '0 8 * * MON-FRI')
+        if 'active' in db_main_dag:
+            dag['active'] = db_main_dag.get('active', True)
+            dag['is_paused'] = not db_main_dag.get('active', True)
+
     search_template = dag.get('search', [{}])
     if isinstance(search_template, list):
         search_template = search_template[0] if len(search_template) > 0 else {}
@@ -420,7 +525,11 @@ def rebuild_yaml_from_db():
 
     # 4. Dividir em chunks de 1500
     CHUNK_SIZE = 1500
-    header_base = search_template.get('header', 'Pesquisa CNPJ')
+    import re
+    raw_header = search_template.get('header', 'MONITORAMENTO PADRÃO')
+    header_base = re.sub(r'\s*-\s*PARTE\s*\d+', '', str(raw_header), flags=re.IGNORECASE).strip()
+    if not header_base:
+        header_base = "MONITORAMENTO PADRÃO"
     
     class QuotedString(str): pass
     def quoted_scalar_representer(dumper, data):

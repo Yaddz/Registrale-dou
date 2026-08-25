@@ -12,26 +12,50 @@ DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '
 os.makedirs(DATA_DIR, exist_ok=True)
 LOGS_DIR = os.path.join(BASE_DIR, "mnt", "airflow-logs")
 
+@admin_bp.route('/settings', methods=['GET'])
+@login_required
+def get_settings():
+    if session['user']['role'] != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+    settings_record = Settings.query.filter_by(key='global_settings').first()
+    settings = {"smtp": {}, "api_keys": {}, "google_sheets": {}, "inlabs": {}}
+    if settings_record:
+        val = settings_record.get_value()
+        if isinstance(val, dict):
+            settings.update(val)
+    return jsonify({"status": "ok", "settings": settings})
+
 @admin_bp.route('/save_settings', methods=['POST'])
 @login_required
 def save_settings():
     if session['user']['role'] != 'master': return jsonify({"status": "error"}), 403
-    data = request.json
+    data = request.json or {}
     
     try:
         settings_record = Settings.query.filter_by(key='global_settings').first()
+        existing_val = settings_record.get_value() if settings_record else {}
+        if not isinstance(existing_val, dict):
+            existing_val = {}
+            
         if not settings_record:
             settings_record = Settings(key='global_settings')
             db.session.add(settings_record)
-        settings_record.set_value(data)
-        db.session.commit()
-        
+            
+        merged_val = dict(existing_val)
+        for k, v in data.items():
+            if isinstance(v, dict) and isinstance(merged_val.get(k), dict):
+                merged_sub = dict(merged_val[k])
+                merged_sub.update(v)
+                merged_val[k] = merged_sub
+            else:
+                merged_val[k] = v
+                
         env_path = os.path.join(DATA_DIR, '.env')
         # Create empty .env in persistent data dir if it doesn't exist
         if not os.path.exists(env_path):
             open(env_path, 'a').close()
         
-        if 'api_keys' in data:
+        if 'api_keys' in data and isinstance(data['api_keys'], dict):
             ak = data['api_keys']
             mappings = {
                 "gestaoclick_access_token": "ACCESS_TOKEN",
@@ -48,29 +72,31 @@ def save_settings():
                     unset_key(env_path, env_var)
                     os.environ.pop(env_var, None)
         
-        if 'smtp' in data:
+        if 'smtp' in data and isinstance(data['smtp'], dict):
             smtp = data['smtp']
             
             # Sanitizar campos SMTP
             smtp_server = str(smtp.get('server') or '').strip()
-            smtp_port = str(smtp.get('port') or '').strip()
+            smtp_port = str(smtp.get('port') or '587').strip()
             smtp_user = str(smtp.get('user') or '').strip()
             raw_password = str(smtp.get('password') or '').strip()
+            
+            # Se não enviou senha nova, preserva a senha anterior salva
+            if not raw_password and existing_val.get('smtp', {}).get('password'):
+                raw_password = existing_val.get('smtp', {}).get('password')
+                
             smtp_password = raw_password
             if 'gmail.com' in smtp_server.lower() or 'googlemail.com' in smtp_server.lower():
                 smtp_password = raw_password.replace(' ', '')
             smtp_from = str(smtp.get('from_email') or smtp_user).strip()
             
-            data['smtp'] = {
+            merged_val['smtp'] = {
                 "server": smtp_server,
                 "port": smtp_port,
                 "user": smtp_user,
                 "password": smtp_password,
                 "from_email": smtp_from
             }
-            # Re-salvar com dados sanitizados
-            settings_record.set_value(data)
-            db.session.commit()
             
             smtp_mappings = {
                 "AIRFLOW__SMTP__SMTP_HOST": smtp_server,
@@ -127,10 +153,20 @@ def save_settings():
                     logging.error(f"Falha ao atualizar conexão smtp_default no Airflow: {e}")
                 
         # Mapeamento para INLABS
-        if 'inlabs' in data:
+        if 'inlabs' in data and isinstance(data['inlabs'], dict):
             inlabs = data['inlabs']
-            inlabs_user = inlabs.get('user', '')
-            inlabs_pass = inlabs.get('password', '')
+            inlabs_user = str(inlabs.get('user') or '').strip()
+            inlabs_pass = str(inlabs.get('password') or '').strip()
+            
+            # Se não enviou senha nova, preserva a senha anterior salva
+            if not inlabs_pass and existing_val.get('inlabs', {}).get('password'):
+                inlabs_pass = existing_val.get('inlabs', {}).get('password')
+                
+            merged_val['inlabs'] = {
+                "user": inlabs_user,
+                "password": inlabs_pass
+            }
+            
             if inlabs_user and inlabs_pass:
                 import requests
                 airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
@@ -158,7 +194,11 @@ def save_settings():
                     import logging
                     logging.error(f"Failed to update Airflow connection inlabs_portal: {e}")
 
-        return jsonify({"status": "success", "message": "Configurações salvas e aplicadas!"})
+        # Salvar o dicionário final com todos os campos e sanitizações
+        settings_record.set_value(merged_val)
+        db.session.commit()
+
+        return jsonify({"status": "success", "message": "Configurações salvas e aplicadas!", "settings": merged_val})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Erro ao salvar no BD: " + str(e)}), 500
@@ -278,7 +318,7 @@ def manual_sync_route():
                 from datetime import datetime, timezone, timedelta
                 with app_context:
                     new_event = SyncHistory(
-                        data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M'),
+                        data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S'),
                         evento="Sincronização OK",
                         detalhes="Sincronização realizada com sucesso."
                     )
@@ -291,7 +331,7 @@ def manual_sync_route():
                 from datetime import datetime, timezone, timedelta
                 with app_context:
                     new_event = SyncHistory(
-                        data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M'),
+                        data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S'),
                         evento="Erro Sync",
                         detalhes=str(e)
                     )
@@ -304,7 +344,7 @@ def manual_sync_route():
         
         from datetime import datetime, timezone, timedelta
         new_event = SyncHistory(
-            data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M'),
+            data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S'),
             evento="Sincronização Iniciada",
             detalhes="Sincronização em segundo plano iniciada."
         )
@@ -365,7 +405,7 @@ def api_status():
         last_sync = "N/A"
         if yaml_files:
             mtime = os.path.getmtime(yaml_files[0])
-            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
 
     return jsonify({
         "last_sync": last_sync,

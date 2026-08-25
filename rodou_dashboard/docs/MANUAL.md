@@ -12,6 +12,7 @@
    - [1.2. Acesso ao Sistema e Níveis de Permissão](#12-acesso-ao-sistema-e-níveis-de-permissão)
    - [1.3. Conhecendo a Tela Principal](#13-conhecendo-a-tela-principal)
    - [1.4. Alternando entre Modo Claro e Modo Escuro](#14-alternando-entre-modo-claro-e-modo-escuro)
+   - [1.5. Configuração Inicial da Rotina Principal](#15-configuração-inicial-da-rotina-principal)
 2. [Gestão de Empresas Monitoradas](#2-gestão-de-empresas-monitoradas)
    - [2.1. Como Localizar Empresas Cadastradas](#21-como-localizar-empresas-cadastradas)
    - [2.2. Como Cadastrar uma Nova Empresa Manualmente](#22-como-cadastrar-uma-nova-empresa-manualmente)
@@ -99,6 +100,32 @@ No topo superior direito, clique no botão de alternância de tema (**ícone de 
 
 ---
 
+### 1.5. Assistente de Configuração de Integrações (Setup Wizard)
+
+O Ro-DOU Dashboard conta com um **Assistente Inteligente de Configuração (Setup Wizard)** que realiza um diagnóstico contínuo de todas as integrações essenciais do sistema.
+
+Se houver qualquer integração pendente, um **banner informativo com badges interativos** é exibido no topo da aba Visão Geral:
+
+* **Badges de Diagnóstico:**
+  * 🟢 **Verde (Configurado):** A integração está completa e validada.
+  * 🟡 **Amarelo (Pendente):** A integração requer preenchimento de parâmetros obrigatórios.
+  * Clicar em qualquer badge direciona o operador imediatamente para o formulário correspondente (com rolagem suave e foco no card).
+
+* **As 4 Integrações Monitoradas pelo Assistente:**
+  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados.
+  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui preservação segura de senhas preexistentes, higienização automática de espaços em senhas de app do Gmail e suporte a teste imediato de conexão.
+  3. **Planilha Google Sheets:** Conexão via Conta de Serviço (Service Account) com URL da planilha (`spreadsheet_url`), nome da aba e mapeamento de colunas para sincronização contínua de clientes.
+  4. **Credenciais INLABS:** Usuário e senha de acesso ao portal da Imprensa Nacional para download automatizado das edições do DOU.
+
+* **Fluxo Passo a Passo do Assistente (Wizard):**
+  1. Clique no botão de ação destacado no banner (ex: **"Configurar: Rotina Principal"** ou **"Configurar: Servidor SMTP"**).
+  2. Preencha os campos obrigatórios e utilize o botão de **Testar Conexão** quando disponível.
+  3. Ao salvar, uma janela modal de confirmação (**"Etapa Salva com Sucesso!"**) exibirá a próxima integração pendente.
+  4. Clique em **"Configurar Próximo"** para avançar ou em **"Concluir Depois"** se desejar finalizar em outro momento.
+  5. Quando todas as 4 integrações estiverem concluídas, o banner de pendências desaparecerá automaticamente.
+
+---
+
 ## 2. Gestão de Empresas Monitoradas
 
 Na barra lateral, clique em **Empresas** para gerenciar a base de clientes monitorados.
@@ -173,6 +200,9 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
    * Digite os e-mails que devem receber alertas automáticos quando forem encontradas publicações nesta rotina.
 8. Clique em **Salvar Configurações**.
 
+> [!NOTE]
+> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Você não precisa configurar esses padrões manualmente a cada nova rotina.
+
 ---
 
 ### 3.3. Como Disparar uma Busca Imediata ("Rodar Agora")
@@ -192,11 +222,17 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 ### 3.5. Como Fazer uma Busca Mensal Completa
 
 1. No topo da tela de rotinas, clique no botão **Busca Mensal**.
-2. Selecione o **Mês** e o **Ano** desejados e marque as rotinas que devem rodar.
-3. **Verificação de Matérias no INLABS:**
-   * O sistema confere automaticamente se todas as edições daquele mês estão disponíveis.
-   * Se o sistema avisar que existem matérias faltantes, clique no botão **Baixar Matérias Faltantes** para realizar o download automático das edições ausentes.
-4. Clique em **Iniciar Busca Mensal**. O sistema processará todos os dias úteis do mês selecionado.
+2. Selecione o **Mês** e o **Ano** desejados e clique em **Verificar e Iniciar**.
+3. **Diagnóstico Inteligente de Disponibilidade:**
+   * **Mês Completo no Banco:** A busca inicia imediatamente.
+   * **Matérias Disponíveis para Download (dentro de 120 dias):** O modal exibe a quantidade de dias que serão baixados do INLABS antes do processamento.
+   * **Meses Históricos (fora da janela de 120 dias):** O sistema detecta automaticamente que os dados não estão mais no portal INLABS e realiza a busca diretamente via **API Oficial do DOU**.
+   * **Cenário Misto (Mês Quebrado):** Quando um mês possui ALGUNS dias já no banco local INLABS (ex: abril a partir do dia 24) mas OUTROS dias estão fora da janela de 120 dias, o modal de confirmação exibe um sumário visual claro com 3 categorias separadas por cor:
+     * ✅ **No Banco**: Dias já baixados e armazenados localmente no INLABS.
+     * 📥 **Baixar INLABS**: Dias ausentes dentro da janela de 120 dias, disponíveis para download.
+     * 🌐 **Via API DOU**: Dias históricos fora dos 120 dias, pesquisados via API Oficial do DOU.
+   * O usuário pode optar por prosseguir com a execução mista completa ou pesquisar apenas os dias já disponíveis no INLABS.
+4. Confirme a opção desejada para iniciar o processamento em segundo plano.
 
 ---
 
@@ -305,12 +341,15 @@ Permite que sua equipe mantenha uma planilha no Google Drive com os clientes a s
 ---
 
 ### 6.3. Como Configurar o Servidor de E-mail (SMTP)
-Na sub-aba **Integrações Gerais**:
-* **Servidor:** Endereço SMTP (ex: `smtp.gmail.com` ou `smtp.office365.com`).
-* **Porta:** `587` (STARTTLS) ou `465` (SSL).
-* **Usuário e Senha:** E-mail da conta e a senha (ou Senha de Aplicativo de 16 dígitos se usar autenticação em 2 etapas no Gmail/Outlook).
-* **E-mail de Envio:** E-mail que aparecerá como remetente (ex: `notificacoes@registrale.com.br`).
-* **Testar Envio:** Digite seu e-mail e clique em **Testar Envio** para receber uma mensagem de confirmação.
+Na sub-aba **Integrações Gerais** (ou pelo modal de configuração do Assistente):
+* **Servidor:** Endereço SMTP (ex: `smtp.gmail.com`, `smtp.office365.com` ou `email-smtp.us-east-1.amazonaws.com`).
+* **Porta:** `587` (STARTTLS - padrão recomendado) ou `465` (SSL).
+* **Usuário e Senha:** E-mail da conta e a senha (ou Senha de Aplicativo de 16 dígitos se usar autenticação em 2 etapas no Gmail/Google Workspace ou Microsoft 365).
+  > [!TIP]
+  > **Preservação Inteligente de Senhas:** Se você já salvou uma senha anteriormente, pode atualizar os outros campos (servidor, porta, remetente) deixando o campo de senha em branco. O sistema preservará a senha salva com segurança, sem apagá-la.
+* **E-mail de Envio (From):** E-mail que aparecerá no remetente das notificações (ex: `notificacoes@registrale.com.br`).
+* **Testar Envio:** Digite um e-mail de destino e clique em **Enviar Email de Teste** (ou use o botão de teste direto no modal da rotina principal). O teste valida a conexão TLS/SSL, autenticação e entrega da mensagem em tempo real.
+* **Sincronização com o Airflow:** Ao salvar, o sistema sincroniza os dados no arquivo `.env` e atualiza a conexão `smtp_default` no Airflow de forma automática e transparente.
 
 ---
 
@@ -344,6 +383,16 @@ Na sub-aba **Limpeza do Sistema**:
 
 ## 7. Perguntas Frequentes (FAQ) & Dúvidas do Dia a Dia
 
+### ❓ "O que é o banner amarelo pedindo para configurar a rotina principal?"
+**Resposta:** Ao acessar o sistema pela primeira vez (ou após uma reinstalação), a rotina principal de monitoramento precisa ter e-mails de destino e servidor SMTP configurados. Clique em **"Configurar agora"** no banner amarelo para abrir o modal de configuração. Após preencher os dados e salvar, o banner desaparece e o sistema está pronto para operar.
+
+---
+
+### ❓ "Posso pesquisar meses antigos que estão fora da janela de 120 dias do INLABS?"
+**Resposta:** Sim. O sistema detecta automaticamente que os dias estão fora da janela do INLABS e realiza a pesquisa diretamente via **API Oficial do DOU**. No modal de confirmação da busca mensal, esses dias aparecem na categoria **"Via API DOU"** com um ícone de globo (🌐).
+
+---
+
 ### ❓ "Cadastrei uma empresa hoje, quando ela começará a ser buscada?"
 **Resposta:** Imediatamente nas próximas execuções automáticas. Se quiser conferir a edição do dia de hoje para essa nova empresa imediatamente, vá em **Rotinas de Busca** e clique em **Rodar Agora** na rotina `Pesquisa_cnpj_sync`.
 
@@ -355,7 +404,7 @@ Na sub-aba **Limpeza do Sistema**:
 ---
 
 ### ❓ "O que fazer quando a Busca Mensal avisar que faltam matérias no INLABS?"
-**Resposta:** No próprio modal de Busca Mensal, clique no botão azul **Baixar Matérias Faltantes**. O sistema fará o download automático dos dias ausentes direto da Imprensa Nacional antes de iniciar a busca.
+**Resposta:** O modal de confirmação indicará claramente se os dias ausentes podem ser baixados do portal INLABS (janela dos últimos 120 dias) ou se serão consultados diretamente via **API Oficial do DOU** (para datas históricas). Basta clicar no botão principal de confirmação para que o sistema baixe os dias recentes e consulte a API DOU automaticamente.
 
 ---
 

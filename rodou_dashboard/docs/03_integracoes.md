@@ -58,7 +58,10 @@ Responsável pelo envio de alertas imediatos quando uma empresa monitorada é me
 
 ### Recursos:
 * Suporte a servidores SMTP padrão, TLS e SSL (porta 587 ou 465).
-* Suporte a autenticação com usuário e senha ou chaves de aplicativo (ex: Gmail, Microsoft 365, Amazon SES, SendGrid).
+* Suporte a autenticação com usuário e senha ou chaves de aplicativo (ex: Gmail/Google Workspace, Microsoft 365, Amazon SES, SendGrid).
+* **Higienização Automática de Credenciais:** Remove automaticamente espaços inseridos por conveniência visual em Senhas de Aplicativo do Google (`abcd efgh ijkl mnop`).
+* **Preservação Inteligente de Senhas:** Atualizações de configurações que deixem o campo de senha vazio mantêm a senha salva previamente no banco de dados, evitando perda acidental de credenciais.
+* **Sincronização com o Airflow:** O salvamento de SMTP grava automaticamente as configurações no `.env` e atualiza a conexão `smtp_default` via REST API do Airflow.
 * **Renderização Dinâmica de Templates:** Substitui variáveis no corpo HTML do e-mail:
   * `{empresa}`: Razão Social da empresa
   * `{cnpj}`: CNPJ da empresa
@@ -66,4 +69,4 @@ Responsável pelo envio de alertas imediatos quando uma empresa monitorada é me
   * `{data}`: Data oficial da publicação
   * `{trecho}`: Trecho de texto onde o termo foi identificado
   * `{link}`: Link direto para o ato oficial no site da Imprensa Nacional
-* **Teste de Conexão Imediato:** Botão no painel que envia um e-mail de teste para qualquer endereço especificado, com diagnóstico detalhado de erros em caso de falha de autenticação ou porta.
+* **Teste de Conexão Imediato:** Disponível tanto na aba de Configurações quanto no modal do assistente (`/api/test_smtp`), enviando um e-mail de teste para o destinatário informado com diagnóstico detalhado de erros e suporte a fallback de credenciais salvas no banco.

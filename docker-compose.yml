@@ -40,6 +40,7 @@ x-airflow-common: &airflow-common
   build:
     context: .
   environment: &airflow-common-env
+    TZ: 'America/Sao_Paulo'
     AIRFLOW__API__AUTH_BACKEND: 'airflow.api.auth.backend.basic_auth'
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__DEFAULT_TIMEZONE: 'America/Sao_Paulo'
@@ -164,6 +165,7 @@ services:
     ports:
       - "5000:5000"
     environment:
+      - TZ=America/Sao_Paulo
       - AIRFLOW_URL=http://airflow-webserver:8080
       - SECRET_KEY=${SECRET_KEY:-registrale-dou-super-secret-key-2026}
     volumes:

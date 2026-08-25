@@ -1,6 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 
 db = SQLAlchemy()
@@ -48,7 +48,7 @@ class SyncHistory(db.Model):
     def log_event(cls, evento, detalhes="", max_history=50):
         """Registra um evento de histórico mantendo no máximo max_history registros (FIFO)."""
         try:
-            now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            now_str = datetime.now(timezone(timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M:%S")
             hist = cls(data=now_str, evento=evento, detalhes=detalhes)
             db.session.add(hist)
             db.session.commit()

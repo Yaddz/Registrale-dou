@@ -180,15 +180,22 @@ def export_report():
 @login_required
 def test_smtp():
     if session['user']['role'] != 'master': return jsonify({"status": "error", "message": "Acesso negado."}), 403
-    data = request.json
+    data = request.json or {}
     smtp = data.get('smtp', {})
     test_email = data.get('test_email')
     
-    server = smtp.get('server')
-    port = smtp.get('port')
-    user = smtp.get('user')
-    password = smtp.get('password')
-    from_email = smtp.get('from_email') or user
+    from ..models import Settings
+    settings_record = Settings.query.filter_by(key='global_settings').first()
+    saved_settings = settings_record.get_value() if settings_record else {}
+    saved_smtp = saved_settings.get('smtp', {}) if isinstance(saved_settings, dict) else {}
+    
+    server = str(smtp.get('server') or saved_smtp.get('server') or '').strip()
+    port = str(smtp.get('port') or saved_smtp.get('port') or '587').strip()
+    user = str(smtp.get('user') or saved_smtp.get('user') or '').strip()
+    password = str(smtp.get('password') or saved_smtp.get('password') or '').strip()
+    if 'gmail.com' in server.lower() or 'googlemail.com' in server.lower():
+        password = password.replace(' ', '')
+    from_email = str(smtp.get('from_email') or saved_smtp.get('from_email') or user).strip()
     
     if not all([server, port, test_email]):
         return jsonify({"status": "error", "message": "Servidor SMTP, porta e email de teste são obrigatórios."}), 400

@@ -53,6 +53,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
 | **Frontend Reativo** | Alpine.js | Estado reativo no cliente sem necessidade de build |
 | **Estilização** | Tailwind CSS (via CDN) | Interface moderna, responsiva e com suporte a modais |
 | **Exportações** | ReportLab + Pandas + OpenPyXL | Geração de PDFs diagramados e planilhas Excel nativas |
+| **Feriados** | Algoritmo Computus de Butcher | Cálculo dinâmico de feriados nacionais fixos e móveis para identificar dias úteis com circulação do DOU |
 
 ---
 
@@ -97,7 +98,14 @@ O banco de dados SQLite principal fica localizado no volume persistente `/data/d
    * `detalhes` (TEXT) — Descrição detalhada da execução (ex: número de registros importados)
    * **Método de Classe `SyncHistory.log_event(evento, detalhes, max_history=50)`:** Método centralizado que registra o evento e gerencia automaticamente a rotação FIFO da tabela, mantendo no máximo os últimos 50 registros no banco de dados.
 
-5. **`settings` (`Settings`)**
+5. **`inlabs_download_log` (`InlabsDownloadLog`)**
+   * `id` (INTEGER, PK)
+   * `date_str` (VARCHAR(10), UNIQUE) — Data do DOU baixada (formato `YYYY-MM-DD`)
+   * `downloaded_at` (VARCHAR(50)) — Timestamp de quando o download foi finalizado
+   * `status` (VARCHAR(20), default `'success'`) — Status da operação de carga
+   * Esta tabela rastreia quais datas de edições do DOU foram baixadas com sucesso do portal INLABS para o banco PostgreSQL local, permitindo ao sistema identificar lacunas para buscas mensais.
+
+6. **`settings` (`Settings`)**
    * `id` (INTEGER, PK)
    * `key` (VARCHAR(100), UNIQUE) — Chave da configuração (padrão: `'global_settings'`)
    * `value` (TEXT) — JSON contendo credenciais e parâmetros:
@@ -106,7 +114,7 @@ O banco de dados SQLite principal fica localizado no volume persistente `/data/d
      * `inlabs`: Usuário e senha da Imprensa Nacional
      * `google_sheets`: URL da planilha, JSON de credenciais da Service Account, intervalo e mapeamento de colunas
 
-6. **`email_templates` (`EmailTemplate`)**
+7. **`email_templates` (`EmailTemplate`)**
    * `id` (INTEGER, PK)
    * `name` (VARCHAR(100)) — Nome do modelo (ex: `Padrão Registrale`)
    * `subject` (VARCHAR(200)) — Assunto padrão do e-mail
@@ -127,3 +135,7 @@ Para garantir alta performance e tempo de resposta instantâneo na interface web
 ### 2. Google Sheets Auto-Sync Scheduler (`GoogleSheetsScheduler`)
 * Thread daemon dedicada que verifica a cada 60 segundos se o recurso de sincronização automática com o Google Sheets está ativo nas configurações (`settings.google_sheets.auto_sync`).
 * Caso o intervalo configurado (ex: a cada 15, 30, 60 minutos ou 24 horas) tenha sido atingido, conecta-se de forma segura à API v4 do Google Sheets usando a Conta de Serviço, sincroniza novos CNPJs no banco e atualiza os arquivos YAML de busca.
+
+### 3. Limpeza de DAGs Órfãs (`cleanup_orphaned_temp_dags()`)
+* Função executada na inicialização da aplicação para realizar a manutenção do ambiente.
+* Responsável por identificar e remover arquivos YAML temporários residuais e desregistrar DAGs órfãs do Airflow, mantendo o ambiente de execução limpo e consistente.

@@ -95,15 +95,32 @@ docker run -d \
 
 ## 🧪 4. Execução dos Testes Automatizados
 
-A suíte de testes do dashboard utiliza `pytest` e cobre autenticação, APIs de empresas, rotinas, templates e integração com Google Sheets:
+A suíte de testes do dashboard agora possui **45 testes** cobrindo:
+- Autenticação e sessão
+- CRUD de empresas (com validação de CNPJ e duplicatas)
+- Templates de e-mail (CRUD e proteção de templates padrão)
+- Limpeza de dados (com controle de permissão master)
+- Busca e autocomplete de empresas
+- Exportação Excel e PDF corporativo
+- Verificação de datas (feriados, janela 120 dias INLABS)
+- Disparo individual e mensal de rotinas
+- Status e configuração da rotina principal
+- Política de retenção INLABS (LRU com proteção de datas)
+- Limpeza de DAGs temporárias
+- Padronização INLABS em novas rotinas
 
 ```bash
-python -m pytest tests -v
-```
+# Execução completa (recomendado)
+python -m pytest rodou_dashboard/tests/test_dashboard.py -v
 
-Para rodar com relatório de warnings detalhados:
-```bash
-python -m pytest tests --disable-warnings
+# Execução rápida sem warnings
+python -m pytest rodou_dashboard/tests/test_dashboard.py -q
+
+# Testes de integração Google Sheets
+python -m pytest rodou_dashboard/tests/test_google_sheets.py -v
+
+# Testes de sincronização GestãoClick
+python -m pytest rodou_dashboard/tests/test_sync_cnpj.py -v
 ```
 
 ---
@@ -147,3 +164,13 @@ python -m flask run --host=0.0.0.0 --port=5001
 
 ### C. Bloqueio de Concorrência no SQLite (*Database is locked*):
 * O Ro-DOU Dashboard configura automaticamente os modos `WAL` e `busy_timeout=5000` na inicialização do Flask. Caso execute scripts externos de manutenção diretamente contra o arquivo `/data/dashboard.db`, certifique-se de não manter transações abertas em modo exclusivo.
+
+---
+
+## ⚙️ 7. Configuração Inicial Obrigatória
+
+No primeiro deploy, o administrador deve realizar as seguintes configurações iniciais obrigatórias (exibidas via banner de alerta amarelo na tela inicial do dashboard):
+
+1. **Rotina Principal**: E-mails de destino, assunto e agendamento via modal na tela inicial.
+2. **Servidor SMTP**: Configurado dentro do mesmo modal ou na aba de configurações.
+3. **Credenciais INLABS**: Usuário e senha do portal da Imprensa Nacional.

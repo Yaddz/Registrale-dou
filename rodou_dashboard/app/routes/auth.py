@@ -90,7 +90,7 @@ def index():
         last_sync = "N/A"
         if yaml_files:
             mtime = os.path.getmtime(yaml_files[0])
-            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
 
     last_search = get_last_search_time()
     next_search = get_next_search_time()

@@ -9,18 +9,31 @@ dag:
   - CNPJ_SYNC
   schedule: 0 8 * * MON-FRI
   search:
-  - header: MONITORAMENTO PADRÃO (EMPRESAS ATIVAS)
+  - header: MONITORAMENTO PADRÃO
     is_exact_search: true
     force_rematch: true
-    department:
+    department: &id001
     - ANVISA
     - Agência Nacional de Vigilância Sanitária
     terms:
     - '55666777000188'
     - '66777888000199'
     full_text: false
+    organs: *id001
+    dou_sections:
+    - SECAO_1
+    field: TUDO
+    terms_ignore: []
+    date: DIA
+    sources:
+    - INLABS
   report:
     title: MONITORAMENTO PADRÃO
-    subject: '[ro-dou] Relatório de Menções'
+    subject: '[Monitoramento DOU] Alerta Diário'
     skip_null: true
-    emails: []
+    emails:
+    - alerta@empresa.com
+    - diretoria@empresa.com
+  dataset: inlabs
+  active: true
+  is_paused: false

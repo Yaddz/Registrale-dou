@@ -61,9 +61,24 @@ Permite configurar, disparar sob demanda e automatizar as pesquisas nos Diários
 * **Ações por Rotina:**
   * **Rodar Agora:** Dispara imediatamente a rotina para a data corrente.
   * **Disparar com Data Lógica:** Modal que permite selecionar qualquer data passada para reprocessar ou auditar uma edição específica do DOU.
-  * **Busca Mensal Automatizada:** Dispara a varredura para todos os dias úteis de um mês e ano selecionados. Inclui pré-verificação automática no banco INLABS: se houver dias faltantes, o painel oferece a opção de baixar as matérias ausentes com um único clique.
+  * **Busca Mensal Automatizada:** Dispara a varredura para todos os dias úteis de um mês e ano selecionados. Inclui pré-verificação automática no banco INLABS e suporta o **Cenário Misto** na busca (ex: meses onde parte dos dias está dentro da janela de 120 dias e a outra parte fora). O modal de confirmação exibe um sumário visual com 3 categorias:
+    * ✅ **No Banco (INLABS):** Dias já baixados e armazenados localmente.
+    * 📥 **Baixar INLABS:** Dias faltantes dentro da janela de 120 dias, disponíveis para download.
+    * 🌐 **Via API DOU:** Dias históricos fora da janela de 120 dias, pesquisados diretamente na API Oficial do DOU.
+  * **Modos de Execução da Busca Mensal:** A execução suporta perfis variados de busca, tais como `full`, `download_and_search`, `inlabs_only` e `api_dou_only`.
+  * **Padronização INLABS:** Todas as novas rotinas criadas automaticamente usam `INLABS` como fonte de dados padrão e replicam os e-mails de destinatário da rotina principal.
   * **Ativar/Pausar Rotina:** Chave para habilitar ou desabilitar o agendamento da rotina.
   * **Configurações Avançadas:** Edição do Cron de execução, seções do DOU (`SEÇÃO 1`, `SEÇÃO 2`, `SEÇÃO 3`), lista de órgãos específicos, busca por termo exato e e-mails de alerta.
+
+### 3.1. Assistente de Integrações Passo a Passo (Setup Wizard)
+
+O sistema verifica continuamente a integridade de todas as integrações ao carregar o painel:
+* Se houver qualquer pendência, um **banner de alerta interativo** é exibido no topo do dashboard com badges indicativos para cada integração (`Rotina Principal`, `Servidor SMTP`, `Google Sheets` e `Acesso INLABS`).
+* **Modal da Rotina Principal (`mainDagSetupModal`):**
+  1. **Destinatários e Notificação:** E-mails de destino (obrigatório com validação de regex), assunto do e-mail e horário de execução (cron).
+  2. **Servidor de Envio (SMTP):** Servidor, porta, usuário, senha (com preservação de senhas preexistentes) e e-mail de envio, com botão de teste imediato de conexão SMTP dentro do modal.
+* **Fluxo Wizard Sequencial:** Ao salvar com sucesso uma etapa, o assistente abre o modal de confirmação sugerindo o avanço imediato para a próxima integração pendente.
+* Após salvar, o sistema sincroniza atomicamente o SQLite, o YAML `Pesquisa_cnpj.yaml`, as variáveis do `.env` e as conexões do Airflow (`smtp_default`).
 
 ---
 
@@ -97,7 +112,7 @@ Painel restrito a administradores com as seguintes abas:
 * Botão de sincronização forçada imediata.
 
 ### C. Integrações Gerais
-* **Configuração SMTP:** Servidor, porta, usuário, senha, e-mail de envio e botão de teste de disparo com feedback visual imediato.
+* **Configuração SMTP:** Servidor, porta, usuário, senha, e-mail de envio e botão de teste de disparo com feedback visual imediato (integrado ao fluxo do `mainDagSetupModal` para configuração guiada do sistema).
 * **API GestãoClick:** Token de acesso, Secret token, URL base da API e flag de sincronização automática.
 * **Credenciais INLABS:** Usuário e senha de acesso à base da Imprensa Nacional.
 

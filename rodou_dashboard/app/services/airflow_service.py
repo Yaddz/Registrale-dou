@@ -43,6 +43,10 @@ def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
         payload = {}
         unique_suffix = int(datetime.now().timestamp() * 1000)
         if logical_date:
+            if '/' in str(logical_date):
+                parts = str(logical_date).split('/')
+                if len(parts) == 3:
+                    logical_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
             payload["dag_run_id"] = f"manual__{dag_id}_{logical_date}_{unique_suffix}"
         else:
             payload["dag_run_id"] = f"manual__{dag_id}_{unique_suffix}"

@@ -577,6 +577,8 @@ class TestNewOptimizedFeatures:
         assert '2026-01-01' not in data.get('inlabs_days')
         assert 'api_dou_days' in data
         assert 'downloadable_inlabs_days' in data
+        assert 'scenario' in data
+        assert data.get('scenario') in ['all_api_dou', 'mixed', 'download_only', 'complete']
 
     def test_trigger_monthly_executes_api_dou_for_historical_missing_days(self, auth_client, app, monkeypatch):
         from app.routes import dags
@@ -597,6 +599,39 @@ class TestNewOptimizedFeatures:
         })
         assert resp.status_code == 200
         assert resp.get_json().get("status") == "success"
+
+    def test_trigger_monthly_api_dou_only_mode(self, auth_client, monkeypatch):
+        from app.routes import dags
+        
+        triggered_calls = []
+        def mock_trigger(dag_id, logical_date=None, **kwargs):
+            triggered_calls.append((dag_id, logical_date))
+            return True, "Triggered", {"dag_id": dag_id, "dag_run_id": f"run_{dag_id}_{logical_date}"}
+            
+        monkeypatch.setattr(dags, "trigger_airflow_dag", mock_trigger)
+        monkeypatch.setattr(dags, "fetch_mentions_from_dag_run", lambda *args, **kwargs: [])
+        
+        resp = auth_client.post('/api/routines/trigger_monthly', json={
+            "month": 4,
+            "year": 2026,
+            "routines": ["Pesquisa_cnpj.yaml"],
+            "mode": "api_dou_only"
+        })
+        assert resp.status_code == 200
+        assert resp.get_json().get("status") == "success"
+
+    def test_monthly_inlabs_check_scenario_mixed_with_downloadable_zero(self, auth_client, monkeypatch):
+        from app.services import inlabs_service
+        # Simula que a partir do dia 24/04/2026 está baixado no banco INLABS
+        monkeypatch.setattr(inlabs_service, "get_downloaded_dates", lambda f, l: ['2026-04-24', '2026-04-27', '2026-04-28', '2026-04-29', '2026-04-30'])
+        
+        resp = auth_client.get('/api/routines/monthly_inlabs_check?month=4&year=2026&routine=Pesquisa_cnpj.yaml')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'ok'
+        assert data.get('inlabs_count') > 0
+        assert data.get('api_dou_count') > 0
+        assert data.get('scenario') == 'mixed'
 
     def test_check_date_returns_holiday_and_120_info(self, auth_client):
         # 01/01/2026 é Confraternização Universal (feriado) e fora de 120 dias
@@ -662,6 +697,157 @@ class TestNewOptimizedFeatures:
         assert resp.status_code == 200
         assert b'# Manual do Usu' in resp.data
         assert 'text/markdown' in resp.content_type
+
+    def test_main_dag_status_endpoint(self, auth_client):
+        resp = auth_client.get('/api/system/main_dag_status')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'ok'
+        assert 'is_configured' in data
+        assert 'missing_fields' in data
+        assert 'main_dag' in data
+        assert 'smtp' in data
+        assert 'smtp_configured' in data
+
+    def test_configure_main_dag_endpoint(self, auth_client, app):
+        resp = auth_client.post('/api/system/configure_main_dag', json={
+            "emails": "alerta@empresa.com, diretoria@empresa.com",
+            "subject": "[Monitoramento DOU] Alerta Diário",
+            "schedule": "0 8 * * MON-FRI",
+            "smtp": {
+                "server": "smtp.mailgun.org",
+                "port": 587,
+                "user": "postmaster@empresa.com",
+                "password": "secretpassword",
+                "from_email": "dou@empresa.com"
+            }
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'success'
+        
+        # Verify status endpoint returns configured
+        status_resp = auth_client.get('/api/system/main_dag_status')
+        assert status_resp.status_code == 200
+        status_data = status_resp.get_json()
+        assert status_data.get('is_configured') is True
+        assert "alerta@empresa.com" in status_data.get('main_dag', {}).get('emails', [])
+        assert status_data.get('main_dag', {}).get('subject') == "[Monitoramento DOU] Alerta Diário"
+
+    def test_create_routine_defaults_to_inlabs(self, auth_client, app):
+        import os
+        from app.services.dag_config_service import get_dag_confs_path
+        
+        routine_name = "Teste Rotina INLABS Padrao"
+        resp = auth_client.post('/api/routines', json={
+            "id": "teste_inlabs_padrao",
+            "file": "teste_inlabs_padrao.yaml",
+            "name": routine_name,
+            "terms": ["termo_teste_inlabs"],
+            "sections": ["SECAO_1", "SECAO_2", "SECAO_3"],
+            "emails": ["teste@inlabs.com"]
+            # Sem passar source explicitamente, deve assumir INLABS
+        })
+        assert resp.status_code == 200
+        
+        # Carrega a lista de rotinas e verifica a fonte
+        routines_resp = auth_client.get('/api/routines')
+        assert routines_resp.status_code == 200
+        routines = routines_resp.get_json()
+        created = next((r for r in routines if r.get('id') == 'teste_inlabs_padrao' or r.get('file') == 'teste_inlabs_padrao.yaml'), None)
+        assert created is not None
+        assert created.get('source') == 'INLABS'
+        
+        # Limpa arquivo gerado
+        yaml_file = os.path.join(get_dag_confs_path(), "teste_inlabs_padrao.yaml")
+        if os.path.exists(yaml_file):
+            try:
+                os.remove(yaml_file)
+            except Exception:
+                pass
+
+    def test_get_settings_endpoint(self, auth_client):
+        resp = auth_client.get('/api/settings')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'ok'
+        assert 'settings' in data
+        assert 'smtp' in data['settings']
+
+    def test_save_settings_preserves_password(self, auth_client, app):
+        # 1. Salva com senha
+        resp1 = auth_client.post('/api/save_settings', json={
+            "smtp": {
+                "server": "smtp.gmail.com",
+                "port": "587",
+                "user": "teste@gmail.com",
+                "password": "MinhaSenhaSuperSecreta123",
+                "from_email": "teste@gmail.com"
+            }
+        })
+        assert resp1.status_code == 200
+        
+        # 2. Salva novamente sem enviar senha (string vazia)
+        resp2 = auth_client.post('/api/save_settings', json={
+            "smtp": {
+                "server": "smtp.gmail.com",
+                "port": "587",
+                "user": "teste@gmail.com",
+                "password": "",
+                "from_email": "teste@gmail.com"
+            }
+        })
+        assert resp2.status_code == 200
+        
+        # 3. Verifica se a senha foi preservada
+        from app.models import Settings
+        with app.app_context():
+            s = Settings.query.filter_by(key='global_settings').first()
+            val = s.get_value()
+            assert val['smtp']['password'] == "MinhaSenhaSuperSecreta123"
+
+    def test_google_sheets_diagnosis_with_spreadsheet_url(self, auth_client):
+        # Configura Google Sheets com spreadsheet_url e credentials_json
+        auth_client.post('/api/save_settings', json={
+            "google_sheets": {
+                "spreadsheet_url": "https://docs.google.com/spreadsheets/d/123456789/edit",
+                "credentials_json": '{"type": "service_account", "client_email": "test@service.iam.gserviceaccount.com"}'
+            }
+        })
+        
+        resp = auth_client.get('/api/system/integrations_status')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        gs_item = next((i for i in data.get('integrations', []) if i['id'] == 'google_sheets'), None)
+        assert gs_item is not None
+        assert gs_item['is_configured'] is True
+
+    def test_test_smtp_fallback_to_saved_password(self, auth_client):
+        # Configura SMTP com senha no banco
+        auth_client.post('/api/save_settings', json={
+            "smtp": {
+                "server": "localhost",
+                "port": "2525",
+                "user": "test_user",
+                "password": "saved_password",
+                "from_email": "test_user@localhost"
+            }
+        })
+        
+        # Testa chamada com senha em branco no payload
+        # (vai falhar na conexão de rede com localhost:2525, mas não por falta de parâmetros)
+        resp = auth_client.post('/api/test_smtp', json={
+            "smtp": {
+                "server": "localhost",
+                "port": "2525",
+                "user": "test_user",
+                "password": ""
+            },
+            "test_email": "destino@teste.com"
+        })
+        # Não deve retornar 400 (parâmetros faltantes), e sim tentar a conexão
+        assert resp.status_code in (200, 500)
+
 
 
 

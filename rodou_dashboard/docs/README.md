@@ -16,8 +16,11 @@ A documentação está dividida nos seguintes módulos:
 
 2. [**02. Guia de Funcionalidades do Painel**](02_guia_de_funcionalidades.md)
    - Painel Principal (Dashboard & KPIs em tempo real)
+   - Configuração Obrigatória da Rotina Principal (banner de alerta e modal de setup)
    - Gestão de Empresas Monitoradas (Importação, Edição, Busca)
    - Gerenciador de Rotinas de Busca (Diárias, Mensais, Personalizadas)
+   - Padronização INLABS em novas rotinas
+   - Cenário misto na busca mensal com sumário visual de 3 categorias
    - Central de Relatórios (Filtros avançados, Exportação Excel/PDF, E-mails)
    - Configurações do Sistema, Gestão de Usuários e Níveis de Acesso
    - Templates de E-mail Dinâmicos
@@ -32,6 +35,9 @@ A documentação está dividida nos seguintes módulos:
 
 4. [**04. Referência Completa da API REST**](04_referencia_da_api.md)
    - Catálogo completo de endpoints
+   - Novos endpoints de status e configuração da rotina principal (`main_dag_status`, `configure_main_dag`)
+   - Endpoint de limpeza de DAGs temporárias (`cleanup_temp`)
+   - Endpoints de gestão de monitoramento por origem (`toggle_origin_monitoring`, `unmonitor_by_origin`)
    - Autenticação e controle de sessão
    - Estrutura de requisição (Payloads) e respostas (JSON)
 
@@ -49,3 +55,5 @@ A documentação está dividida nos seguintes módulos:
 * **Frontend:** Alpine.js, Tailwind CSS (CDN), Lucide Icons.
 * **Bancos de Dados:** SQLite (banco de aplicação local `/data/dashboard.db`) + PostgreSQL (banco INLABS `/data/dou_inlabs`).
 * **Sincronização:** Airflow DAGs + Workers em background (Google Sheets Scheduler e Mentions Watcher).
+* **Testes:** 45 testes automatizados com pytest.
+* **Feriados:** Cálculo dinâmico de dias úteis com feriados nacionais (algoritmo Computus de Butcher).

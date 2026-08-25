@@ -112,3 +112,9 @@ MANIFEST
 .dmypy.json
 dmypy.json
 .pyre/
+
+# Backups & Local Test files
+backups/
+*.bak
+dag_confs/teste.yaml
+
