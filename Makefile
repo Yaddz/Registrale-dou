@@ -170,7 +170,6 @@ print-success:
 	@echo "• Dashboard Web:   http://localhost:5000 (Login: admin / admin)"
 	@echo "• Apache Airflow:  http://localhost:8080 (Login: airflow / airflow)"
 	@echo "• Webmail Testes:  http://localhost:5001 (smtp4dev)"
-	@echo "• OpenSearch API:  http://localhost:9200"
 	@echo "================================================================="
 
 create-azure-openai-endpoint-variable:
