@@ -268,7 +268,19 @@ def manage_routines():
     os.replace(tmp_path, file_path)
     
     if filename == "Pesquisa_cnpj.yaml":
+        from ..models import db, Settings
         from ..services.dag_config_service import rebuild_yaml_from_db
+        s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+        if not s_rec:
+            s_rec = Settings(key='main_dag_settings')
+            db.session.add(s_rec)
+        s_rec.set_value({
+            "emails": emails,
+            "subject": report.get("subject", ""),
+            "schedule": dag.get("schedule", "0 8 * * MON-FRI"),
+            "active": dag.get("active", True)
+        })
+        db.session.commit()
         rebuild_yaml_from_db()
     
     return jsonify({"status": "success", "message": "Rotina salva com sucesso!"})

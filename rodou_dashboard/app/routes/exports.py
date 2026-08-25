@@ -211,23 +211,33 @@ def test_smtp():
     try:
         port_num = int(port)
         if port_num == 465:
-            server_conn = smtplib.SMTP_SSL(server, port_num, timeout=10)
+            server_conn = smtplib.SMTP_SSL(server, port_num, timeout=12)
         else:
-            server_conn = smtplib.SMTP(server, port_num, timeout=10)
-            if port_num == 587 or port_num == 25:
+            server_conn = smtplib.SMTP(server, port_num, timeout=12)
+            if port_num in (587, 25):
                 try:
                     server_conn.starttls()
-                except:
-                    pass
+                except Exception as tls_err:
+                    logger.warning(f"STARTTLS warning: {tls_err}")
                 
         if user and password:
             server_conn.login(user, password)
         server_conn.send_message(msg)
         server_conn.quit()
         return jsonify({"status": "success", "message": f"Email de teste enviado com sucesso para {test_email}!"})
+    except smtplib.SMTPAuthenticationError as e:
+        err_msg = e.smtp_error.decode('utf-8', errors='ignore') if isinstance(e.smtp_error, bytes) else str(e.smtp_error or e)
+        logger.error(f"Erro de autenticação SMTP: {err_msg}")
+        return jsonify({"status": "error", "message": f"Erro de autenticação SMTP: Usuário ou senha incorretos ({err_msg}). No Gmail, utilize uma 'Senha de App' de 16 dígitos sem espaços."}), 400
+    except smtplib.SMTPConnectError as e:
+        logger.error(f"Erro de conexão SMTP: {e}")
+        return jsonify({"status": "error", "message": f"Não foi possível conectar ao servidor SMTP {server}:{port}. Verifique o endereço e a porta informados."}), 400
+    except (TimeoutError, smtplib.SMTPException, OSError) as e:
+        logger.error(f"Falha na comunicação SMTP: {e}")
+        return jsonify({"status": "error", "message": f"Falha na conexão SMTP ({server}:{port}): {str(e)}"}), 400
     except Exception as e:
-        logger.error(f"Falha ao testar SMTP: {e}")
-        return jsonify({"status": "error", "message": f"Erro de conexão: {str(e)}"}), 500
+        logger.error(f"Falha inesperada ao testar SMTP: {e}")
+        return jsonify({"status": "error", "message": f"Erro ao testar SMTP: {str(e)}"}), 500
 
 @exports_bp.route('/send_email', methods=['POST'])
 @login_required

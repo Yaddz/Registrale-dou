@@ -996,16 +996,16 @@
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Servidor SMTP</label><input type="text" x-model="settings.smtp.server" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Porta</label><input type="text" x-model="settings.smtp.port" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Usuário</label><input type="text" x-model="settings.smtp.user" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Senha</label><input type="password" x-model="settings.smtp.password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Email de Envio (From)</label><input type="email" x-model="settings.smtp.from_email" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="noreply@exemplo.com"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Servidor SMTP</label><input type="text" x-model="settings.smtp.server" placeholder="smtp.gmail.com" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Porta</label><input type="text" x-model="settings.smtp.port" placeholder="587" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Usuário</label><input type="text" x-model="settings.smtp.user" placeholder="seu-email@gmail.com" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Senha</label><input type="password" x-model="settings.smtp.password" placeholder="Deixe em branco para manter a salva" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Email de Envio (From)</label><input type="email" x-model="settings.smtp.from_email" placeholder="notificacoes@seudominio.com.br" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
                             </div>
                             <div class="mt-6 p-6 bg-slate-50 dark:bg-stone-800/60 rounded-2xl border border-slate-100 dark:border-stone-700/80 flex flex-col md:flex-row items-end gap-4">
                                 <div class="flex-1 space-y-1">
                                     <label class="text-[10px] font-bold text-slate-400 uppercase">Destinatário para teste SMTP</label>
-                                    <input type="email" x-model="testEmail" placeholder="teste@exemplo.com" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none">
+                                    <input type="email" x-model="testEmail" placeholder="teste@exemplo.com" class="w-full p-3 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none">
                                 </div>
                                 <button @click="testSmtpConnection()" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-6 py-3.5 rounded-xl text-xs font-bold hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap" :disabled="isTestingSmtp">
                                     <i data-lucide="send" class="w-3.5 h-3.5" :class="isTestingSmtp && 'animate-pulse'"></i>
@@ -1040,12 +1040,12 @@
                             </div>
                             <div class="space-y-6">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Base URL API</label><input type="text" placeholder="https://api.gestaoclick.com/franquias" x-model="settings.api_keys.gestaoclick_base_url" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Caminho YAML Base</label><input type="text" placeholder="dag_confs/Pesquisa_cnpj_sync.yaml" x-model="settings.api_keys.yaml_path" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
+                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Base URL API</label><input type="text" placeholder="https://api.gestaoclick.com/franquias" x-model="settings.api_keys.gestaoclick_base_url" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Caminho YAML Base</label><input type="text" placeholder="Pesquisa_cnpj.yaml" x-model="settings.api_keys.yaml_path" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Access Token</label><input type="password" x-model="settings.api_keys.gestaoclick_access_token" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Secret Access Token</label><input type="password" x-model="settings.api_keys.gestaoclick_secret_token" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
+                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Access Token</label><input type="password" x-model="settings.api_keys.gestaoclick_access_token" placeholder="Insira o Access Token do GestãoClick" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Secret Access Token</label><input type="password" x-model="settings.api_keys.gestaoclick_secret_token" placeholder="Insira o Secret Access Token" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
                                 </div>
                             </div>
                         </div>
@@ -1063,8 +1063,8 @@
                                 </span>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Usuário INLABS</label><input type="text" x-model="settings.inlabs.user" placeholder="E-mail ou CPF" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Senha INLABS</label><input type="password" x-model="settings.inlabs.password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Usuário INLABS</label><input type="text" x-model="settings.inlabs.user" placeholder="E-mail ou CPF cadastrado no INLABS" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
+                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Senha INLABS</label><input type="password" x-model="settings.inlabs.password" placeholder="Deixe em branco para manter a salva" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
                             </div>
                         </div>
                         
@@ -2151,122 +2151,6 @@
             </div>
         </div>
 
-        <!-- Modal: Configuração Obrigatória da Rotina Principal (Pesquisa CNPJ) -->
-        <div x-show="mainDagSetupModal" x-cloak class="fixed inset-0 z-[58] flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm" x-transition.opacity>
-            <div @click.away="!isSavingMainDag && (mainDagSetupModal = false)" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in duration-200">
-                <!-- Header -->
-                <div class="p-6 md:p-8 border-b border-slate-100 dark:border-stone-800 bg-amber-500/10 dark:bg-amber-950/40 flex justify-between items-start shrink-0">
-                    <div class="flex items-start gap-4">
-                        <div class="bg-amber-500/20 text-amber-700 dark:text-amber-400 p-3 rounded-2xl shrink-0">
-                            <i data-lucide="shield-alert" class="w-6 h-6"></i>
-                        </div>
-                        <div>
-                            <h3 class="font-bold text-lg text-slate-900 dark:text-stone-100">Configurações da Rotina Principal (Pesquisa CNPJ)</h3>
-                            <p class="text-xs text-amber-800 dark:text-amber-300/90 mt-1">
-                                Defina os e-mails de destino e valide o servidor de envio para ativar os relatórios automáticos.
-                            </p>
-                        </div>
-                    </div>
-                    <button @click="mainDagSetupModal = false" class="p-2 hover:bg-slate-200/60 dark:hover:bg-stone-800 rounded-full transition-colors shrink-0">
-                        <i data-lucide="x" class="w-5 h-5 text-slate-400 dark:text-stone-400"></i>
-                    </button>
-                </div>
-                
-                <!-- Body -->
-                <div class="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
-                    <!-- 1. E-mails e Assunto -->
-                    <div class="space-y-4">
-                        <h4 class="text-[10px] font-black text-slate-700 dark:text-stone-300 uppercase tracking-[0.2em] flex items-center gap-1.5">
-                            <i data-lucide="mail" class="w-4 h-4 text-slate-500 dark:text-stone-400"></i> 1. Destinatários e Notificação
-                        </h4>
-                        
-                        <div class="space-y-1">
-                            <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">
-                                E-mails de Destino <span class="text-red-500">*</span>
-                            </label>
-                            <textarea x-model="mainDagForm.emails_raw" rows="2" placeholder="email1@empresa.com, diretoria@empresa.com" class="w-full p-3.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20"></textarea>
-                            <p class="text-[10px] text-slate-400 dark:text-stone-400 mt-1">Separe múltiplos e-mails por vírgula ou um por linha.</p>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">
-                                    Assunto do E-mail <span class="text-red-500">*</span>
-                                </label>
-                                <input type="text" x-model="mainDagForm.subject" placeholder="[Registrale] Relatório Diário de Publicações do DOU" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20">
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">
-                                    Horário de Execução
-                                </label>
-                                <select x-model="mainDagForm.schedule" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20">
-                                    <option value="0 8 * * MON-FRI">08:00 (Segunda a Sexta - Padrão)</option>
-                                    <option value="0 5 * * *">05:00 (Todos os dias)</option>
-                                    <option value="0 12 * * MON-FRI">12:00 (Segunda a Sexta)</option>
-                                    <option value="0 18 * * MON-FRI">18:00 (Segunda a Sexta)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 2. Servidor de Envio SMTP (se pendente ou expansível) -->
-                    <div class="space-y-4 pt-4 border-t border-slate-100 dark:border-stone-800">
-                        <div class="flex items-center justify-between">
-                            <h4 class="text-[10px] font-black text-slate-700 dark:text-stone-300 uppercase tracking-[0.2em] flex items-center gap-1.5">
-                                <i data-lucide="send" class="w-4 h-4 text-slate-500 dark:text-stone-400"></i> 2. Servidor de Envio (SMTP)
-                            </h4>
-                            <span :class="mainDagStatus.smtp_configured ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80' : 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/80'" class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border" x-text="mainDagStatus.smtp_configured ? 'Configurado' : 'Pendente'"></span>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">Servidor SMTP</label>
-                                <input type="text" x-model="mainDagForm.smtp.server" placeholder="smtp.gmail.com" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none">
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">Porta</label>
-                                <input type="text" x-model="mainDagForm.smtp.port" placeholder="587" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none">
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">Usuário SMTP</label>
-                                <input type="text" x-model="mainDagForm.smtp.user" placeholder="seu-email@gmail.com" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none">
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">Senha de App / Token</label>
-                                <input type="password" x-model="mainDagForm.smtp.password" placeholder="••••••••••••" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none">
-                            </div>
-                            <div class="md:col-span-2 space-y-1">
-                                <label class="text-[10px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest block">E-mail Remetente (From)</label>
-                                <input type="text" x-model="mainDagForm.smtp.from_email" placeholder="notificacoes@empresa.com" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none">
-                            </div>
-                        </div>
-
-                        <!-- Teste Rápido de SMTP dentro do Modal -->
-                        <div class="p-4 bg-slate-50 dark:bg-stone-800/80 rounded-xl border border-slate-200 dark:border-stone-700/80 flex flex-col sm:flex-row items-center justify-between gap-3">
-                            <p class="text-xs text-slate-500 dark:text-stone-400">
-                                Deseja verificar se as credenciais SMTP estão funcionando antes de salvar?
-                            </p>
-                            <button type="button" @click="testMainDagSmtp()" class="px-4 py-2 bg-slate-200 dark:bg-stone-700 hover:bg-slate-300 dark:hover:bg-stone-600 text-slate-800 dark:text-stone-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 active:scale-95" :disabled="isTestingSmtp">
-                                <i data-lucide="send" class="w-3.5 h-3.5" :class="isTestingSmtp && 'animate-pulse'"></i>
-                                <span x-text="isTestingSmtp ? 'Testando...' : 'Testar Conexão SMTP'"></span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Actions -->
-                <div class="p-5 md:p-6 bg-slate-50 dark:bg-stone-800/60 border-t border-slate-100 dark:border-stone-800 flex justify-end gap-3 shrink-0">
-                    <button @click="mainDagSetupModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 dark:text-stone-300 hover:bg-slate-200 dark:hover:bg-stone-700 transition-all" :disabled="isSavingMainDag">
-                        Fechar
-                    </button>
-                    <button @click="saveMainDagConfig()" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center gap-2 active:scale-95 shadow-sm whitespace-nowrap" :disabled="isSavingMainDag">
-                        <span :class="{'animate-spin': isSavingMainDag}" class="inline-flex shrink-0"><i :data-lucide="isSavingMainDag ? 'loader-2' : 'check'" class="w-4 h-4"></i></span>
-                        <span x-text="isSavingMainDag ? 'Salvando...' : 'Salvar e Ativar'"></span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
         <!-- Modal: Configuração de Rotina -->
         <div x-show="routineModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm" x-transition.opacity>
             <div @click.away="routineModal = false" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in duration-200">
@@ -2942,10 +2826,10 @@
                             </h4>
                             <div class="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 space-y-2 text-xs text-amber-900 dark:text-amber-200">
                                 <p class="leading-relaxed">
-                                    O sistema conta com um <strong>Assistente Inteligente (Setup Wizard)</strong> que diagnostica em tempo real as 4 integrações obrigatórias:
+                                    O sistema conta com um <strong>Assistente Inteligente (Setup Wizard)</strong> que diagnostica em tempo real as 4 integrações essenciais:
                                 </p>
                                 <ul class="list-disc list-inside space-y-1">
-                                    <li><strong>Rotina Principal (Pesquisa CNPJ):</strong> E-mails de destino e assunto para os relatórios automáticos diários.</li>
+                                    <li><strong>Rotina Principal (Pesquisa CNPJ):</strong> E-mails de destino e assunto para os relatórios automáticos diários. Em instalações limpas inicia sem dados fictícios e abre diretamente o modal padrão de rotinas.</li>
                                     <li><strong>Servidor de Envio (SMTP):</strong> Host, porta, usuário, senha (com preservação inteligente e limpeza de espaços no Gmail) e remetente.</li>
                                     <li><strong>Planilha Google Sheets:</strong> URL da planilha (<code class="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">spreadsheet_url</code>), chave JSON da Conta de Serviço e teste de prévia.</li>
                                     <li><strong>Credenciais INLABS:</strong> Usuário e senha do portal Imprensa Nacional para download diário do DOU.</li>
@@ -3302,7 +3186,7 @@
                             <div id="u-6-5" class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/40 border border-slate-100 dark:border-stone-800 space-y-2 scroll-mt-8">
                                 <strong class="text-slate-900 dark:text-stone-100 flex items-center gap-1.5"><i data-lucide="link" class="w-4 h-4 text-emerald-600"></i> 6.5. ERP GestãoClick</strong>
                                 <p class="text-slate-500 dark:text-stone-400 leading-relaxed">
-                                    Insira o <strong>Token de Acesso</strong> e <strong>Chave Secreta</strong> gerados no GestãoClick e ative o toggle de sincronização automática.
+                                    Insira o <strong>Token de Acesso</strong> e <strong>Chave Secreta</strong> gerados no GestãoClick e ative o toggle de sincronização automática. Tentativas de sincronizar sem chaves configuradas emitem um alerta de erro imediato.
                                 </p>
                             </div>
 
@@ -3334,7 +3218,7 @@
                                     <i data-lucide="help-circle" class="w-4 h-4 text-rose-600"></i> O que é o banner amarelo pedindo para configurar a rotina principal?
                                 </h4>
                                 <p class="text-slate-600 dark:text-stone-300 leading-relaxed">
-                                    Ao acessar pela primeira vez, a rotina principal necessita de e-mails de destino e servidor SMTP configurados. Clique em <strong>"Configurar agora"</strong> no banner amarelo para abrir o modal. Ao salvar, o banner desaparece e o sistema está pronto.
+                                    Ao acessar pela primeira vez (ou após reinstalação limpa), a rotina principal inicia sem dados fictícios. Clique em <strong>"Configurar agora"</strong> no banner para abrir o modal padrão de rotinas e informar os e-mails e o assunto. Ao salvar, o assistente avança para as próximas etapas.
                                 </p>
                             </div>
 
@@ -3778,14 +3662,6 @@
                 integrationsStatus: { is_configured: true, all_configured: true, pending_count: 0, next_pending: null, integrations: [], main_dag: {}, smtp: {} },
                 wizardModalOpen: false,
                 mainDagStatus: { is_configured: true, missing_fields: [], main_dag: {}, smtp_configured: false, smtp: {} },
-                mainDagSetupModal: false,
-                isSavingMainDag: false,
-                mainDagForm: {
-                    emails_raw: '',
-                    subject: '',
-                    schedule: '0 8 * * MON-FRI',
-                    smtp: { server: '', port: '587', user: '', password: '', from_email: '' }
-                },
                 routines: [],
                 loadingRoutines: false,
                 routineModal: false,
@@ -4118,11 +3994,12 @@
                             body: JSON.stringify({ smtp: this.settings.smtp, test_email: this.testEmail })
                         });
                         const res = await r.json();
-                        this.showAlert(res.message, res.status);
+                        this.showAlert(res.message || 'Teste concluído', r.ok && res.status === 'success' ? 'success' : 'error');
                     } catch(e) {
-                        this.showAlert('Erro de conexão ao testar SMTP', 'error');
+                        this.showAlert('Erro de conexão ao testar SMTP: ' + e.message, 'error');
                     } finally {
                         this.isTestingSmtp = false;
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     }
                 },
 
@@ -4144,7 +4021,12 @@
                             try {
                                 const r1 = await fetch('/api/sync', {method: 'POST'});
                                 const res1 = await r1.json();
-                                msgs.push(`GestãoClick: ${res1.message || 'Sincronização iniciada com sucesso'}`);
+                                if (r1.ok && res1.status === 'success') {
+                                    msgs.push(`GestãoClick: ${res1.message || 'Sincronização iniciada com sucesso'}`);
+                                } else {
+                                    hasError = true;
+                                    msgs.push(`GestãoClick: ${res1.message || 'Credenciais não configuradas'}`);
+                                }
                             } catch(err1) {
                                 hasError = true;
                                 msgs.push(`GestãoClick: Falha (${err1.message || 'Erro na resposta'})`);
@@ -4237,9 +4119,32 @@
                     return this.checkIntegrationsStatus();
                 },
 
-                openIntegrationTarget(id) {
+                async openIntegrationTarget(id) {
                     if (id === 'main_dag') {
-                        this.openMainDagSetupModal();
+                        if (!this.routines || this.routines.length === 0) {
+                            await this.loadRoutines();
+                        }
+                        const mainR = (this.routines || []).find(r => r.file === 'Pesquisa_cnpj.yaml' || r.id === 'pesquisa_cnpj_anvisa' || r.type === 'sync');
+                        if (mainR) {
+                            await this.openRoutineModal(mainR);
+                        } else {
+                            await this.openRoutineModal({
+                                id: 'pesquisa_cnpj_anvisa',
+                                file: 'Pesquisa_cnpj.yaml',
+                                name: 'MONITORAMENTO PADRÃO',
+                                schedule: '0 8 * * MON-FRI',
+                                terms: [],
+                                organs: ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
+                                sections: ['SECAO_1'],
+                                emails: [],
+                                subject: '',
+                                type: 'sync',
+                                active: true,
+                                is_exact_search: true,
+                                source: 'INLABS',
+                                terms_ignore: []
+                            });
+                        }
                     } else if (id === 'smtp') {
                         this.activeTab = 'settings';
                         this.settingsSubTab = 'integrations';
@@ -4266,7 +4171,7 @@
                     if (this.integrationsStatus && this.integrationsStatus.next_pending) {
                         this.openIntegrationTarget(this.integrationsStatus.next_pending.id);
                     } else {
-                        this.openMainDagSetupModal();
+                        this.openIntegrationTarget('main_dag');
                     }
                 },
 
@@ -4281,90 +4186,6 @@
                     if (this.integrationsStatus && !this.integrationsStatus.all_configured && this.integrationsStatus.next_pending) {
                         this.wizardModalOpen = true;
                         this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-                    }
-                },
-
-                openMainDagSetupModal() {
-                    const md = this.mainDagStatus.main_dag || {};
-                    const sm = this.mainDagStatus.smtp || {};
-                    this.mainDagForm = {
-                        emails_raw: (md.emails || []).join(', '),
-                        subject: md.subject || '',
-                        schedule: md.schedule || '0 8 * * MON-FRI',
-                        smtp: {
-                            server: sm.server || (this.settings.smtp ? this.settings.smtp.server : '') || '',
-                            port: sm.port || (this.settings.smtp ? this.settings.smtp.port : '587') || '587',
-                            user: sm.user || (this.settings.smtp ? this.settings.smtp.user : '') || '',
-                            password: '',
-                            from_email: sm.from_email || (this.settings.smtp ? this.settings.smtp.from_email : '') || sm.user || ''
-                        }
-                    };
-                    this.mainDagSetupModal = true;
-                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-                },
-
-                async testMainDagSmtp() {
-                    const sm = this.mainDagForm.smtp;
-                    if (!sm.server || !sm.user) {
-                        return this.showAlert('Preencha pelo menos o servidor e o usuário SMTP para testar.', 'error');
-                    }
-                    const target = prompt('Informe o e-mail de destino para o teste SMTP:', sm.user || this.testEmail || '');
-                    if (!target) return;
-                    this.isTestingSmtp = true;
-                    try {
-                        const r = await fetch('/api/test_smtp', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ smtp: sm, test_email: target })
-                        });
-                        const res = await r.json();
-                        this.showAlert(res.message, res.status);
-                    } catch(e) {
-                        this.showAlert('Erro ao testar conexão SMTP', 'error');
-                    } finally {
-                        this.isTestingSmtp = false;
-                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-                    }
-                },
-
-                async saveMainDagConfig() {
-                    if (!this.mainDagForm.emails_raw.trim()) {
-                        return this.showAlert('Informe pelo menos um e-mail de destino para a rotina principal.', 'error');
-                    }
-                    this.isSavingMainDag = true;
-                    try {
-                        const res = await fetch('/api/system/configure_main_dag', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                emails: this.mainDagForm.emails_raw,
-                                subject: this.mainDagForm.subject,
-                                schedule: this.mainDagForm.schedule,
-                                smtp: this.mainDagForm.smtp
-                            })
-                        });
-                        const data = await res.json();
-                        if (res.ok && data.status === 'success') {
-                            this.showAlert(data.message, 'success');
-                            this.mainDagSetupModal = false;
-                            if (this.mainDagForm.smtp && this.mainDagForm.smtp.server && this.mainDagForm.smtp.user) {
-                                if (!this.settings.smtp) this.settings.smtp = {};
-                                this.settings.smtp.server = this.mainDagForm.smtp.server;
-                                this.settings.smtp.port = this.mainDagForm.smtp.port || '587';
-                                this.settings.smtp.user = this.mainDagForm.smtp.user;
-                                this.settings.smtp.from_email = this.mainDagForm.smtp.from_email || this.mainDagForm.smtp.user;
-                            }
-                            await this.fetchSettings();
-                            await this.checkIntegrationsStatus();
-                            this.loadRoutines();
-                            this.onIntegrationStepCompleted();
-                        } else {
-                            this.showAlert(data.message || 'Erro ao salvar configurações da rotina principal.', 'error');
-                        }
-                    } catch(e) {
-                        this.showAlert('Erro ao conectar com o servidor: ' + e.message, 'error');
-                    } finally {
-                        this.isSavingMainDag = false;
                     }
                 },
 
@@ -4694,7 +4515,7 @@
                     const sections = this.currentR.sections || [];
                     const emails = this.currentR.emails_raw ? this.currentR.emails_raw.split(/[\s,]+/).map(e => e.trim()).filter(e => e) : [];
                     
-                    if(terms.length === 0) return this.showAlert('Adicione pelo menos um termo de busca', 'error');
+                    if(terms.length === 0 && this.currentR.type !== 'sync') return this.showAlert('Adicione pelo menos um termo de busca', 'error');
                     if(sections.length === 0) return this.showAlert('Selecione pelo menos uma seção do DOU', 'error');
                     if(emails.length === 0) return this.showAlert('Adicione pelo menos um e-mail de destino', 'error');
                     
@@ -4730,7 +4551,11 @@
                         if(res.status === 'success') {
                             this.showAlert('Rotina salva com sucesso!');
                             this.routineModal = false;
-                            this.loadRoutines();
+                            await this.loadRoutines();
+                            await this.checkIntegrationsStatus();
+                            if (this.currentR.file === 'Pesquisa_cnpj.yaml' || this.currentR.type === 'sync') {
+                                this.onIntegrationStepCompleted();
+                            }
                         } else { this.showAlert(res.message, 'error'); }
                     } catch(e) { this.showAlert('Erro ao salvar rotina', 'error'); }
                 },

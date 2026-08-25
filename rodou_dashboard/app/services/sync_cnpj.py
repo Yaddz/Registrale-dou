@@ -295,7 +295,7 @@ def executar_sincronizacao():
         
     if not all([url_api, access_token, secret_token]):
         logging.error("Credenciais ausentes no .env, settings.json e banco local")
-        return
+        raise ValueError("Credenciais do GestãoClick não configuradas.")
 
     headers = {"access-token": access_token, "secret-access-token": secret_token, "Accept": "application/json"}
     

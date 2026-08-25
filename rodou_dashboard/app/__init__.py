@@ -6,17 +6,23 @@ from .models import db, User, EmailTemplate
 from sqlalchemy import event
 
 def _init_default_data():
-    """Inicializa dados padrão no banco (admin user e template de email)."""
-    if not User.query.filter_by(username='admin').first():
-        admin = User(username='admin', role='master')
-        admin.set_password('admin')
-        db.session.add(admin)
-        db.session.commit()
-    if not EmailTemplate.query.filter_by(name='Padrão Registrale').first():
-        template_path = os.path.join(
-            os.path.dirname(__file__), '..', '..', 'src', 'notification', 'templates', 'dashboard_template.html'
-        )
-        ro_dou_html_base = '''<!DOCTYPE html>
+    """Inicializa dados padrão no banco (admin user e template de email) com proteção de concorrência."""
+    try:
+        if not User.query.filter_by(username='admin').first():
+            admin = User(username='admin', role='master')
+            admin.set_password('admin')
+            db.session.add(admin)
+            db.session.commit()
+    except Exception:
+        try: db.session.rollback()
+        except Exception: pass
+
+    try:
+        if not EmailTemplate.query.filter_by(name='Padrão Registrale').first():
+            template_path = os.path.join(
+                os.path.dirname(__file__), '..', '..', 'src', 'notification', 'templates', 'dashboard_template.html'
+            )
+            ro_dou_html_base = '''<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -63,31 +69,38 @@ def _init_default_data():
 </body>
 </html>'''
 
-        body_html = ro_dou_html_base.replace("[TITLE]", "Notificação Registrale").replace("[MESSAGE]", "Foram detectadas as seguintes menções no Diário Oficial da União (DOU):")
-        
-        try:
-            if os.path.exists(template_path):
-                with open(template_path, 'r', encoding='utf-8') as f:
-                    body_html = f.read()
-        except Exception:
-            pass
-        template = EmailTemplate(
-            name='Padrão Registrale',
-            subject='[ro-dou] Relatório de Menções',
-            body_html=body_html
-        )
-        db.session.add(template)
-        db.session.commit()
+            body_html = ro_dou_html_base.replace("[TITLE]", "Notificação Registrale").replace("[MESSAGE]", "Foram detectadas as seguintes menções no Diário Oficial da União (DOU):")
+            
+            try:
+                if os.path.exists(template_path):
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        body_html = f.read()
+            except Exception:
+                pass
+            template = EmailTemplate(
+                name='Padrão Registrale',
+                subject='[ro-dou] Relatório de Menções',
+                body_html=body_html
+            )
+            db.session.add(template)
+            db.session.commit()
+    except Exception:
+        try: db.session.rollback()
+        except Exception: pass
     
-    if not EmailTemplate.query.filter_by(name='Relatório Mensal Registrale').first():
-        monthly_html = ro_dou_html_base.replace("[TITLE]", "Relatório Consolidado de Menções").replace("[MESSAGE]", "Abaixo constam as publicações identificadas pelo sistema Registrale no período consolidado:")
-        monthly_template = EmailTemplate(
-            name='Relatório Mensal Registrale',
-            subject='Registrale - Relatório Mensal',
-            body_html=monthly_html
-        )
-        db.session.add(monthly_template)
-        db.session.commit()
+    try:
+        if not EmailTemplate.query.filter_by(name='Relatório Mensal Registrale').first():
+            monthly_html = ro_dou_html_base.replace("[TITLE]", "Relatório Consolidado de Menções").replace("[MESSAGE]", "Abaixo constam as publicações identificadas pelo sistema Registrale no período consolidado:")
+            monthly_template = EmailTemplate(
+                name='Relatório Mensal Registrale',
+                subject='Registrale - Relatório Mensal',
+                body_html=monthly_html
+            )
+            db.session.add(monthly_template)
+            db.session.commit()
+    except Exception:
+        try: db.session.rollback()
+        except Exception: pass
 
 def create_app(config=None):
     app = Flask(__name__,
@@ -155,10 +168,21 @@ def create_app(config=None):
     app.register_blueprint(admin_bp, url_prefix='/api')
     app.register_blueprint(exports_bp, url_prefix='/api')
     
-    # Inicializar dados padrão
+    # Inicializar dados padrão com proteção contra concorrência entre workers Gunicorn
     with app.app_context():
-        db.create_all()
-        _init_default_data()
+        try:
+            db.create_all()
+        except Exception as e:
+            app.logger.info(f"Tabelas do banco já criadas ou concorrência tratada: {e}")
+            try: db.session.rollback()
+            except Exception: pass
+            
+        try:
+            _init_default_data()
+        except Exception as e:
+            app.logger.info(f"Dados padrão já inicializados ou concorrência tratada: {e}")
+            try: db.session.rollback()
+            except Exception: pass
         
     # Limpeza de DAGs temporárias órfãs na inicialização
     try:

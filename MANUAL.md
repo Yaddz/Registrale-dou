@@ -112,13 +112,13 @@ Se houver qualquer integração pendente, um **banner informativo com badges int
   * Clicar em qualquer badge direciona o operador imediatamente para o formulário correspondente (com rolagem suave e foco no card).
 
 * **As 4 Integrações Monitoradas pelo Assistente:**
-  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados.
-  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui preservação segura de senhas preexistentes, higienização automática de espaços em senhas de app do Gmail e suporte a teste imediato de conexão.
+  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados. Em instalações limpas, a rotina inicia sem dados fictícios (em branco) e o sistema abre diretamente o modal padrão de rotinas para preenchimento.
+  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui preservação segura de senhas preexistentes, higienização automática de espaços em senhas de app do Gmail, diagnósticos aprimorados e suporte a teste imediato de conexão.
   3. **Planilha Google Sheets:** Conexão via Conta de Serviço (Service Account) com URL da planilha (`spreadsheet_url`), nome da aba e mapeamento de colunas para sincronização contínua de clientes.
   4. **Credenciais INLABS:** Usuário e senha de acesso ao portal da Imprensa Nacional para download automatizado das edições do DOU.
 
 * **Fluxo Passo a Passo do Assistente (Wizard):**
-  1. Clique no botão de ação destacado no banner (ex: **"Configurar: Rotina Principal"** ou **"Configurar: Servidor SMTP"**).
+  1. Clique no botão de ação destacado no banner (ex: **"Configurar: Rotina Principal"** ou **"Configurar: Servidor SMTP"**). Para a rotina principal, o sistema abre o modal padrão de edição de rotinas.
   2. Preencha os campos obrigatórios e utilize o botão de **Testar Conexão** quando disponível.
   3. Ao salvar, uma janela modal de confirmação (**"Etapa Salva com Sucesso!"**) exibirá a próxima integração pendente.
   4. Clique em **"Configurar Próximo"** para avançar ou em **"Concluir Depois"** se desejar finalizar em outro momento.
@@ -370,6 +370,7 @@ Na sub-aba **Templates de E-mail**:
 Na sub-aba **Integrações Gerais**:
 * Insira o **Token de Acesso** e a **Chave Secreta** gerados no GestãoClick.
 * Ative o toggle de sincronização automática. O sistema importará novos clientes cadastrados no ERP automaticamente.
+* **Validação de Credenciais na Sincronização:** Se você tentar sincronizar sem ter preenchido o Access Token ou Secret Token, o sistema exibirá um alerta em vermelho bloqueando o processo e orientando a configurar as credenciais.
 
 ---
 
@@ -384,7 +385,7 @@ Na sub-aba **Limpeza do Sistema**:
 ## 7. Perguntas Frequentes (FAQ) & Dúvidas do Dia a Dia
 
 ### ❓ "O que é o banner amarelo pedindo para configurar a rotina principal?"
-**Resposta:** Ao acessar o sistema pela primeira vez (ou após uma reinstalação), a rotina principal de monitoramento precisa ter e-mails de destino e servidor SMTP configurados. Clique em **"Configurar agora"** no banner amarelo para abrir o modal de configuração. Após preencher os dados e salvar, o banner desaparece e o sistema está pronto para operar.
+**Resposta:** Ao acessar o sistema pela primeira vez (ou após uma reinstalação limpa), a rotina principal de monitoramento inicia limpa (sem dados fictícios). Clique em **"Configurar agora"** no banner amarelo para abrir o modal de configuração padrão da rotina e informar os e-mails de destino e o assunto. Após salvar, o status da rotina passa para configurado e o assistente avança para as demais etapas.
 
 ---
 

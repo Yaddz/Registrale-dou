@@ -300,8 +300,23 @@ import re
 @login_required
 def manual_sync_route():
     try:
+        from ..models import Settings
         from ..services.sync_cnpj import executar_sincronizacao
         import threading
+        import os
+        
+        # Validar credenciais do GestãoClick antes de disparar
+        settings_record = Settings.query.filter_by(key='global_settings').first()
+        settings_data = settings_record.get_value() if settings_record else {}
+        ak = settings_data.get('api_keys', {})
+        access_token = (ak.get('gestaoclick_access_token') or os.getenv("ACCESS_TOKEN") or '').strip()
+        secret_token = (ak.get('gestaoclick_secret_token') or os.getenv("SECRET_ACCESS_TOKEN") or '').strip()
+        
+        if not access_token or not secret_token:
+            return jsonify({
+                "status": "error",
+                "message": "Credenciais do GestãoClick não configuradas. Acesse a aba Configurações > Integrações para cadastrar seu Access Token e Secret Token."
+            }), 400
         
         def run_sync_in_background(app_context):
             from ..services.sync_cnpj import executar_sincronizacao

@@ -845,8 +845,51 @@ class TestNewOptimizedFeatures:
             },
             "test_email": "destino@teste.com"
         })
-        # Não deve retornar 400 (parâmetros faltantes), e sim tentar a conexão
-        assert resp.status_code in (200, 500)
+        # Não deve falhar por falta de parâmetros (como senha/servidor), e sim tentar a conexão de rede
+        data = resp.get_json()
+        assert data.get('message') != "Servidor SMTP, porta e email de teste são obrigatórios."
+        assert "conexão" in data.get('message', '').lower() or "sucesso" in data.get('message', '').lower()
+
+    def test_sync_gestaoclick_without_credentials_returns_400(self, auth_client, app, monkeypatch):
+        # Garante que não há variáveis de ambiente nem chaves no banco
+        monkeypatch.delenv("ACCESS_TOKEN", raising=False)
+        monkeypatch.delenv("SECRET_ACCESS_TOKEN", raising=False)
+        with app.app_context():
+            from app.models import db, Settings
+            s = Settings.query.filter_by(key='global_settings').first()
+            if s:
+                val = s.get_value()
+                val['api_keys'] = {}
+                s.set_value(val)
+                db.session.commit()
+
+        resp = auth_client.post('/api/sync')
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data.get('status') == 'error'
+        assert 'Credenciais do GestãoClick não configuradas' in data.get('message', '')
+
+    def test_sync_gestaoclick_with_credentials_starts(self, auth_client, app):
+        with app.app_context():
+            from app.models import db, Settings
+            s = Settings.query.filter_by(key='global_settings').first()
+            if not s:
+                s = Settings(key='global_settings')
+                db.session.add(s)
+            val = s.get_value() if s.value else {}
+            val['api_keys'] = {
+                'gestaoclick_access_token': 'fake_token_123',
+                'gestaoclick_secret_token': 'fake_secret_456',
+                'gestaoclick_base_url': 'https://api.gestaoclick.com/franquias'
+            }
+            s.set_value(val)
+            db.session.commit()
+
+        resp = auth_client.post('/api/sync')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'success'
+
 
 
 

@@ -387,7 +387,7 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 * **Descrição:** Salva as configurações globais do sistema (`Settings`). Preserva senhas preexistentes quando o campo for enviado em branco, higieniza espaços em senhas de app do Gmail e sincroniza a conexão `smtp_default` no Airflow. Requer perfil `master`.
 
 ### `POST /api/sync`
-* **Descrição:** Dispara a sincronização manual de clientes com a API do GestãoClick em background.
+* **Descrição:** Dispara a sincronização manual de clientes com a API do GestãoClick em background. Valida previamente as credenciais (`gestaoclick_access_token` e `gestaoclick_secret_token`), retornando HTTP 400 com mensagem explicativa caso não estejam cadastradas.
 
 ### `GET /api/users` / `POST /api/users` / `DELETE /api/users`
 * **Descrição:** Gerencia os usuários internos do painel.
