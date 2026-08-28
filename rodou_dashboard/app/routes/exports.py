@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, session, send_file, after_this_request
 import os
-import json
+import io
 from .auth import login_required
 from .companies import get_companies_data
 import logging
@@ -65,13 +65,17 @@ class NumberedCanvas(canvas.Canvas):
         self.drawRightString(812, 20, page_str)
         self.restoreState()
 
-def style_excel_workbook(file_path):
-    """Aplica formatação executiva nas abas do arquivo Excel com openpyxl."""
+def style_excel_workbook(target):
+    """Aplica formatação visual profissional às abas da planilha Excel (arquivo ou BytesIO)."""
     try:
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         
-        wb = openpyxl.load_workbook(file_path)
+        if isinstance(target, io.BytesIO):
+            target.seek(0)
+            wb = openpyxl.load_workbook(target)
+        else:
+            wb = openpyxl.load_workbook(target)
         
         header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
         meta_header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
@@ -119,7 +123,12 @@ def style_excel_workbook(file_path):
                         max_len = len(val_str)
                 ws.column_dimensions[col_letter].width = min(max(max_len + 4, 14), 70)
                 
-        wb.save(file_path)
+        if isinstance(target, io.BytesIO):
+            target.seek(0)
+            wb.save(target)
+            target.seek(0)
+        else:
+            wb.save(target)
     except Exception as e:
         logger.error(f"Erro ao estilizar Excel: {e}")
 
@@ -156,25 +165,19 @@ def export_report():
     ]
     df_meta = pd.DataFrame(meta_records)
     
-    tmp = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False, dir=DATA_DIR)
-    tmp_path = tmp.name
-    tmp.close()
-    
-    with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df_empresas.to_excel(writer, sheet_name='Empresas Monitoradas', index=False)
         df_meta.to_excel(writer, sheet_name='Metadados da Geração', index=False)
         
-    style_excel_workbook(tmp_path)
-    
-    @after_this_request
-    def cleanup(response):
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-        return response
-        
-    return send_file(tmp_path, as_attachment=True, download_name="relatorio_empresas.xlsx")
+    style_excel_workbook(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="relatorio_empresas.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
 @exports_bp.route('/test_smtp', methods=['POST'])
 @login_required
@@ -208,6 +211,7 @@ def test_smtp():
     msg['From'] = from_email
     msg['To'] = test_email
     
+    server_conn = None
     try:
         port_num = int(port)
         if port_num == 465:
@@ -223,7 +227,6 @@ def test_smtp():
         if user and password:
             server_conn.login(user, password)
         server_conn.send_message(msg)
-        server_conn.quit()
         return jsonify({"status": "success", "message": f"Email de teste enviado com sucesso para {test_email}!"})
     except smtplib.SMTPAuthenticationError as e:
         err_msg = e.smtp_error.decode('utf-8', errors='ignore') if isinstance(e.smtp_error, bytes) else str(e.smtp_error or e)
@@ -238,71 +241,42 @@ def test_smtp():
     except Exception as e:
         logger.error(f"Falha inesperada ao testar SMTP: {e}")
         return jsonify({"status": "error", "message": f"Erro ao testar SMTP: {str(e)}"}), 500
+    finally:
+        if server_conn:
+            try: server_conn.quit()
+            except Exception: pass
 
 @exports_bp.route('/send_email', methods=['POST'])
 @login_required
 def send_email():
-    from ..models import Settings
-    data = request.json
+    from ..services.email_service import EmailSender
+    data = request.get_json(silent=True) or {}
     to_emails = data.get('to_emails', [])
     subject = data.get('subject', 'Notificação Registrale')
     body_html = data.get('body_html', '')
     
-    settings_record = Settings.query.filter_by(key='global_settings').first()
-    settings = settings_record.get_value() if settings_record else {}
-    smtp = settings.get('smtp', {})
-    
-    server = smtp.get('server')
-    port = smtp.get('port')
-    user = smtp.get('user')
-    password = smtp.get('password')
-    from_email = smtp.get('from_email') or user
-    
-    if not all([server, port]):
-        return jsonify({"status": "error", "message": "Configurações SMTP não definidas (servidor e porta são obrigatórios)."}), 400
+    if not to_emails:
+        return jsonify({"status": "error", "message": "Nenhum destinatário informado."}), 400
         
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    
     try:
-        port_num = int(port)
-        if port_num == 465:
-            server_conn = smtplib.SMTP_SSL(server, port_num, timeout=10)
+        sender = EmailSender()
+        success = sender.send_custom_email(to_emails, subject, body_html)
+        if success:
+            add_history_event("Email Enviado", f"Emails enviados para: {', '.join(to_emails)}")
+            return jsonify({"status": "success", "message": "E-mails enviados com sucesso!"})
         else:
-            server_conn = smtplib.SMTP(server, port_num, timeout=10)
-            if port_num == 587 or port_num == 25:
-                server_conn.starttls()
-                
-        if user and password:
-            server_conn.login(user, password)
-        
-        for recipient in to_emails:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = from_email
-            msg['To'] = recipient
-            msg.attach(MIMEText(body_html, 'html'))
-            server_conn.send_message(msg)
-            
-        server_conn.quit()
-        
-        add_history_event("Email Enviado", f"Emails enviados para: {', '.join(to_emails)}")
-        return jsonify({"status": "success", "message": "E-mails enviados com sucesso!"})
+            return jsonify({"status": "error", "message": "Falha ao enviar e-mail via servidor SMTP."}), 500
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Erro ao enviar email: {e}")
+        return jsonify({"status": "error", "message": f"Erro ao enviar email: {str(e)}"}), 500
 
 @exports_bp.route('/export_pdf', methods=['POST'])
 @login_required
 def export_pdf():
-    import tempfile
     data = request.json or {}
     companies = data.get('companies', [])
-    filters = data.get('filters', {})
     
-    tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False, dir=DATA_DIR)
-    output_filename = tmp.name
-    tmp.close()
+    buffer = io.BytesIO()
     
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -310,7 +284,7 @@ def export_pdf():
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     doc = SimpleDocTemplate(
-        output_filename,
+        buffer,
         pagesize=landscape(A4),
         rightMargin=30,
         leftMargin=30,
@@ -342,32 +316,34 @@ def export_pdf():
     kpi_val_style = ParagraphStyle('KPIVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.HexColor('#0F172A'), alignment=1)
     
     th_style = ParagraphStyle('TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white)
-    td_style = ParagraphStyle('TD', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#1E293B'))
-    td_mono = ParagraphStyle('TDMono', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#475569'))
+    td_style = ParagraphStyle('TD', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor('#1E293B'), leading=11)
+    td_mono = ParagraphStyle('TDMono', parent=styles['Normal'], fontName='Courier', fontSize=8.5, textColor=colors.HexColor('#0F172A'), leading=11)
+
+    # 1. Cabeçalho
+    elements.append(Paragraph("Relatório de Empresas Monitoradas", title_style))
+    elements.append(Paragraph("Diário Oficial da União (DOU) · Monitoramento Automatizado Registrale", subtitle_style))
+
+    # 2. Metadados e KPIs
+    active_count = len([c for c in companies if c.get('status')])
+    inactive_count = len(companies) - active_count
     
-    # 1. Cabeçalho Corporativo
-    elements.append(Paragraph("<b>REGISTRALE</b> · Relatório de Empresas Monitoradas", title_style))
-    elements.append(Paragraph(f"Base de dados oficial de monitoramento no Diário Oficial da União (DOU) · Emitido em {get_local_now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
-    
-    # 2. Caixa de Resumo Executivo / Metadados
-    monitored_count = sum(1 for c in companies if c.get('status'))
     summary_data = [
         [
             Paragraph("TOTAL DE EMPRESAS", kpi_label_style),
-            Paragraph("MONITORADAS (ATIVAS)", kpi_label_style),
-            Paragraph("INATIVAS", kpi_label_style),
+            Paragraph("MONITORAMENTO ATIVO", kpi_label_style),
+            Paragraph("MONITORAMENTO INATIVO", kpi_label_style),
             Paragraph("USUÁRIO SOLICITANTE", kpi_label_style),
-            Paragraph("DATA DA EMISSÃO", kpi_label_style)
+            Paragraph("DATA DE GERAÇÃO", kpi_label_style)
         ],
         [
             Paragraph(str(len(companies)), kpi_val_style),
-            Paragraph(str(monitored_count), kpi_val_style),
-            Paragraph(str(len(companies) - monitored_count), kpi_val_style),
+            Paragraph(f"<font color='#16a34a'>{active_count}</font>", kpi_val_style),
+            Paragraph(f"<font color='#dc2626'>{inactive_count}</font>", kpi_val_style),
             Paragraph(f"{session.get('user', {}).get('username', 'admin')}", kpi_val_style),
-            Paragraph(get_local_now().strftime('%d/%m/%Y'), kpi_val_style)
+            Paragraph(get_local_now().strftime('%d/%m/%Y %H:%M'), kpi_val_style)
         ]
     ]
-    summary_table = Table(summary_data, colWidths=[150, 160, 150, 160, 162])
+    summary_table = Table(summary_data, colWidths=[156, 156, 156, 156, 158])
     summary_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
         ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
@@ -378,13 +354,13 @@ def export_pdf():
     ]))
     elements.append(summary_table)
     elements.append(Spacer(1, 15))
-    
+
     # 3. Tabela de Empresas
     table_data = [[
         Paragraph("Razão Social / Nome", th_style),
         Paragraph("CNPJ", th_style),
         Paragraph("Origem do Cadastro", th_style),
-        Paragraph("Status Monitoramento", th_style)
+        Paragraph("Status", th_style)
     ]]
     
     for c in companies:
@@ -411,30 +387,18 @@ def export_pdf():
         elements.append(Paragraph("Nenhuma empresa encontrada com os filtros atuais.", styles['Normal']))
         
     doc.build(elements, canvasmaker=NumberedCanvas)
-
-    @after_this_request
-    def cleanup_pdf(response):
-        try:
-            os.unlink(output_filename)
-        except Exception:
-            pass
-        return response
-
-    return send_file(output_filename, as_attachment=True, download_name="relatorio_empresas.pdf", mimetype='application/pdf')
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="relatorio_empresas.pdf", mimetype='application/pdf')
 
 
 @exports_bp.route('/export_mentions_pdf', methods=['POST'])
 @login_required
 def export_mentions_pdf():
     import re
-    import tempfile
     data = request.json or {}
     mentions = data.get('mentions', [])
-    filters = data.get('filters', {})
     
-    tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False, dir=DATA_DIR)
-    output_filename = tmp.name
-    tmp.close()
+    buffer = io.BytesIO()
     
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -442,7 +406,7 @@ def export_mentions_pdf():
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     doc = SimpleDocTemplate(
-        output_filename,
+        buffer,
         pagesize=landscape(A4),
         rightMargin=30,
         leftMargin=30,
@@ -552,16 +516,8 @@ def export_mentions_pdf():
         elements.append(Paragraph("Nenhuma menção encontrada para os filtros selecionados.", styles['Normal']))
     
     doc.build(elements, canvasmaker=NumberedCanvas)
-
-    @after_this_request
-    def cleanup_mentions_pdf(response):
-        try:
-            os.unlink(output_filename)
-        except Exception:
-            pass
-        return response
-
-    return send_file(output_filename, as_attachment=True, download_name="relatorio_mencoes.pdf", mimetype='application/pdf')
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="relatorio_mencoes.pdf", mimetype='application/pdf')
 
 
 @exports_bp.route('/export_mentions_excel', methods=['POST'])
@@ -569,7 +525,6 @@ def export_mentions_pdf():
 def export_mentions_excel():
     """Exporta o relatório de menções com guia de dados e guia dedicada de metadados de geração."""
     import pandas as pd
-    import tempfile
     import re
     
     data = request.json or {}
@@ -610,23 +565,17 @@ def export_mentions_excel():
     ]
     df_meta = pd.DataFrame(meta_records)
     
-    tmp = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False, dir=DATA_DIR)
-    tmp_path = tmp.name
-    tmp.close()
-    
-    with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df_mentions.to_excel(writer, sheet_name='Publicações DOU', index=False)
         df_meta.to_excel(writer, sheet_name='Metadados da Geração', index=False)
         
-    style_excel_workbook(tmp_path)
-    
-    @after_this_request
-    def cleanup(response):
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-        return response
-        
-    return send_file(tmp_path, as_attachment=True, download_name="relatorio_mencoes.xlsx")
+    style_excel_workbook(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="relatorio_mencoes.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 

@@ -34,6 +34,7 @@ A integração com o Google Sheets permite que equipes operacionais mantenham um
   * **Modo Colunas (`columns`):** Cabeçalhos dispostos verticalmente na coluna A com dados distribuídos nas colunas B, C, D...
 * **Mapeamento de Colunas Personalizado:** O operador pode configurar os nomes exatos das colunas (ex: coluna da Razão Social = `Nome do Cliente` ou `Empresa`, coluna do CNPJ = `CNPJ / CPF` ou `Documento`).
 * **Sincronização Automática (Scheduler Daemon):** O Dashboard executa um worker em background que sincroniza a planilha periodicamente (a cada 15 min, 30 min, 1h, 2h, 6h, 12h ou diariamente).
+* **Apagar Registros Obsoletos (`delete_obsolete`):** Switch configurável que, quando ativado, exclui automaticamente do banco e das DAGs empresas com origem `Google Sheets` que foram deletadas da planilha na última sincronização (mantendo protegidas empresas manuais e do ERP).
 * **Teste de Conexão com Amostra:** Antes de salvar, o usuário pode clicar em *Testar Conexão e Prévia* para visualizar o título da planilha, abas disponíveis e uma tabela com as primeiras linhas lidas.
 
 ---

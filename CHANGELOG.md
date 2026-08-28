@@ -3,6 +3,20 @@
 ## [0.12.0] - 2026-08-28
 
 ### 🚀 Melhorias e Correções no Ro-DOU Dashboard
+* **Google Sheets — Apagar Registros Obsoletos**:
+  * Adicionado switch/slider configurável *"Apagar Registros Obsoletos"* (`delete_obsolete`).
+  * Quando ativado, registros de empresas com origem `Google Sheets` que forem excluídos da planilha são automaticamente expurgados do SQLite e das DAGs no momento da sincronização.
+  * Proteção garantida para empresas de outras origens (`Manual` ou `GestãoClick`).
+* **Filtros e Relatórios**:
+  * Correção do filtro de seção do DOU (`matchSection`) para suportar mapeamento semântico entre opções (`SECAO_1`, `SECAO_2`, `SECAO_3`) e variações textuais do banco (`"DOU - Seção 1"`, `"DO1"`, `"1"`, etc.).
+  * Exportação de PDF e Excel com passagem de metadados dos filtros ativos.
+  * Todas as exportações migradas para buffers em memória (`io.BytesIO`), eliminando resíduos de arquivos no disco.
+* **Sessões e Performance Backend**:
+  * Configuração de diretório seguro e elevação do threshold de sessões (`SESSION_FILE_THRESHOLD = 10000`), eliminando avisos de `FileNotFoundError` e concorrência no Docker.
+  * Eliminação de queries N+1 no SQLite e criação de 4 índices de banco (`ix_mentions_cnpj_norm`, `ix_mentions_data`, `ix_companies_status`, `ix_companies_origem`).
+  * Singleton connection pool para o PostgreSQL do INLABS.
+  * Cache com verificação de `mtime` na listagem de rotinas (`get_routines`).
+  * Compilação estática de expressões regulares em `clean_abstract_for_dashboard`.
 * **Editor Visual de Templates de E-mail (WYSIWYG)**:
   * Implementação de editor WYSIWYG completo integrado no preview do e-mail com três modos de trabalho (*Editor Visual*, *Demonstração Real* e *Código HTML*).
   * Adição da ferramenta de **Destaque Amarelo estilo DOU** (`#FFA`) com 1 clique para destacar variáveis e termos no padrão do Diário Oficial.

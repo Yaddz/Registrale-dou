@@ -318,19 +318,19 @@
         }
         
         /* Brilho e Glow das Bolinhas de Conectividade / Status no Dark Mode */
-        .status-dot-emerald, html.dark .bg-emerald-500.rounded-full, html.dark .bg-emerald-400.rounded-full {
+        html.dark .bg-emerald-500.rounded-full, html.dark .bg-emerald-400.rounded-full {
             box-shadow: 0 0 12px rgba(52, 211, 153, 0.95), 0 0 4px rgba(52, 211, 153, 1) !important;
             background-color: #34d399 !important;
         }
-        .status-dot-amber, html.dark .bg-amber-500.rounded-full, html.dark .bg-amber-400.rounded-full {
+        html.dark .bg-amber-500.rounded-full, html.dark .bg-amber-400.rounded-full {
             box-shadow: 0 0 12px rgba(251, 191, 36, 0.95), 0 0 4px rgba(251, 191, 36, 1) !important;
             background-color: #fbbf24 !important;
         }
-        .status-dot-blue, html.dark .bg-blue-500.rounded-full, html.dark .bg-blue-400.rounded-full {
+        html.dark .bg-blue-500.rounded-full, html.dark .bg-blue-400.rounded-full {
             box-shadow: 0 0 12px rgba(96, 165, 250, 0.95), 0 0 4px rgba(96, 165, 250, 1) !important;
             background-color: #60a5fa !important;
         }
-        .status-dot-red, html.dark .bg-red-500.rounded-full, html.dark .bg-red-400.rounded-full {
+        html.dark .bg-red-500.rounded-full, html.dark .bg-red-400.rounded-full {
             box-shadow: 0 0 12px rgba(248, 113, 113, 0.95), 0 0 4px rgba(248, 113, 113, 1) !important;
             background-color: #f87171 !important;
         }
@@ -451,8 +451,9 @@
                 <i data-lucide="log-out" class="w-5 h-5"></i>
                 <span x-show="sidebarOpen" class="text-sm font-semibold">Sair</span>
             </a>
-            <button @click="sidebarOpen = !sidebarOpen" class="w-full flex items-center gap-4 p-3 rounded-xl text-slate-400 hover:bg-slate-50 transition-colors">
-                <i :data-lucide="sidebarOpen ? 'chevron-left' : 'chevron-right'" class="w-5 h-5"></i>
+            <button @click="sidebarOpen = !sidebarOpen" class="w-full flex items-center gap-4 p-3 rounded-xl text-slate-400 hover:bg-slate-50 dark:hover:bg-stone-800 transition-colors">
+                <i x-show="sidebarOpen" data-lucide="chevron-left" class="w-5 h-5"></i>
+                <i x-show="!sidebarOpen" data-lucide="chevron-right" class="w-5 h-5"></i>
                 <span x-show="sidebarOpen" class="text-sm font-semibold">Recolher</span>
             </button>
         </div>
@@ -1249,7 +1250,7 @@
                                 <p class="text-[11px] text-slate-400">Abra o arquivo .json baixado no Google Cloud em um editor de texto, copie todo o conteúdo e cole aqui.</p>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                                 <div class="space-y-1">
                                     <label class="text-[10px] font-bold text-slate-400 uppercase">Orientação dos Dados na Planilha</label>
                                     <select x-model="settings.google_sheets.orientation" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
@@ -1261,13 +1262,13 @@
                                     <label class="text-[10px] font-bold text-slate-400 uppercase">Sincronização Automática</label>
                                     <div class="flex items-center gap-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                                         <select x-model="settings.google_sheets.sync_interval" class="flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none" :disabled="!settings.google_sheets.auto_sync">
-                                            <option value="15">A cada 15 minutos</option>
-                                            <option value="30">A cada 30 minutos</option>
+                                            <option value="15">A cada 15 min</option>
+                                            <option value="30">A cada 30 min</option>
                                             <option value="60">A cada 1 hora</option>
                                             <option value="120">A cada 2 horas</option>
                                             <option value="360">A cada 6 horas</option>
                                             <option value="720">A cada 12 horas</option>
-                                            <option value="1440">A cada 24 horas (Diariamente)</option>
+                                            <option value="1440">A cada 24 horas</option>
                                         </select>
                                         <div class="flex items-center gap-2 pr-2">
                                             <label class="dash-switch" title="Sincronização Automática Planilha">
@@ -1276,7 +1277,24 @@
                                                     <div class="dash-switch-thumb"></div>
                                                 </div>
                                             </label>
-                                            <span :class="settings.google_sheets.auto_sync ? 'text-emerald-700 font-bold' : 'text-slate-500 font-bold'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets.auto_sync ? 'Ativo' : 'Desativado'"></span>
+                                            <span :class="settings.google_sheets.auto_sync ? 'text-emerald-700 font-bold' : 'text-slate-500 font-bold'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets.auto_sync ? 'Ativo' : 'Inativo'"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-1">
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[10px] font-bold text-slate-400 uppercase">Apagar Obsoletos</label>
+                                    </div>
+                                    <div class="flex items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200 h-[46px]" title="Remove do sistema registros com origem Google Sheets que forem excluídos da planilha">
+                                        <span class="text-xs text-slate-600 font-medium truncate">Remover excluídos</span>
+                                        <div class="flex items-center gap-2 pr-2 shrink-0">
+                                            <label class="dash-switch" title="Apagar registros que não constam mais na planilha">
+                                                <input type="checkbox" x-model="settings.google_sheets.delete_obsolete" class="sr-only dash-switch-input">
+                                                <div class="dash-switch-track dash-switch-sm">
+                                                    <div class="dash-switch-thumb"></div>
+                                                </div>
+                                            </label>
+                                            <span :class="settings.google_sheets.delete_obsolete ? 'text-rose-600 font-bold' : 'text-slate-500 font-bold'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets.delete_obsolete ? 'Sim' : 'Não'"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1626,7 +1644,10 @@
                                         this.error = true;
                                     }
                                 })
-                                .catch(() => { this.error = true; })
+                                .catch(err => {
+                                    if (err && err.name === 'AbortError') return;
+                                    this.error = true;
+                                })
                                 .finally(() => { 
                                     clearTimeout(timeoutId);
                                     this.loading = false; 
@@ -1772,7 +1793,7 @@
                                 {% if user.role == 'master' %}
                                 <div class="flex items-center gap-2 pr-3 border-r border-slate-200">
                                     <label class="dash-switch" :title="r.active ? 'Pausar rotina' : 'Ativar rotina'">
-                                        <input type="checkbox" :checked="r.active" @change="toggleRoutine(r.id)" class="sr-only dash-switch-input">
+                                        <input type="checkbox" :checked="r.active" @change="toggleRoutine(r)" class="sr-only dash-switch-input">
                                         <div class="dash-switch-track dash-switch-sm">
                                             <div class="dash-switch-thumb"></div>
                                         </div>
@@ -2114,7 +2135,8 @@
                 <div class="p-4 bg-slate-50 dark:bg-stone-800/60 border-t border-slate-100 dark:border-stone-800 flex justify-end gap-2 shrink-0">
                     <button @click="monthlySearchModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 dark:text-stone-300 hover:bg-slate-200 dark:hover:bg-stone-700 transition-all" :disabled="isCheckingMonthly">Fechar</button>
                     <button @click="checkAndStartMonthly()" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center gap-2 active:scale-95 shadow-sm whitespace-nowrap" :disabled="isCheckingMonthly">
-                        <span :class="{'animate-spin': isCheckingMonthly}" class="inline-flex shrink-0"><i :data-lucide="isCheckingMonthly ? 'loader-2' : 'play'" class="w-4 h-4 fill-current"></i></span>
+                        <span x-show="isCheckingMonthly" class="inline-flex shrink-0 animate-spin"><i data-lucide="loader-2" class="w-4 h-4"></i></span>
+                        <span x-show="!isCheckingMonthly" class="inline-flex shrink-0"><i data-lucide="play" class="w-4 h-4 fill-current"></i></span>
                         <span x-text="isCheckingMonthly ? 'Verificando...' : 'Verificar e Iniciar'"></span>
                     </button>
                 </div>
@@ -2233,7 +2255,7 @@
                                     <span class="text-[11px] text-slate-400 dark:text-stone-400" x-text="companies.length + ' empresas cadastradas'"></span>
                                 </div>
                                 <div class="relative">
-                                    <input type="text" x-model="routineCompanySearch" placeholder="Digite Razão Social ou CNPJ para localizar..." class="w-full pl-10 pr-4 py-3 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <input type="text" x-model.debounce.250ms="routineCompanySearch" placeholder="Digite Razão Social ou CNPJ para localizar..." class="w-full pl-10 pr-4 py-3 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                                     <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
                                 </div>
                                 <!-- Dropdown autocomplete de empresas -->
@@ -2431,7 +2453,7 @@
                         </div>
                         <div class="relative">
                             <i data-lucide="building" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-                            <input type="text" x-model="companySearch" placeholder="Digite Razão Social ou CNPJ..." class="w-full h-11 pl-10 pr-4 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-stone-100/10 text-slate-900 dark:text-stone-100">
+                            <input type="text" x-model.debounce.250ms="companySearch" placeholder="Digite Razão Social ou CNPJ..." class="w-full h-11 pl-10 pr-4 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-stone-100/10 text-slate-900 dark:text-stone-100">
                             
                             <!-- Dropdown de Autocomplete -->
                             <div x-show="suggestedCompanies.length > 0" class="absolute z-20 w-full mt-2 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto" @click.away="companySearch = ''">
@@ -2564,7 +2586,7 @@
         </div>
 
         <!-- Tab: Manual do Usuário -->
-        <div x-show="activeTab === 'manual'" x-cloak class="space-y-8 animate-in fade-in" x-data="{ manualSearch: '', activeFaq: null, activeSection: 'u-1-1' }">
+        <div x-show="activeTab === 'manual'" x-cloak class="space-y-8 animate-in fade-in" x-data="{ manualSearch: '' }">
             <!-- Header do Manual -->
             <div class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm relative overflow-hidden">
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
@@ -2592,7 +2614,7 @@
                 <div class="mt-6 pt-6 border-t border-slate-100 dark:border-stone-800">
                     <div class="relative">
                         <i data-lucide="search" class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input type="text" x-model="manualSearch" placeholder="Pesquisar no manual (ex: Permissões, Criar rotina, 150 CNPJs, Busca Mensal, SMTP, Google Sheets, GestãoClick, FAQ)..." class="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-stone-800/60 border border-slate-200 dark:border-stone-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 dark:text-stone-200">
+                        <input type="text" x-model.debounce.250ms="manualSearch" placeholder="Pesquisar no manual (ex: Permissões, Criar rotina, 150 CNPJs, Busca Mensal, SMTP, Google Sheets, GestãoClick, FAQ)..." class="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-stone-800/60 border border-slate-200 dark:border-stone-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 dark:text-stone-200">
                     </div>
                 </div>
             </div>
@@ -2726,7 +2748,7 @@
                     <!-- ========================================================================= -->
                     <!-- 1. VISÃO GERAL E PRIMEIROS PASSOS -->
                     <!-- ========================================================================= -->
-                    <section id="u-1-visao-geral" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-1-visao-geral" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 flex items-center justify-center font-bold text-sm">1</div>
                             <div>
@@ -2857,7 +2879,7 @@
                     <!-- ========================================================================= -->
                     <!-- 2. GESTÃO DE EMPRESAS MONITORADAS -->
                     <!-- ========================================================================= -->
-                    <section id="u-2-empresas" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-2-empresas" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold text-sm">2</div>
                             <div>
@@ -2935,7 +2957,7 @@
                     <!-- ========================================================================= -->
                     <!-- 3. COMO CRIAR E GERENCIAR ROTINAS DE BUSCA -->
                     <!-- ========================================================================= -->
-                    <section id="u-3-rotinas" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-3-rotinas" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 flex items-center justify-center font-bold text-sm">3</div>
                             <div>
@@ -3042,7 +3064,7 @@
                     <!-- ========================================================================= -->
                     <!-- 4. ACOMPANHAMENTO DE MENÇÕES E PUBLICAÇÕES -->
                     <!-- ========================================================================= -->
-                    <section id="u-4-mencoes" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-4-mencoes" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 flex items-center justify-center font-bold text-sm">4</div>
                             <div>
@@ -3092,7 +3114,7 @@
                     <!-- ========================================================================= -->
                     <!-- 5. GERAÇÃO DE RELATÓRIOS E EXPORTAÇÕES -->
                     <!-- ========================================================================= -->
-                    <section id="u-5-relatorios" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-5-relatorios" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-400 flex items-center justify-center font-bold text-sm">5</div>
                             <div>
@@ -3141,7 +3163,7 @@
                     <!-- ========================================================================= -->
                     <!-- 6. CONFIGURAÇÕES DO SISTEMA E INTEGRAÇÕES (MASTER) -->
                     <!-- ========================================================================= -->
-                    <section id="u-6-configuracoes" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-6-configuracoes" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">6</div>
                             <div>
@@ -3215,7 +3237,7 @@
                     <!-- ========================================================================= -->
                     <!-- 7. PERGUNTAS FREQUENTES (FAQ) -->
                     <!-- ========================================================================= -->
-                    <section id="u-7-faq" x-show="!manualSearch || $el.innerText.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
+                    <section id="u-7-faq" x-show="!manualSearch || $el.textContent.toLowerCase().includes(manualSearch.toLowerCase())" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 scroll-mt-6">
                         <div class="flex items-center gap-3 border-b border-slate-100 dark:border-stone-800 pb-4">
                             <div class="w-9 h-9 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 flex items-center justify-center font-bold text-sm">7</div>
                             <div>
@@ -3587,6 +3609,7 @@
                     if (!raw.google_sheets.orientation) raw.google_sheets.orientation = 'rows';
                     if (raw.google_sheets.auto_sync === undefined) raw.google_sheets.auto_sync = false;
                     if (!raw.google_sheets.sync_interval) raw.google_sheets.sync_interval = 60;
+                    if (raw.google_sheets.delete_obsolete === undefined) raw.google_sheets.delete_obsolete = false;
                     return raw;
                 })(),
                 kpis: {{ init_data.kpis | tojson | safe }},
@@ -3595,6 +3618,7 @@
                 timeLeft: {{ time_left }},
                 isSyncing: false,
                 alert: { show: false, message: '', type: 'success' },
+                alertTimeoutId: null,
                 unseenMentionsCount: 0,
                 lastSeenMentionsTotal: {{ init_data.kpis.mencoes_total if init_data else 0 }},
 
@@ -3615,7 +3639,7 @@
                         this.showAlert('Erro ao carregar menções', 'error');
                     } finally {
                         this.loadingMentions = false;
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     }
                 },
 
@@ -3692,9 +3716,6 @@
                 monthlySearchYear: new Date().getFullYear(),
                 monthlySearchFile: '',
                 monthlySearchRunning: false,
-                monthlySearchProgress: '',
-                monthlySearchPercent: 0,
-                monthlySearchDetail: '',
                 isCheckingMonthly: false,
                 currentR: { id: '', name: '', file: '', schedule: '0 8 * * MON-FRI', simple_schedule: '0 8 * * MON-FRI', terms_raw: '', organs_raw: '', sections: [], emails_raw: '', subject: '', type: 'custom', is_exact_search: true, terms_ignore_raw: '', source: 'INLABS' },
                 isTestingSheets: false,
@@ -3745,7 +3766,7 @@
                         this.showAlert('Erro de rede ao testar conexão com Google Sheets', 'error');
                     } finally {
                         this.isTestingSheets = false;
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     }
                 },
 
@@ -3770,7 +3791,7 @@
                         this.showAlert('Erro ao sincronizar planilha Google Sheets', 'error');
                     } finally {
                         this.isSyncingSheets = false;
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     }
                 },
 
@@ -3864,6 +3885,32 @@
                     return null;
                 },
 
+                // Helper para correspondência flexível de seção do DOU (suporta SECAO_1, DOU - Seção 1, DO1, 1, etc.)
+                matchSection(mentionSecao, filterSection) {
+                    if (!filterSection) return true;
+                    if (!mentionSecao) return false;
+                    
+                    const f = String(filterSection).trim().toUpperCase();
+                    const s = String(mentionSecao).trim().toUpperCase();
+                    if (s === f) return true;
+                    
+                    const fNorm = f.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
+                    const sNorm = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
+                    if (sNorm === fNorm) return true;
+                    
+                    let targetNum = null;
+                    if (fNorm.includes('1') || fNorm.includes('DO1') || fNorm.includes('SECAO1')) targetNum = '1';
+                    else if (fNorm.includes('2') || fNorm.includes('DO2') || fNorm.includes('SECAO2')) targetNum = '2';
+                    else if (fNorm.includes('3') || fNorm.includes('DO3') || fNorm.includes('SECAO3')) targetNum = '3';
+                    
+                    if (targetNum) {
+                        if (sNorm.includes('SECAO' + targetNum) || sNorm.includes('DO' + targetNum) || sNorm.includes('S' + targetNum) || sNorm.includes(targetNum)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                },
+
                 get filteredReports() {
                     if (!this.allMentions) return [];
                     
@@ -3881,8 +3928,8 @@
                         // Filtro de Empresa Específica (Múltiplo)
                         if (companies.length > 0 && !companies.includes(m.cnpj)) return false;
 
-                        // Filtro de Seção
-                        if (section && m.secao !== section) return false;
+                        // Filtro de Seção (Comparação flexível com matchSection)
+                        if (section && !this.matchSection(m.secao, section)) return false;
 
                         // Filtro de Texto Global
                         if (q) {
@@ -3920,7 +3967,7 @@
                         const r = await fetch('/api/export_mentions_pdf', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ mentions })
+                            body: JSON.stringify({ mentions, filters: this.reportFilters })
                         });
                         if (r.ok) {
                             const blob = await r.blob();
@@ -3928,6 +3975,9 @@
                             const a = document.createElement('a');
                             a.href = url; a.download = 'relatorio_mencoes.pdf'; a.click();
                             URL.revokeObjectURL(url);
+                        } else {
+                            const err = await r.json().catch(() => ({ message: 'Erro ao gerar PDF' }));
+                            this.showAlert(err.message || 'Erro ao gerar PDF', 'error');
                         }
                     } catch(e) { this.showAlert('Erro ao gerar PDF', 'error'); }
                 },
@@ -3941,7 +3991,7 @@
                         const r = await fetch('/api/export_mentions_excel', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ mentions })
+                            body: JSON.stringify({ mentions, filters: this.reportFilters })
                         });
                         if (r.ok) {
                             const blob = await r.blob();
@@ -3949,6 +3999,9 @@
                             const a = document.createElement('a');
                             a.href = url; a.download = 'relatorio_mencoes.xlsx'; a.click();
                             URL.revokeObjectURL(url);
+                        } else {
+                            const err = await r.json().catch(() => ({ message: 'Erro ao gerar Excel' }));
+                            this.showAlert(err.message || 'Erro ao gerar Excel', 'error');
                         }
                     } catch(e) { this.showAlert('Erro ao gerar Excel', 'error'); }
                 },
@@ -3961,8 +4014,9 @@
                 },
 
                 showAlert(msg, type = 'success') {
+                    if (this.alertTimeoutId) clearTimeout(this.alertTimeoutId);
                     this.alert = { show: true, message: msg, type: type };
-                    setTimeout(() => { this.alert.show = false }, 5000);
+                    this.alertTimeoutId = setTimeout(() => { this.alert.show = false; }, 5000);
                     this.$nextTick(() => { if(window.lucide) lucide.createIcons(); });
                 },
 
@@ -3973,7 +4027,8 @@
                             if(d.status === 'ok') {
                                 this.timeLeft = d.time_left;
                             }
-                        });
+                        })
+                        .catch(() => this.showAlert('Erro ao estender sessão', 'error'));
                 },
 
                 markMentionSeen(id) {
@@ -3995,7 +4050,7 @@
                     this.markMentionSeen(m.id);
                     this.selectedMention = m;
                     this.modalOpen = true;
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
 
                 async testSmtpConnection() {
@@ -4079,10 +4134,6 @@
                     await this.startMonthlySearch();
                 },
 
-                async downloadMissingInlabs() {
-                    return this.proceedMonthlySearch('download_and_search');
-                },
-
                 async loadRoutines() {
                     this.loadingRoutines = true;
                     try {
@@ -4091,7 +4142,7 @@
                     } catch(e) { this.showAlert('Erro ao carregar rotinas', 'error'); }
                     finally { 
                         this.loadingRoutines = false; 
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     }
                 },
 
@@ -4257,7 +4308,7 @@
                     }
                     this.routineCompanySearch = '';
                     this.routineModal = true;
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
 
                 get filteredSearchCompanies() {
@@ -4456,10 +4507,6 @@
                     }
                 },
 
-                async loadCompanies() {
-                    return this.fetchCompanies();
-                },
-
                 async toggleRoutine(r) {
                     const newStatus = !r.active;
                     try {
@@ -4611,8 +4658,8 @@
                     
                     let attempts = 0;
                     const maxAttempts = 450; // 450 * 4s = 1800s (30 minutos)
-                    const startHistoryId = (this.historico && this.historico.length > 0 && this.historico[0].id) 
-                        ? this.historico[0].id 
+                    const startHistoryId = (this.historico && this.historico.length > 0)
+                        ? Math.max(0, ...this.historico.map(h => Number(h.id) || 0))
                         : 0;
                     
                     this.searchPollingInterval = setInterval(async () => {
@@ -4711,11 +4758,7 @@
                         return;
                     }
                     this.monthlySearchFile = file;
-                    this.monthlySearchRoutine = 'single';
                     this.monthlySearchRunning = false;
-                    this.monthlySearchProgress = '';
-                    this.monthlySearchPercent = 0;
-                    this.monthlySearchDetail = '';
                     this.isCheckingMonthly = false;
                     this.monthlySearchModal = true;
                 },
@@ -4836,7 +4879,7 @@
 
                 getHistoryColor(evento) {
                     if (evento.includes('Erro') || evento.includes('Falha')) return 'red';
-                    if (evento.includes('Concluíd') || evento.includes('OK') || evento.includes('Sucesso')) return 'green';
+                    if (evento.includes('Concluíd') || evento.includes('OK') || evento.includes('Sucesso')) return 'emerald';
                     if (evento.includes('Iniciada') || evento.includes('Agendada')) return 'blue';
                     if (evento.includes('INLABS')) return 'amber';
                     return 'slate';
@@ -4851,11 +4894,11 @@
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({ids: idsToDelete})
                         });
-                        this.selectedMentionIds = [];
-                        this.mentionSelectAll = false;
                         const res = await r.json();
                         this.showAlert(res.message, res.status);
                         if(res.status === 'success') {
+                            this.selectedMentionIds = [];
+                            this.mentionSelectAll = false;
                             this.allMentions = this.allMentions.filter(m => !idsToDelete.includes(m.id));
                             this.refreshKpis();
                         }
@@ -4870,8 +4913,11 @@
                     }
                     
                     // Encontrar o ID da empresa baseado no CNPJ
-                    let cnpjNumbers = cnpj.replace(/[^0-9]/g, '');
-                    let company = this.companies.find(c => c.cnpj.replace(/[^0-9]/g, '') === cnpjNumbers);
+                    let cnpjNumbers = String(cnpj || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                    let company = this.companies.find(c => {
+                        let cNorm = String(c.cnpj_norm || c.cnpj || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                        return cNorm === cnpjNumbers;
+                    });
                     
                     if(!company) {
                         this.showAlert('Empresa não encontrada na base de dados.', 'error');
@@ -4904,7 +4950,7 @@
                 async openAddCompanyModal() {
                     this.newCompany = {nome:'', cnpj:'', status:true, origem:'Manual'};
                     this.showAddCompanyModal = true;
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
                 closeAddCompanyModal() {
                     this.showAddCompanyModal = false;
@@ -4943,7 +4989,7 @@
                         status: c.status !== undefined ? c.status : true
                     };
                     this.showEditCompanyModal = true;
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
                 closeEditCompanyModal() {
                     this.showEditCompanyModal = false;
@@ -4996,12 +5042,14 @@
                 async delUser(un) {
                     if(!confirm('Deseja remover?')) return;
                     try {
-                        const r = await fetch(`/api/users?username=${un}`, {method:'DELETE'});
+                        const r = await fetch(`/api/users?username=${encodeURIComponent(un)}`, {method:'DELETE'});
                         const res = await r.json();
                         if(res.status === 'success') {
-                            this.showAlert('Removido');
+                            this.showAlert(res.message || 'Removido', 'success');
                             const list = await fetch('/api/users');
                             this.internalUsers = await list.json();
+                        } else {
+                            this.showAlert(res.message || 'Erro ao deletar', 'error');
                         }
                     } catch(e) { this.showAlert('Erro ao deletar', 'error'); }
                 },
@@ -5111,7 +5159,7 @@
                         showHtml: false
                     };
                     this.showEmailModal = true;
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
 
                 closeEmailModal() {
@@ -5267,7 +5315,7 @@
                         const r = await fetch('/api/companies');
                         this.companies = await r.json();
                     } catch(e) { this.showAlert('Erro ao carregar empresas', 'error'); }
-                    finally { this.loadingCompanies = false; this.$nextTick(() => lucide.createIcons()); }
+                    finally { this.loadingCompanies = false; this.$nextTick(() => { if (window.lucide) lucide.createIcons(); }); }
                 },
 
                 async fetchTemplates() {
@@ -5453,7 +5501,7 @@
     <style>
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { margin: 0; padding: 20px; line-height: 1.6; color: #1e293b; background: #ffffff; }
-        .highlight, mark { background-color: transparent !important; color: inherit !important; font-weight: inherit !important; padding: 0 !important; }
+        .highlight, mark { background-color: #FFA !important; font-weight: bold; padding: 1px 4px; border-radius: 2px; color: #000 !important; }
         [data-template-placeholder]:hover { outline: 1px solid #0284c7; }
         .btn-remove-placeholder:hover { background-color: #dc2626 !important; }
         .btn-remove-badge:hover { color: #dc2626 !important; }
@@ -5496,7 +5544,7 @@
     <style>
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { margin: 0; padding: 20px; line-height: 1.6; color: #1e293b; background: #ffffff; }
-        .highlight, mark { background-color: transparent !important; color: inherit !important; font-weight: inherit !important; padding: 0 !important; }
+        .highlight, mark { background-color: #FFA !important; font-weight: bold; padding: 1px 4px; border-radius: 2px; color: #000 !important; }
         [data-template-placeholder]:hover { outline: 1px solid #0284c7; }
         .btn-remove-placeholder:hover { background-color: #dc2626 !important; }
         .btn-remove-badge:hover { color: #dc2626 !important; }
@@ -5505,7 +5553,7 @@
 <body>${html}</body>
 </html>`;
                     } else if (!html.includes('.btn-remove-placeholder')) {
-                        html = html.replace('</head>', '<style>.highlight, mark { background-color: transparent !important; color: inherit !important; font-weight: inherit !important; padding: 0 !important; } [data-template-placeholder]:hover { outline: 1px solid #0284c7; } .btn-remove-placeholder:hover { background-color: #dc2626 !important; } .btn-remove-badge:hover { color: #dc2626 !important; }</style></head>');
+                        html = html.replace('</head>', '<style>.highlight, mark { background-color: #FFA !important; font-weight: bold; padding: 1px 4px; border-radius: 2px; color: #000 !important; } [data-template-placeholder]:hover { outline: 1px solid #0284c7; } .btn-remove-placeholder:hover { background-color: #dc2626 !important; } .btn-remove-badge:hover { color: #dc2626 !important; }</style></head>');
                     }
                     return html;
                 },
@@ -5809,9 +5857,9 @@
                         if(value === 'routines') {
                             this.loadRoutines();
                         }
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     });
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 }
             }));
         });

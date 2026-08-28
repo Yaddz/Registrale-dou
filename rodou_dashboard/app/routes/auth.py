@@ -1,18 +1,23 @@
 from flask import Blueprint, request, session, redirect, url_for, render_template, jsonify
-from datetime import datetime, timezone, timedelta
-from functools import wraps
-from ..models import db, User, Settings, SyncHistory, Company
-from ..services.mention_service import get_real_mentions, get_mentions_kpis
-from ..services.dag_config_service import get_monitored_cnpjs, get_last_search_time, get_next_search_time
 import os
 import glob
+from datetime import datetime, timezone, timedelta
+from functools import wraps
+from ..models import User, Settings, SyncHistory, Company
+from ..services.mention_service import get_mentions_kpis
+from ..services.dag_config_service import get_monitored_cnpjs, get_last_search_time, get_next_search_time
 
 auth_bp = Blueprint('auth', __name__)
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user' not in session:
+        expires_at = session.get('expires_at')
+        now_ts = datetime.now(timezone(timedelta(hours=-3))).timestamp()
+        if 'user' not in session or (expires_at and now_ts > expires_at):
+            session.clear()
+            if request.path.startswith('/api') or request.is_json:
+                return jsonify({"status": "error", "message": "Sessão expirada ou não autenticada."}), 401
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -47,16 +52,10 @@ def extend_session():
 @auth_bp.route('/')
 @login_required
 def index():
-    expires_at = session.get('expires_at')
-    if expires_at and datetime.now(timezone(timedelta(hours=-3))).timestamp() > expires_at:
-        session.clear()
-        return redirect(url_for('auth.login'))
-
     is_master = session['user']['role'] == 'master'
     
     settings = {"smtp":{}, "api_keys":{}, "google_sheets":{}, "inlabs":{}}
     users_list = []
-    history = []
     
     if is_master:
         settings_record = Settings.query.filter_by(key='global_settings').first()
@@ -95,6 +94,7 @@ def index():
     last_search = get_last_search_time()
     next_search = get_next_search_time()
     
+    expires_at = session.get('expires_at')
     time_left = 0
     if expires_at:
         time_left = max(0, int(expires_at - datetime.now(timezone(timedelta(hours=-3))).timestamp()))

@@ -5,14 +5,20 @@ import uuid
 import html as html_module
 from datetime import datetime, timezone, timedelta
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-
 _mentions_cache = None
 _mentions_cache_time = 0
 
+RE_TAGS_INTERNAL = re.compile(r"</?%>")
+RE_HIGHLIGHT = re.compile(r"<span[^>]*class=['\"]highlight['\"][^>]*>.*?</span>", re.IGNORECASE)
+RE_TABLE_PLACEHOLDER = re.compile(r'\[Tabela de \d+ linhas omitida\]', re.IGNORECASE)
+RE_ALL_TAGS = re.compile(r'<[^>]+>')
+RE_WHITESPACE = re.compile(r'\s+')
+RE_ALPHANUMERIC = re.compile(r'[^A-Za-z0-9]')
+RE_IS_ALPHANUMERIC = re.compile(r'[A-Za-z0-9]')
+
 def normalize_cnpj(cnpj):
     if not cnpj: return ""
-    return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
+    return RE_ALPHANUMERIC.sub('', str(cnpj)).upper()
 
 def clean_abstract_for_dashboard(raw_text, search_term=''):
     """Limpa o abstract removendo HTML e marcadores, centralizando no termo buscado."""
@@ -28,23 +34,23 @@ def clean_abstract_for_dashboard(raw_text, search_term=''):
         highlights[key] = match.group(0)
         return key
     
-    # Limpa apenas marcadores internos obscuros
-    text = text.replace("<%>", "").replace("</%>", "")
+    # Limpa marcadores internos
+    text = RE_TAGS_INTERNAL.sub('', text)
     
     # Extrai os spans highlight temporariamente
-    text = re.sub(r"<span[^>]*class=['\"]highlight['\"][^>]*>.*?</span>", preserve_highlight, text)
+    text = RE_HIGHLIGHT.sub(preserve_highlight, text)
     
     # Remove placeholders de tabela
-    text = re.sub(r'\[Tabela de \d+ linhas omitida\]', '', text)
+    text = RE_TABLE_PLACEHOLDER.sub('', text)
     
     # Remove TODAS as outras tags HTML
-    text = re.sub(r'<[^>]+>', ' ', text)
+    text = RE_ALL_TAGS.sub(' ', text)
     
     # Decodifica entidades HTML
     text = html_module.unescape(text)
     
     # Colapsa espaços múltiplos e quebras de linha
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = RE_WHITESPACE.sub(' ', text).strip()
     
     # Restaura highlights
     for key, val in highlights.items():
@@ -52,15 +58,15 @@ def clean_abstract_for_dashboard(raw_text, search_term=''):
     
     # Centralizar no termo buscado (CNPJ ou nome)
     if search_term:
-        term_clean = re.sub(r'[^A-Za-z0-9]', '', search_term).upper()
-        text_upper = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+        term_clean = RE_ALPHANUMERIC.sub('', search_term).upper()
+        text_upper = RE_ALPHANUMERIC.sub('', text).upper()
         pos = text_upper.find(term_clean)
         if pos >= 0:
             # Mapear posição normalizada de volta ao texto original
             char_count = 0
             original_pos = 0
             for i, ch in enumerate(text):
-                if re.match(r'[A-Za-z0-9]', ch):
+                if RE_IS_ALPHANUMERIC.match(ch):
                     if char_count == pos:
                         original_pos = i
                         break

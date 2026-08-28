@@ -51,7 +51,6 @@ def get_national_holidays(year: int) -> Dict[date, str]:
     pascoa = get_easter_date(year)
     holidays[pascoa - timedelta(days=48)] = "Carnaval (Segunda-feira)"
     holidays[pascoa - timedelta(days=47)] = "Carnaval (Terça-feira)"
-    holidays[pascoa - timedelta(days=46)] = "Quarta-feira de Cinzas"
     holidays[pascoa - timedelta(days=2)] = "Sexta-feira Santa / Paixão de Cristo"
     holidays[pascoa] = "Domingo de Páscoa"
     holidays[pascoa + timedelta(days=60)] = "Corpus Christi"

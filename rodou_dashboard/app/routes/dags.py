@@ -79,7 +79,7 @@ def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=
     # 2. Fallback: Ler apenas os logs daquele dag_run_id específico
     if not results_raw_list and dag_run_id:
         try:
-            from ..services.mention_service import LOGS_DIR
+            from ..services.dag_config_service import LOGS_DIR
             run_log_pattern = os.path.join(LOGS_DIR, f"dag_id={dag_id}", f"run_id={dag_run_id}", "task_id=exec_searchs.exec_search_*", "attempt=*.log")
             specific_logs = glob.glob(run_log_pattern)
             if not specific_logs:
@@ -162,8 +162,8 @@ def manage_routines():
     if request.method == 'GET':
         return jsonify(get_routines())
     
-    if session['user']['role'] != 'master': return jsonify({"status": "error"}), 403
-    data = request.json
+    if session['user']['role'] != 'master': return jsonify({"status": "error", "message": "Acesso negado"}), 403
+    data = request.get_json(silent=True) or {}
     
     name = data.get('name', '').strip()
     if not name:
@@ -433,44 +433,8 @@ def api_configure_main_dag():
     })
     db.session.commit()
     
-    # 2. Atualiza Pesquisa_cnpj.yaml e reconstrói blocos
-    from ..services.dag_config_service import get_base_yaml_path, get_dag_confs_path, rebuild_yaml_from_db
-    dag_confs_path = get_dag_confs_path()
-    file_path = os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
-    
-    existing_data = {}
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                existing_data = yaml.safe_load(f) or {}
-        except:
-            pass
-            
-    dag = existing_data.get('dag', {})
-    dag["id"] = "pesquisa_cnpj_anvisa"
-    dag["description"] = "Busca padrão diária vinculada às empresas com monitoramento ativo na base."
-    dag["tags"] = ["pesquisa_cnpj", "inlabs"]
-    dag["owner"] = ["CNPJ_SYNC"]
-    dag["schedule"] = schedule
-    dag["dataset"] = "inlabs"
-    dag["active"] = active
-    dag["is_paused"] = not active
-    
-    report = dag.get('report', {})
-    report["title"] = "MONITORAMENTO PADRÃO"
-    report["subject"] = subject
-    report["skip_null"] = True
-    report["emails"] = emails
-    dag["report"] = report
-    
-    existing_data["dag"] = dag
-    
-    tmp_path = file_path + '.tmp'
-    with open(tmp_path, 'w', encoding='utf-8') as f:
-        yaml.safe_dump(existing_data, f, allow_unicode=True, sort_keys=False)
-    os.replace(tmp_path, file_path)
-    
-    # Reconstrói para preservar os CNPJs ativos e blocos particionados
+    # 2. Atualiza Pesquisa_cnpj.yaml e reconstrói blocos com base nas novas configurações
+    from ..services.dag_config_service import rebuild_yaml_from_db
     rebuild_yaml_from_db()
     
     # 2. Configurar SMTP se fornecido
@@ -784,13 +748,15 @@ def trigger_routine(file):
         import time
         import requests
         import logging
+        import urllib.parse
         from datetime import datetime, timezone, timedelta
-        from ..services.mention_service import clear_mentions_cache, get_mentions_kpis, get_real_mentions
+        from ..services.mention_service import clear_mentions_cache, get_mentions_kpis
         from ..services.email_service import EmailSender, build_mentions_email_html
+        from ..services.airflow_service import get_airflow_url, get_airflow_auth
         from ..models import db, Settings, Mention, Company
         
-        airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
-        auth = ("airflow", "airflow")
+        airflow_url = get_airflow_url()
+        auth = get_airflow_auth()
         
         time.sleep(3)
         max_wait = 1800  # 30 min
@@ -812,8 +778,10 @@ def trigger_routine(file):
                 run_id = item.get('dag_run_id')
                 
                 try:
+                    did_quoted = urllib.parse.quote(str(did), safe='')
                     if run_id:
-                        url = f"{airflow_url}/api/v1/dags/{did}/dagRuns/{run_id}"
+                        run_id_quoted = urllib.parse.quote(str(run_id), safe='')
+                        url = f"{airflow_url}/api/v1/dags/{did_quoted}/dagRuns/{run_id_quoted}"
                         res = requests.get(url, auth=auth, timeout=5)
                         if res.status_code == 200:
                             st = res.json().get('state')
@@ -824,7 +792,7 @@ def trigger_routine(file):
                             all_done = False
                             break
                     else:
-                        url = f"{airflow_url}/api/v1/dags/{did}/dagRuns?order_by=-execution_date&limit=10"
+                        url = f"{airflow_url}/api/v1/dags/{did_quoted}/dagRuns?order_by=-execution_date&limit=10"
                         res = requests.get(url, auth=auth, timeout=5)
                         if res.status_code == 200:
                             runs = res.json().get('dag_runs', [])
@@ -870,8 +838,10 @@ def trigger_routine(file):
 
                 # Se obteve menções diretas, insere/atualiza no banco SQLite para o Dashboard
                 if direct_mentions:
+                    m_ids = [m['id'] for m in direct_mentions if m.get('id')]
+                    existing_records = {e.id: e for e in Mention.query.filter(Mention.id.in_(m_ids)).all()} if m_ids else {}
                     for m in direct_mentions:
-                        existing = db.session.get(Mention, m['id'])
+                        existing = existing_records.get(m['id'])
                         if not existing:
                             db.session.add(Mention(**m))
                         else:
@@ -1195,9 +1165,10 @@ def trigger_routine(file):
 @login_required
 def api_check_date():
     """Verifica se uma data específica já possui dados baixados no INLABS/PostgreSQL."""
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import text
     from ..models import InlabsDownloadLog
     from ..services.holiday_service import is_business_day, is_within_inlabs_retention_window
+    from ..services.inlabs_service import get_inlabs_postgres_engine
     
     target_date = request.args.get('date', '').strip()
     if not target_date:
@@ -1212,7 +1183,7 @@ def api_check_date():
     articles_count = 0
     
     try:
-        engine = create_engine('postgresql+pg8000://airflow:airflow@postgres:5432/inlabs')
+        engine = get_inlabs_postgres_engine()
         with engine.connect() as conn:
             conn.execute(text("SET statement_timeout = 5000"))
             res = conn.execute(
@@ -1447,12 +1418,13 @@ def api_trigger_monthly():
         from ..services.holiday_service import get_business_days_for_month, is_within_inlabs_retention_window
         from ..services.airflow_service import trigger_airflow_dag, wait_for_specific_dag_runs
         from ..services.inlabs_service import get_downloaded_dates, enforce_inlabs_retention_limit, record_inlabs_download_success
-        from ..services.mention_service import get_real_mentions
-        from ..models import db, Settings, EmailTemplate, InlabsDownloadLog
+        from ..models import db, Settings
+        from ..services.airflow_service import get_airflow_url, get_airflow_auth
+        import urllib.parse
         
         confs_path = get_dag_confs_path()
-        airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
-        auth = ("airflow", "airflow")
+        airflow_url = get_airflow_url()
+        auth = get_airflow_auth()
         
         def wait_for_dags(dags_list, max_wait=1200):
             import time as _time
@@ -1463,7 +1435,8 @@ def api_trigger_monthly():
                 all_done = True
                 for did in set(dags_list):
                     try:
-                        url = f"{airflow_url}/api/v1/dags/{did}/dagRuns?order_by=-execution_date&limit=30"
+                        did_quoted = urllib.parse.quote(str(did), safe='')
+                        url = f"{airflow_url}/api/v1/dags/{did_quoted}/dagRuns?order_by=-execution_date&limit=30"
                         r = requests.get(url, auth=auth, timeout=5)
                         if r.status_code == 200:
                             consecutive_errors = 0
@@ -1729,7 +1702,7 @@ def api_trigger_monthly():
 
         # ─── FASE 3: Consolidar menções recém-executadas e enviar e-mails ───
         with app_context:
-            from ..services.mention_service import clear_mentions_cache, get_real_mentions
+            from ..services.mention_service import clear_mentions_cache
             from ..models import db, Settings, Mention, Company
             try:
                 time.sleep(3)
@@ -1754,8 +1727,10 @@ def api_trigger_monthly():
                 
                 # 2. Persistir novas menções no banco SQLite
                 if monthly_new_mentions:
+                    m_ids = [m['id'] for m in monthly_new_mentions if m.get('id')]
+                    existing_records = {e.id: e for e in Mention.query.filter(Mention.id.in_(m_ids)).all()} if m_ids else {}
                     for m in monthly_new_mentions:
-                        existing = db.session.get(Mention, m['id'])
+                        existing = existing_records.get(m['id'])
                         if not existing:
                             db.session.add(Mention(**m))
                         else:

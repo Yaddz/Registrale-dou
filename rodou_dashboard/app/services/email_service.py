@@ -206,5 +206,12 @@ def build_mentions_email_html(mentions, template_name='Padrão Registrale', titl
                 base_html = base_html.replace('{data}', data0)
                 base_html = base_html.replace('{trecho}', trecho0)
                 base_html = base_html.replace('{link}', link0)
+                
+                if len(mentions) > 1:
+                    extra_mentions_html = ''.join(parts[1:])
+                    if '</body>' in base_html:
+                        base_html = base_html.replace('</body>', f'{extra_mentions_html}</body>')
+                    else:
+                        base_html += extra_mentions_html
             return base_html
     return mentions_html

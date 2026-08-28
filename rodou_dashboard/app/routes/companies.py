@@ -1,11 +1,13 @@
 from flask import Blueprint, request, jsonify, session
 from sqlalchemy import func
+import logging
 from .auth import login_required
 from ..models import db, Company, Mention
 from ..services.dag_config_service import normalize_cnpj, rebuild_yaml_from_db
 from ..services.mention_service import get_real_mentions
 
 companies_bp = Blueprint('companies', __name__)
+logger = logging.getLogger(__name__)
 
 def get_companies_data():
     all_metadata = Company.query.all()
@@ -48,7 +50,7 @@ def api_companies():
     if request.method == 'GET':
         return jsonify(get_companies_data())
     elif request.method == 'POST':
-        data = request.json
+        data = request.get_json(silent=True) or {}
         if not data.get('cnpj'):
             return jsonify({"status": "error", "message": "CNPJ não informado."}), 400
         try:
@@ -96,7 +98,7 @@ def update_company(cnpj_id):
             db.session.rollback()
             return jsonify({"status": "error", "message": str(e)}), 500
 
-    data = request.json
+    data = request.get_json(silent=True) or {}
     try:
         if 'nome' in data:
             company.nome = data.get('nome') or company.nome
@@ -180,10 +182,13 @@ def get_sheets_cnpjs_route():
 @companies_bp.route('/company_history/<path:cnpj>')
 @login_required
 def company_history(cnpj):
-    all_mentions = get_real_mentions()
     cnpj_norm = normalize_cnpj(cnpj)
-    history = [m for m in all_mentions if m['cnpj_norm'] == cnpj_norm]
-    return jsonify(history)
+    if not cnpj_norm:
+        return jsonify([])
+    mentions = Mention.query.filter_by(cnpj_norm=cnpj_norm).all()
+    if not mentions:
+        mentions = Mention.query.filter(Mention.cnpj.ilike(f"%{cnpj}%")).all()
+    return jsonify([m.to_dict() for m in mentions])
 @companies_bp.route('/google_sheets/test', methods=['POST'])
 @login_required
 def test_google_sheets_route():

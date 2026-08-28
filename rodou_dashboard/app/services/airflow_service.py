@@ -2,6 +2,7 @@ import os
 import requests
 import subprocess
 import json
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 def get_airflow_url():
@@ -33,13 +34,14 @@ def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
     try:
         airflow_url = get_airflow_url()
         auth = get_airflow_auth()
+        dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
         
         # 1. Unpause the DAG
-        patch_url = f"{airflow_url}/api/v1/dags/{dag_id}"
+        patch_url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}"
         requests.patch(patch_url, json={"is_paused": False}, auth=auth, timeout=5)
         
         # 2. Trigger the DAG
-        trigger_url = f"{airflow_url}/api/v1/dags/{dag_id}/dagRuns"
+        trigger_url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}/dagRuns"
         payload = {}
         unique_suffix = int(datetime.now().timestamp() * 1000)
         if logical_date:
@@ -92,9 +94,10 @@ def toggle_airflow_dag(dag_id, is_paused=True):
         return False, "ID da DAG não informado."
     
     try:
-        airflow_url = os.getenv('AIRFLOW_URL', 'http://localhost:8080')
-        auth = ("airflow", "airflow")
-        patch_url = f"{airflow_url}/api/v1/dags/{dag_id}"
+        airflow_url = get_airflow_url()
+        auth = get_airflow_auth()
+        dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
+        patch_url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}"
         res = requests.patch(patch_url, json={"is_paused": bool(is_paused)}, auth=auth, timeout=5)
         if res.status_code in (200, 201):
             action = "pausada" if is_paused else "ativada"
@@ -131,6 +134,7 @@ def wait_for_specific_dag_runs(dag_id, run_ids, max_wait=1800, poll_interval=4):
     start_time = time.time()
     pending_runs = set(run_ids)
     run_states = {}
+    dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
     
     # Aguarda 3 segundos iniciais para o scheduler do Airflow enfileirar
     time.sleep(3)
@@ -138,7 +142,8 @@ def wait_for_specific_dag_runs(dag_id, run_ids, max_wait=1800, poll_interval=4):
     while pending_runs and (time.time() - start_time) < max_wait:
         for run_id in list(pending_runs):
             try:
-                url = f"{airflow_url}/api/v1/dags/{dag_id}/dagRuns/{run_id}"
+                run_id_quoted = urllib.parse.quote(str(run_id), safe='')
+                url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}/dagRuns/{run_id_quoted}"
                 r = requests.get(url, auth=auth, timeout=8)
                 if r.status_code == 200:
                     state = r.json().get('state')
@@ -163,10 +168,12 @@ def wait_for_dag_discovery(dag_id, max_wait=120, poll_interval=3):
     import time
     airflow_url = get_airflow_url()
     auth = get_airflow_auth()
+    dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
     start = time.time()
     while (time.time() - start) < max_wait:
         try:
-            url = f"{airflow_url}/api/v1/dags/{dag_id}"
+            url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}"
+            r = requests.get(url, auth=auth, timeout=5)
             r = requests.get(url, auth=auth, timeout=5)
             if r.status_code == 200:
                 return True

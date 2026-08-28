@@ -187,20 +187,23 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
     arquivo_sync = caminho_arquivo
     cnpjs_ativos = []
 
-    def _norm(cnpj): return re.sub(r'[^0-9]', '', str(cnpj))
+    def _norm(cnpj): return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
 
     from flask import current_app
     if current_app:
         from app.models import db, Company
         try:
-            # Sync to local DB
+            # Sync to local DB (em batch)
+            all_existing = Company.query.all()
+            comp_by_norm = {c.cnpj_norm: c for c in all_existing if c.cnpj_norm}
+            
             for item in clientes:
                 cnpj = item.get('cnpj')
                 if not cnpj: continue
                 cnpj_norm = _norm(cnpj)
                 status = item.get('status', True)
                 
-                existing = Company.query.filter_by(cnpj_norm=cnpj_norm).first()
+                existing = comp_by_norm.get(cnpj_norm)
                 if not existing:
                     new_comp = Company(
                         nome=item.get('nome', 'N/A'),
@@ -210,12 +213,22 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
                         status=status
                     )
                     db.session.add(new_comp)
+                    comp_by_norm[cnpj_norm] = new_comp
                 else:
                     if existing.origem != 'Manual':
                         existing.nome = item.get('nome', existing.nome)
                         existing.status = status
             
             db.session.commit()
+            
+            # Reconstroi o YAML garantindo que todas as preferências (emails, horários, assunto) persistidas no SQLite sejam mantidas
+            try:
+                from .dag_config_service import rebuild_yaml_from_db
+                rebuild_yaml_from_db()
+                logging.info("YAML Pesquisa_cnpj.yaml reconstruído com sucesso a partir do banco de dados.")
+                return
+            except Exception as e_reb:
+                logging.warning(f"Fallback para montagem padrão do YAML após erro no rebuild_yaml_from_db: {e_reb}")
             
             # Puxa apenas CNPJs ativos e monitorados (status=True)
             active_comps = Company.query.filter_by(status=True).all()

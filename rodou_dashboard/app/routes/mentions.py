@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from .auth import login_required
 from ..services.mention_service import get_real_mentions, clear_mentions_cache
-from ..models import db, Mention, Settings
+from ..models import db, Mention
 
 mentions_bp = Blueprint('mentions', __name__)
 

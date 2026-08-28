@@ -119,12 +119,27 @@ def create_app(config=None):
             load_dotenv(_data_env, override=True)
         except Exception:
             pass
-    
+            
+    # Configura diretório de sessões persistente e cria se necessário
+    session_dir = os.environ.get('SESSION_FILE_DIR')
+    if not session_dir:
+        if os.path.exists('/flask_sessions'):
+            session_dir = '/flask_sessions'
+        else:
+            session_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'flask_sessions'))
+            
+    try:
+        os.makedirs(session_dir, exist_ok=True)
+    except Exception:
+        session_dir = os.path.join(DATA_DIR, 'flask_sessions')
+        os.makedirs(session_dir, exist_ok=True)
+
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(DATA_DIR, 'database.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config.update(
         SESSION_TYPE='filesystem',
-        SESSION_FILE_DIR=os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'flask_sessions')),
+        SESSION_FILE_DIR=session_dir,
+        SESSION_FILE_THRESHOLD=10000,
         SESSION_PERMANENT=True,
         SESSION_REFRESH_EACH_REQUEST=False,
         SESSION_USE_SIGNER=True,
@@ -172,6 +187,12 @@ def create_app(config=None):
     with app.app_context():
         try:
             db.create_all()
+            with db.engine.connect() as conn:
+                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_mentions_cnpj_norm ON mentions (cnpj_norm);"))
+                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_mentions_data ON mentions (data);"))
+                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_companies_status ON companies (status);"))
+                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_companies_origem ON companies (origem);"))
+                conn.commit()
         except Exception as e:
             app.logger.info(f"Tabelas do banco já criadas ou concorrência tratada: {e}")
             try: db.session.rollback()

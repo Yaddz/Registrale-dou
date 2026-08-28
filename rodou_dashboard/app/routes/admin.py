@@ -125,8 +125,9 @@ def save_settings():
                 try:
                     import requests
                     import json
-                    airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
-                    auth = ("airflow", "airflow")
+                    from ..services.airflow_service import get_airflow_url, get_airflow_auth
+                    airflow_url = get_airflow_url()
+                    auth = get_airflow_auth()
                     
                     conn_payload = {
                         "connection_id": "smtp_default",
@@ -169,8 +170,9 @@ def save_settings():
             
             if inlabs_user and inlabs_pass:
                 import requests
-                airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
-                auth = ("airflow", "airflow")
+                from ..services.airflow_service import get_airflow_url, get_airflow_auth
+                airflow_url = get_airflow_url()
+                auth = get_airflow_auth()
                 
                 try:
                     res = requests.get(f"{airflow_url}/api/v1/connections/inlabs_portal", auth=auth, timeout=5)
@@ -213,39 +215,47 @@ def manage_users():
         return jsonify([{"username": u.username, "role": u.role} for u in users])
         
     if request.method == 'POST':
-        data = request.json
+        data = request.get_json(silent=True) or {}
         if not data.get('username') or not data.get('password'):
             return jsonify({"status": "error", "message": "Campos obrigatórios"}), 400
             
         if User.query.filter_by(username=data['username']).first():
             return jsonify({"status": "error", "message": "Já existe"}), 400
             
-        new_user = User(username=data['username'], role=data.get('role', 'user'))
-        new_user.set_password(data['password'])
-        db.session.add(new_user)
-        db.session.commit()
-        return jsonify({"status": "success", "message": "Usuário criado com sucesso!"})
+        try:
+            new_user = User(username=data['username'], role=data.get('role', 'user'))
+            new_user.set_password(data['password'])
+            db.session.add(new_user)
+            db.session.commit()
+            return jsonify({"status": "success", "message": "Usuário criado com sucesso!"})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"status": "error", "message": str(e)}), 500
         
     elif request.method == 'DELETE':
         username = request.args.get('username')
-        if username == session['user']['username']: return jsonify({"status": "error"}), 400
+        if username == session['user']['username']:
+            return jsonify({"status": "error", "message": "Não é possível excluir o usuário logado."}), 400
         user = User.query.filter_by(username=username).first()
         if user:
-            db.session.delete(user)
-            db.session.commit()
-            return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 500
+            try:
+                db.session.delete(user)
+                db.session.commit()
+                return jsonify({"status": "success", "message": "Usuário excluído com sucesso."})
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Usuário não encontrado."}), 404
+    return jsonify({"status": "error", "message": "Método não permitido."}), 405
 
 @admin_bp.route('/admin/clear_data', methods=['POST'])
 @login_required
 def admin_clear_data():
     if session['user']['role'] != 'master': return jsonify({"status": "error", "message": "Acesso negado"}), 403
-    data = request.json
+    data = request.get_json(silent=True) or {}
     action_type = data.get('type')
     
     try:
-        import time
-        
         if action_type == 'all':
             Company.query.delete()
             SyncHistory.query.delete()
@@ -290,11 +300,8 @@ def admin_clear_data():
                 return jsonify({"status": "error", "message": f"Falha na limpeza INLABS: {str(inner_e)}"}), 500
             
     except Exception as e:
+        db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
-
-import threading
-import json
-import re
 
 @admin_bp.route('/sync', methods=['POST'])
 @login_required
@@ -443,10 +450,11 @@ def get_inlabs_stats():
     if not force_refresh and (time.time() - _inlabs_cache['time'] < 10) and _inlabs_cache['data']:
         return jsonify(_inlabs_cache['data'])
         
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import text
+    from ..services.inlabs_service import get_inlabs_postgres_engine
     import logging
     try:
-        engine = create_engine('postgresql+pg8000://airflow:airflow@postgres:5432/inlabs')
+        engine = get_inlabs_postgres_engine()
         with engine.connect() as conn:
             conn.execute(text("SET statement_timeout = 5000"))
             size_res = conn.execute(text("SELECT pg_size_pretty(pg_database_size('inlabs'))")).scalar()
@@ -489,7 +497,7 @@ def get_inlabs_stats():
 @login_required
 def get_user_manual():
     """Retorna o conteúdo do Manual do Usuário em Markdown ou como download."""
-    from flask import send_file, Response, request
+    from flask import send_file, request
     manual_candidates = [
         os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'MANUAL.md'),
         os.path.join(BASE_DIR, 'MANUAL.md'),

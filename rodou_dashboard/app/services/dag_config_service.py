@@ -133,15 +133,40 @@ def get_next_search_time():
     now = datetime.now(timezone(timedelta(hours=-3)))
     schedule_hour, schedule_minute = 8, 0
     try:
-        yaml_files = glob.glob(os.path.join(BASE_DIR, "dag_confs", "Pesquisa_cnpj_sync.yaml"))
-        if yaml_files:
-            with open(yaml_files[0], 'r', encoding='utf-8') as f:
-                d = yaml.safe_load(f)
-                sched = d.get('dag', {}).get('schedule', '0 8 * * *')
-                parts = sched.split()
-                if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-                    schedule_minute = int(parts[0])
-                    schedule_hour = int(parts[1])
+        # 1. Tentar ler do banco de dados (prioridade)
+        from flask import current_app
+        if current_app:
+            from ..models import Settings
+            s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+            if s_rec:
+                s_val = s_rec.get_value()
+                if isinstance(s_val, dict) and 'schedule' in s_val:
+                    sched = s_val.get('schedule', '0 8 * * *')
+                    parts = sched.split()
+                    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                        schedule_minute = int(parts[0])
+                        schedule_hour = int(parts[1])
+                        next_run = now.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
+                        if now >= next_run: next_run += timedelta(days=1)
+                        while next_run.weekday() > 4: next_run += timedelta(days=1)
+                        return next_run.strftime('%d/%m/%Y %H:%M')
+        
+        # 2. Tentar ler de Pesquisa_cnpj.yaml
+        confs_path = get_dag_confs_path()
+        yaml_candidates = [
+            os.path.join(confs_path, "Pesquisa_cnpj.yaml"),
+            os.path.join(BASE_DIR, "dag_confs", "Pesquisa_cnpj.yaml")
+        ]
+        for y_path in yaml_candidates:
+            if os.path.exists(y_path):
+                with open(y_path, 'r', encoding='utf-8') as f:
+                    d = yaml.safe_load(f) or {}
+                    sched = d.get('dag', {}).get('schedule', '0 8 * * *')
+                    parts = sched.split()
+                    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                        schedule_minute = int(parts[0])
+                        schedule_hour = int(parts[1])
+                        break
     except: pass
     
     next_run = now.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
@@ -217,14 +242,23 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
     if cleaned_count > 0:
         try:
             generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-            if os.path.exists(generator_path):
-                os.utime(generator_path, None)
         except Exception:
             pass
             
     return cleaned_count
 
+_routines_cache = None
+_routines_cache_sig = None
+_routines_cache_time = 0
+
+def clear_routines_cache():
+    global _routines_cache, _routines_cache_sig, _routines_cache_time
+    _routines_cache = None
+    _routines_cache_sig = None
+    _routines_cache_time = 0
+
 def get_routines():
+    global _routines_cache, _routines_cache_sig, _routines_cache_time
     # Executa limpeza automática de DAGs temporárias órfãs (arquivos com mais de 30s ou concluídos)
     try:
         cleanup_orphaned_temp_dags(max_age_seconds=30)
@@ -233,6 +267,15 @@ def get_routines():
 
     dag_confs_path = get_dag_confs_path()
     yaml_files = glob.glob(os.path.join(dag_confs_path, "*.yaml"))
+    
+    try:
+        current_sig = tuple(sorted((f, os.path.getmtime(f)) for f in yaml_files if os.path.exists(f)))
+    except Exception:
+        current_sig = None
+
+    now = time.time()
+    if _routines_cache is not None and current_sig is not None and _routines_cache_sig == current_sig and (now - _routines_cache_time < 15):
+        return [dict(r) for r in _routines_cache]
     
     routines = []
     sync_parts = []
@@ -256,7 +299,7 @@ def get_routines():
                         if data and 'dag' in data:
                             dag = data.get('dag', {})
                             search = dag.get('search', {})
-                            if isinstance(search, list): search = search[0]
+                            if isinstance(search, list): search = search[0] if search else {}
                             report = dag.get('report', {})
                             active_val = dag.get('active', not dag.get('is_paused', False))
                             sync_base_data = {
@@ -285,7 +328,7 @@ def get_routines():
                 if not data or 'dag' not in data: continue
                 dag = data.get('dag', {})
                 search = dag.get('search', {})
-                if isinstance(search, list): search = search[0]
+                if isinstance(search, list): search = search[0] if search else {}
                 report = dag.get('report', {})
                 active_val = dag.get('active', not dag.get('is_paused', False))
                 
@@ -296,6 +339,7 @@ def get_routines():
                     "schedule": dag.get('schedule', '0 5 * * *'),
                     "terms": search.get('terms', []),
                     "organs": search.get('department', []),
+                    "department": search.get('department', []),
                     "sections": search.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"]),
                     "emails": report.get('emails', []),
                     "subject": report.get('subject', ''),
@@ -310,7 +354,7 @@ def get_routines():
             logger.error(f"Erro ao ler rotina {name}: {e}")
             continue
     
-    total_cnpjs = 0
+    total_cnpjs = len(sync_base_data.get('terms', [])) if sync_base_data else 0
     for sp in sync_parts:
         try:
             with open(sp, 'r', encoding='utf-8') as f:
@@ -353,6 +397,10 @@ def get_routines():
     }
     
     routines.insert(0, sync_routine)
+    
+    _routines_cache = routines
+    _routines_cache_sig = current_sig
+    _routines_cache_time = now
     return routines
 
 def get_main_dag_info():

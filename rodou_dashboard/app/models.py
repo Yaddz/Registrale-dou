@@ -24,8 +24,8 @@ class Company(db.Model):
     nome = db.Column(db.String(255), nullable=False, default="N/A")
     cnpj = db.Column(db.String(20), unique=True, nullable=False)
     cnpj_norm = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    origem = db.Column(db.String(50), default='GestãoClick')
-    status = db.Column(db.Boolean, default=True) # Monitorado Sim/Não
+    origem = db.Column(db.String(50), default='GestãoClick', index=True)
+    status = db.Column(db.Boolean, default=True, index=True) # Monitorado Sim/Não
 
     def to_dict(self):
         return {
@@ -86,9 +86,9 @@ class Mention(db.Model):
     id = db.Column(db.String(255), primary_key=True) # pub_id ou fallback_id
     empresa = db.Column(db.String(255))
     cnpj = db.Column(db.String(20))
-    cnpj_norm = db.Column(db.String(20))
+    cnpj_norm = db.Column(db.String(20), index=True)
     secao = db.Column(db.String(50))
-    data = db.Column(db.String(20))
+    data = db.Column(db.String(20), index=True)
     detected_at = db.Column(db.String(100))
     trecho = db.Column(db.Text)
     link = db.Column(db.Text)

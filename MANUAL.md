@@ -337,6 +337,7 @@ Permite que sua equipe mantenha uma planilha no Google Drive com os clientes a s
      * `Colunas`: Cada coluna é uma empresa (cabeçalhos na Coluna A).
    * Informe o nome exato dos cabeçalhos nos campos **Coluna Razão Social** e **Coluna CNPJ**.
    * Ative o toggle **Sincronização Automática** e defina o intervalo (ex: a cada 1 hora ou diariamente).
+   * **Apagar Registros Obsoletos (Toggle):** Ative esta opção caso deseje que empresas com origem Google Sheets que forem excluídas da planilha sejam automaticamente apagadas do banco de dados e removidas do monitoramento do DOU durante as sincronizações.
 3. **Validação:**
    * Clique em **Testar Conexão e Prévia** para ver as primeiras linhas lidas da planilha.
    * Clique em **Salvar Configurações**.

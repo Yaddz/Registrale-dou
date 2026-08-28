@@ -316,6 +316,7 @@ class TestGoogleSheetsRoutes:
             "message": "Importado via config",
             "imported": 2,
             "updated": 1,
+            "deleted": 0,
             "total": 3
         }
 
@@ -324,3 +325,66 @@ class TestGoogleSheetsRoutes:
         data = response.get_json()
         assert data["status"] == "success"
         assert data["imported"] == 2
+
+    @patch('app.services.sheets_service.fetch_and_parse_sheet_api')
+    def test_sync_delete_obsolete_enabled_removes_deleted_sheet_companies(self, mock_fetch, app):
+        with app.app_context():
+            db.create_all()
+            
+            # Cria empresa prévia do Google Sheets que foi "apagada" da planilha
+            old_sheet_comp = Company(
+                nome="Empresa Deletada",
+                cnpj="11.111.111/0001-11",
+                cnpj_norm="11111111000111",
+                status=True,
+                origem="Google Sheets"
+            )
+            # Cria empresa manual (que nunca deve ser deletada)
+            manual_comp = Company(
+                nome="Empresa Manual",
+                cnpj="99.999.999/0001-99",
+                cnpj_norm="99999999000199",
+                status=True,
+                origem="Manual"
+            )
+            db.session.add_all([old_sheet_comp, manual_comp])
+            db.session.commit()
+
+            # Config com delete_obsolete = True
+            settings_record = Settings.query.filter_by(key='global_settings').first()
+            if not settings_record:
+                settings_record = Settings(key='global_settings')
+                db.session.add(settings_record)
+
+            settings_record.set_value({
+                "google_sheets": {
+                    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                    "credentials_json": MOCK_CREDENTIALS_STR,
+                    "sheet_name": "Aba1",
+                    "orientation": "rows",
+                    "delete_obsolete": True
+                }
+            })
+            db.session.commit()
+
+            # Nova importação que contém apenas uma empresa diferente
+            mock_fetch.return_value = [
+                {
+                    "nome": "Empresa Nova Planilha",
+                    "cnpj": "22.222.222/0001-22",
+                    "cnpj_norm": "22222222000122",
+                    "origem": "Google Sheets"
+                }
+            ]
+
+            result = executar_sincronizacao_sheets(app=app)
+            assert result["status"] == "success"
+            assert result["deleted"] == 1
+            assert result["imported"] == 1
+
+            # Empresa antiga do Google Sheets foi removida
+            assert Company.query.filter_by(cnpj_norm="11111111000111").first() is None
+            # Empresa nova foi adicionada
+            assert Company.query.filter_by(cnpj_norm="22222222000122").first() is not None
+            # Empresa manual foi preservada
+            assert Company.query.filter_by(cnpj_norm="99999999000199").first() is not None

@@ -5,12 +5,26 @@ from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
+_inlabs_engine = None
+_inlabs_engine_url = None
+
 def get_inlabs_postgres_engine():
-    """Retorna uma engine de conexão com o PostgreSQL do INLABS com timeout seguro."""
+    """Retorna uma engine singleton com pool de conexões para o PostgreSQL do INLABS."""
+    global _inlabs_engine, _inlabs_engine_url
     inlabs_db_url = os.getenv('INLABS_DB_URL', 'postgresql+pg8000://airflow:airflow@postgres:5432/inlabs')
     if 'localhost' in inlabs_db_url and os.path.exists('/.dockerenv'):
         inlabs_db_url = inlabs_db_url.replace('localhost', 'postgres')
-    return create_engine(inlabs_db_url, connect_args={'timeout': 5})
+    
+    if _inlabs_engine is None or _inlabs_engine_url != inlabs_db_url:
+        _inlabs_engine_url = inlabs_db_url
+        _inlabs_engine = create_engine(
+            inlabs_db_url,
+            connect_args={'timeout': 5},
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=300
+        )
+    return _inlabs_engine
 
 def get_downloaded_dates(start_date=None, end_date=None):
     """
@@ -69,12 +83,12 @@ def is_date_loaded(date_str):
         return False, 0
 
 def record_inlabs_download_success(date_str):
-    """Registra ou atualiza o log de download no SQLite com timestamp atual."""
+    """Registra ou atualiza o log de download no SQLite com timestamp atual em formato ISO."""
     if not date_str:
         return
     try:
         from ..models import InlabsDownloadLog, db
-        now_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S')
+        now_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%Y-%m-%d %H:%M:%S')
         existing = InlabsDownloadLog.query.filter_by(date_str=date_str).first()
         if existing:
             existing.downloaded_at = now_str
@@ -107,10 +121,22 @@ def enforce_inlabs_retention_limit(max_days=120, protected_dates=None):
 
     excess_count = total_dates - max_days
 
-    # 2. Ordena os logs de download do SQLite por downloaded_at ASC (mais antigos primeiro)
+    # 2. Ordena os logs de download do SQLite por timestamp real (mais antigos primeiro)
+    def _parse_ts(val):
+        if not val: return 0
+        try:
+            if '-' in str(val):
+                return datetime.strptime(str(val), '%Y-%m-%d %H:%M:%S').timestamp()
+            if '/' in str(val):
+                return datetime.strptime(str(val), '%d/%m/%Y %H:%M:%S').timestamp()
+        except Exception:
+            pass
+        return 0
+
     try:
-        logs = InlabsDownloadLog.query.order_by(InlabsDownloadLog.downloaded_at.asc()).all()
-        logged_order = [log.date_str for log in logs]
+        logs = InlabsDownloadLog.query.all()
+        sorted_logs = sorted(logs, key=lambda log: _parse_ts(log.downloaded_at))
+        logged_order = [log.date_str for log in sorted_logs]
     except Exception:
         logged_order = []
 

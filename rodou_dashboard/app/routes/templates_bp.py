@@ -12,8 +12,8 @@ def manage_templates():
         return jsonify([{"id": t.id, "name": t.name, "subject": t.subject, "body_html": t.body_html} for t in templates])
         
     if request.method == 'POST':
-        if session['user']['role'] != 'master': return jsonify({"status": "error"}), 403
-        data = request.json
+        if session['user']['role'] != 'master': return jsonify({"status": "error", "message": "Acesso negado"}), 403
+        data = request.get_json(silent=True) or {}
         if not data.get('name') or not data.get('body_html'):
             return jsonify({"status": "error", "message": "Nome e corpo HTML são obrigatórios."}), 400
         try:

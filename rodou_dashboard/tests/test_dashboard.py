@@ -32,6 +32,14 @@ class TestLogin:
         assert response.status_code == 302
         assert '/login' in response.headers['Location']
 
+    def test_index_page_renders_with_session(self, auth_client, app):
+        with app.app_context():
+            from app.models import db
+            db.create_all()
+        response = auth_client.get('/')
+        assert response.status_code == 200
+        assert b"Registrale" in response.data or b"html" in response.data.lower()
+
 
 class TestCompanies:
     """Testes de empresas."""
@@ -913,6 +921,44 @@ class TestNewOptimizedFeatures:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data.get('status') == 'success'
+
+    def test_export_mentions_pdf_and_excel_with_section_filter(self, auth_client):
+        sample_mentions = [
+            {
+                "id": "m1",
+                "empresa": "Empresa Teste 1",
+                "cnpj": "11.222.333/0001-44",
+                "secao": "DOU - Seção 1",
+                "data": "20/08/2026",
+                "trecho": "Trecho de teste com publicação",
+                "link": "https://in.gov.br/m1"
+            },
+            {
+                "id": "m2",
+                "empresa": "Empresa Teste 2",
+                "cnpj": "22.333.444/0001-55",
+                "secao": "DOU - Seção 3",
+                "data": "21/08/2026",
+                "trecho": "Trecho de teste seção 3",
+                "link": "https://in.gov.br/m2"
+            }
+        ]
+        
+        # Test PDF export with section filter
+        pdf_resp = auth_client.post('/api/export_mentions_pdf', json={
+            "mentions": sample_mentions,
+            "filters": {"section": "SECAO_1"}
+        })
+        assert pdf_resp.status_code == 200
+        assert pdf_resp.mimetype == 'application/pdf'
+        
+        # Test Excel export with section filter
+        excel_resp = auth_client.post('/api/export_mentions_excel', json={
+            "mentions": sample_mentions,
+            "filters": {"section": "SECAO_1"}
+        })
+        assert excel_resp.status_code == 200
+        assert 'spreadsheet' in excel_resp.mimetype or 'openxmlformats' in excel_resp.mimetype or len(excel_resp.data) > 0
 
 
 

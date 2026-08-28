@@ -126,7 +126,12 @@ class DouDigestDagGenerator:
     if YAMLS_DIR is None:
         raise EnvironmentError("Environment variable RO_DOU__DAG_CONF_DIR not found!")
 
-    YAMLS_DIR_LIST = [dag_confs for dag_confs in YAMLS_DIR.split(":")]
+    if os.pathsep in YAMLS_DIR:
+        YAMLS_DIR_LIST = [d.strip() for d in YAMLS_DIR.split(os.pathsep) if d.strip()]
+    elif ":" in YAMLS_DIR and not (len(YAMLS_DIR) >= 2 and YAMLS_DIR[1] == ":" and ("\\" in YAMLS_DIR or "/" in YAMLS_DIR)):
+        YAMLS_DIR_LIST = [d.strip() for d in YAMLS_DIR.split(":") if d.strip()]
+    else:
+        YAMLS_DIR_LIST = [YAMLS_DIR.strip()]
     SLACK_CONN_ID = "slack_notify_rodou_dagrun"
     DEFAULT_SCHEDULE = "0 5 * * *"
 

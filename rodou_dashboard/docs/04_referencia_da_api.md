@@ -390,6 +390,30 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 ### `POST /api/sync`
 * **Descrição:** Dispara a sincronização manual de clientes com a API do GestãoClick em background. Valida previamente as credenciais (`gestaoclick_access_token` e `gestaoclick_secret_token`), retornando HTTP 400 com mensagem explicativa caso não estejam cadastradas.
 
+### `POST /api/google_sheets/test`
+* **Descrição:** Valida a conexão com a planilha do Google Sheets e credenciais da Service Account retornando o título, abas e prévia das primeiras linhas.
+* **Payload (JSON):**
+```json
+{
+  "spreadsheet_url": "https://docs.google.com/spreadsheets/d/.../edit",
+  "credentials_json": "{ ... }",
+  "sheet_name": "Página1"
+}
+```
+
+### `POST /api/google_sheets/sync`
+* **Descrição:** Executa a sincronização imediata dos dados da planilha do Google Sheets. Quando a flag `delete_obsolete` estiver ativa, expurga do banco e das DAGs empresas com origem `Google Sheets` que não constem mais na planilha.
+* **Payload (Opcional - JSON):**
+```json
+{
+  "google_sheets": {
+    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/.../edit",
+    "credentials_json": "{ ... }",
+    "delete_obsolete": true
+  }
+}
+```
+
 ### `GET /api/users` / `POST /api/users` / `DELETE /api/users`
 * **Descrição:** Gerencia os usuários internos do painel.
 

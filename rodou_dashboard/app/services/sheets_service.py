@@ -229,11 +229,11 @@ def parse_sheet_grid(values: list, orientation: str = 'rows', mapping: dict = No
         nome_val = _get_val(record, target_empresa, ["Empresa", "Nome", "Razao Social", "Nome Fantasia", "Cliente"])
         cnpj_val = _get_val(record, target_cnpj, ["CNPJ/CPF", "Documento", "CPF/CNPJ"])
 
-        cnpj_norm = re.sub(r'[^0-9]', '', cnpj_val) if cnpj_val else ""
+        cnpj_norm = re.sub(r'[^A-Za-z0-9]', '', str(cnpj_val)).upper() if cnpj_val else ""
 
         # Formata CNPJ se tiver 14 dígitos
         cnpj_formatted = cnpj_val
-        if len(cnpj_norm) == 14:
+        if len(cnpj_norm) == 14 and cnpj_norm.isdigit():
             cnpj_formatted = f"{cnpj_norm[:2]}.{cnpj_norm[2:5]}.{cnpj_norm[5:8]}/{cnpj_norm[8:12]}-{cnpj_norm[12:]}"
 
         if nome_val or cnpj_norm:
@@ -361,23 +361,31 @@ def executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
         _registrar_historico("Aviso Google Sheets", msg)
         return {"status": "warning", "message": msg, "imported": 0, "updated": 0, "total": 0}
 
-    # 3. Persistir no banco de dados SQLite
+    # 3. Persistir no banco de dados SQLite (em batch)
     imported_count = 0
     updated_count = 0
+    deleted_count = 0
+
+    delete_obsolete = bool(gs_config.get('delete_obsolete', False))
+    imported_cnpjs_norm = set()
+
+    all_existing_comps = Company.query.all()
+    comp_by_norm = {c.cnpj_norm: c for c in all_existing_comps if c.cnpj_norm}
+    comp_by_raw = {c.cnpj: c for c in all_existing_comps if c.cnpj}
 
     for record in imported_data:
         cnpj_norm_val = record.get('cnpj_norm') or normalize_cnpj(record.get('cnpj'))
         if not cnpj_norm_val:
             continue
 
-        company = Company.query.filter_by(cnpj_norm=cnpj_norm_val).first()
-        if not company:
-            company = Company.query.filter_by(cnpj=record.get('cnpj')).first()
+        imported_cnpjs_norm.add(cnpj_norm_val)
+        cnpj_raw = record.get('cnpj')
+        company = comp_by_norm.get(cnpj_norm_val) or comp_by_raw.get(cnpj_raw)
 
         if company:
             if company.origem != 'Manual':
                 company.nome = record.get('nome') or company.nome
-                company.cnpj = record.get('cnpj') or company.cnpj
+                company.cnpj = cnpj_raw or company.cnpj
                 company.cnpj_norm = cnpj_norm_val
                 company.status = True
                 updated_count += 1
@@ -386,13 +394,23 @@ def executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
         else:
             new_company = Company(
                 nome=record.get('nome') or "N/A",
-                cnpj=record.get('cnpj') or cnpj_norm_val,
+                cnpj=cnpj_raw or cnpj_norm_val,
                 cnpj_norm=cnpj_norm_val,
                 status=True,
                 origem='Google Sheets'
             )
             db.session.add(new_company)
+            comp_by_norm[cnpj_norm_val] = new_company
+            if cnpj_raw:
+                comp_by_raw[cnpj_raw] = new_company
             imported_count += 1
+
+    # Se a opção de apagar obsoletos estiver ativa, remove empresas com origem Google Sheets não presentes na planilha
+    if delete_obsolete and len(imported_data) > 0:
+        for comp in all_existing_comps:
+            if comp.origem == 'Google Sheets' and comp.cnpj_norm not in imported_cnpjs_norm:
+                db.session.delete(comp)
+                deleted_count += 1
 
     db.session.commit()
 
@@ -406,7 +424,10 @@ def executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
     global _last_sync_timestamp
     _last_sync_timestamp = time.time()
 
-    detalhes = f"Google Sheets sincronizado com sucesso: {imported_count} inserida(s), {updated_count} atualizada(s). Total na planilha: {len(imported_data)}."
+    partes_detalhe = [f"{imported_count} inserida(s)", f"{updated_count} atualizada(s)"]
+    if delete_obsolete:
+        partes_detalhe.append(f"{deleted_count} removida(s)")
+    detalhes = f"Google Sheets sincronizado com sucesso: {', '.join(partes_detalhe)}. Total na planilha: {len(imported_data)}."
     _registrar_historico("Sincronização Google Sheets OK", detalhes)
 
     logger.info(detalhes)
@@ -415,6 +436,7 @@ def executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
         "message": detalhes,
         "imported": imported_count,
         "updated": updated_count,
+        "deleted": deleted_count,
         "total": len(imported_data)
     }
 
