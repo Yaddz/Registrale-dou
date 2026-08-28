@@ -129,13 +129,14 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 * **Descrição:** Exclui uma rotina personalizada.
 
 ### `POST /api/routines/trigger/<path:file>`
-* **Descrição:** Dispara a execução imediata de uma rotina, opcionalmente com uma data específica.
+* **Descrição:** Dispara a execução imediata de uma rotina, opcionalmente com uma data específica (passada ou presente).
 * **Payload (JSON):**
 ```json
 {
-  "logical_date": "2026-08-15"
+  "logical_date": "25/08/2026"
 }
 ```
+* **Formatos de Data Suportados:** Aceita tanto `DD/MM/AAAA` (padrão brasileiro) quanto `AAAA-MM-DD` (ISO). Se omitido ou vazio, executa para a data de hoje. O backend normaliza automaticamente para `YYYY-MM-DD`.
 
 ### `GET /api/routines/monthly_inlabs_check`
 * **Descrição:** Verifica se há dias sem matérias baixadas no INLABS para um determinado mês/ano, segregando dias baixáveis (janela de 120 dias) e dias históricos (API DOU).

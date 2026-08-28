@@ -15,7 +15,8 @@ dag:
     department: &id001
     - ANVISA
     - Agência Nacional de Vigilância Sanitária
-    terms: []
+    terms:
+    - '44444444000144'
     full_text: false
     organs: *id001
     dou_sections:

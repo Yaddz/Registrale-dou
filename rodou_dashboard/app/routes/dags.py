@@ -719,10 +719,16 @@ def trigger_routine(file):
     logical_date = req_data.get('logical_date')
     
     if logical_date:
+        logical_date = str(logical_date).strip()
+        if '/' in logical_date:
+            parts = logical_date.split('/')
+            if len(parts) == 3:
+                logical_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
         try:
-            datetime.strptime(logical_date, '%Y-%m-%d')
+            d_parsed = datetime.strptime(logical_date, '%Y-%m-%d')
+            logical_date = d_parsed.strftime('%Y-%m-%d')
         except ValueError:
-            return jsonify({"status": "error", "message": "Data inválida. Use o formato AAAA-MM-DD."}), 400
+            return jsonify({"status": "error", "message": "Data inválida. Use o formato DD/MM/AAAA ou AAAA-MM-DD."}), 400
 
     dag_confs_path = get_dag_confs_path()
     
@@ -1579,55 +1585,39 @@ def api_trigger_monthly():
                 file_path = os.path.join(confs_path, routine_file)
                 if not os.path.exists(file_path): continue
                 
-                # Tratamento especial para rotina principal de CNPJ
-                if routine_file == "Pesquisa_cnpj.yaml":
+                # Tratamento unificado para rotinas de CNPJ (sync, particionadas ou arquivo único)
+                files_to_process = [file_path]
+                if routine_file in ("Pesquisa_cnpj.yaml", "Pesquisa_cnpj_sync.yaml"):
                     parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_sync.yaml"))
                     if not parts:
                         parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_part_*.yaml"))
-                    if not parts:
-                        parts = [file_path]
-                    for p in parts:
-                        try:
-                            with open(p, 'r', encoding='utf-8') as pf:
-                                pdata = yaml.safe_load(pf) or {}
-                                pid = pdata.get('dag', {}).get('id')
-                                if pid:
-                                    r_emails = pdata.get('dag', {}).get('report', {}).get('emails', [])
-                                    if isinstance(r_emails, list): all_emails.update(r_emails)
-                                    for date_str in inlabs_days:
-                                        ok, msg, run_info = trigger_airflow_dag(pid, date_str)
-                                        if ok:
-                                            if pid not in triggered_inlabs_dags:
-                                                triggered_inlabs_dags.append(pid)
-                                            if isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                                                all_triggered_runs.append(run_info)
-                                        time.sleep(0.05)
-                        except Exception as e:
-                            logging.error(f"Erro ao disparar parte de Pesquisa_cnpj {p}: {e}")
-                    continue
+                    if parts:
+                        files_to_process = parts
 
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        yaml_data = yaml.safe_load(f)
-                    
-                    report = yaml_data.get('dag', {}).get('report', {})
-                    routine_emails = report.get('emails', [])
-                    if isinstance(routine_emails, list):
-                        all_emails.update(routine_emails)
+                for p_file in files_to_process:
+                    if not os.path.exists(p_file): continue
+                    try:
+                        with open(p_file, 'r', encoding='utf-8') as pf:
+                            pdata = yaml.safe_load(pf) or {}
                         
-                    dag_id = yaml_data.get('dag', {}).get('id')
-                    if not dag_id: dag_id = re.sub(r'\.[^.]*$', '', routine_file)
-                    
-                    for date_str in inlabs_days:
-                        ok, msg, run_info = trigger_airflow_dag(dag_id, date_str)
-                        if ok:
-                            if dag_id not in triggered_inlabs_dags:
-                                triggered_inlabs_dags.append(dag_id)
-                            if isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                                all_triggered_runs.append(run_info)
-                        time.sleep(0.05)
-                except Exception as e:
-                    logging.error(f"Erro ao disparar rotina INLABS {routine_file}: {e}")
+                        r_emails = pdata.get('dag', {}).get('report', {}).get('emails', [])
+                        if isinstance(r_emails, list):
+                            all_emails.update(r_emails)
+                            
+                        pid = pdata.get('dag', {}).get('id')
+                        if not pid:
+                            pid = re.sub(r'\.[^.]*$', '', os.path.basename(p_file))
+                            
+                        for date_str in inlabs_days:
+                            ok, msg, run_info = trigger_airflow_dag(pid, date_str)
+                            if ok:
+                                if pid not in triggered_inlabs_dags:
+                                    triggered_inlabs_dags.append(pid)
+                                if isinstance(run_info, dict) and run_info.get("dag_run_id"):
+                                    all_triggered_runs.append(run_info)
+                            time.sleep(0.08)
+                    except Exception as e:
+                        logging.error(f"Erro ao disparar rotina INLABS {p_file}: {e}")
 
             if triggered_inlabs_dags:
                 wait_for_dags(triggered_inlabs_dags)
@@ -1645,7 +1635,7 @@ def api_trigger_monthly():
                     routine_path = os.path.join(confs_path, routine_file)
                     
                     files_to_read = [routine_path]
-                    if routine_file == "Pesquisa_cnpj.yaml":
+                    if routine_file in ("Pesquisa_cnpj.yaml", "Pesquisa_cnpj_sync.yaml"):
                         parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_sync.yaml"))
                         if not parts:
                             parts = glob.glob(os.path.join(confs_path, "Pesquisa_cnpj_part_*.yaml"))

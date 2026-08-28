@@ -662,6 +662,30 @@ class TestNewOptimizedFeatures:
         assert data.get('status') == 'success'
         assert any(k in data.get('message', '').lower() for k in ["disparada", "sucesso", "api oficial"])
 
+    def test_trigger_individual_routine_with_brazilian_date_format(self, auth_client, monkeypatch):
+        from app.routes import dags
+        from app.services import inlabs_service
+        
+        triggered_calls = []
+        def mock_trigger(dag_id, logical_date=None, **kwargs):
+            triggered_calls.append((dag_id, logical_date))
+            return True, "Triggered", {"dag_id": dag_id, "dag_run_id": f"run_{dag_id}_{logical_date}"}
+            
+        monkeypatch.setattr(dags, "trigger_airflow_dag", mock_trigger)
+        monkeypatch.setattr(dags, "fetch_mentions_from_dag_run", lambda *args, **kwargs: [])
+        monkeypatch.setattr(inlabs_service, "is_date_loaded", lambda d: (True, 50))
+        
+        # Envia a data em formato brasileiro DD/MM/AAAA
+        resp = auth_client.post('/api/routines/trigger/Pesquisa_cnpj.yaml', json={
+            "logical_date": "15/01/2026"
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'success'
+        # Verifica que a data foi normalizada para YYYY-MM-DD
+        assert len(triggered_calls) > 0
+        assert triggered_calls[0][1] == "2026-01-15"
+
     def test_cleanup_orphaned_temp_dags(self, app):
         import os
         from app.services.dag_config_service import get_dag_confs_path, cleanup_orphaned_temp_dags

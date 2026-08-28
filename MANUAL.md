@@ -212,10 +212,13 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 ---
 
 ### 3.4. Como Disparar Busca com Data Retroativa (Reprocessamento / Auditoria)
-1. Ao lado da rotina, clique no botão **Data Lógica / Calendário**.
-2. Selecione no calendário a data passada exata que deseja auditar ou reprocessar.
-3. Clique em **Disparar**.
-4. O sistema buscará as publicações publicadas naquela data específica.
+1. Ao lado da rotina desejada (ou na rotina principal `Pesquisa_cnpj_sync`), clique no botão **Data Lógica / Calendário** (ícone de calendário).
+2. O modal inteligente de disparo será exibido:
+   * **Entrada Flexível de Data:** Digite no formato brasileiro padrão `DD/MM/AAAA` (com máscara automática), no formato ISO `AAAA-MM-DD` ou clique no campo para abrir o **Calendário Flutuante**.
+   * **Detecção Automática de Feriados e Finais de Semana:** Se a data selecionada for um sábado, domingo ou feriado nacional (ex: Tiradentes, Carnaval, Corpus Christi, Natal), o sistema avisa em destaque que não há circulação regular do DOU.
+   * **Detecção de Histórico (> 120 dias):** Se a data for anterior a 120 dias da data atual, o sistema informa que a pesquisa será realizada diretamente via **API Oficial do DOU**, dispensando arquivos locais do INLABS.
+   * **Execução Hoje:** Deixe o campo em branco para rodar a rotina para o dia corrente.
+3. Clique em **Iniciar Busca**. O sistema normaliza a data e inicia a varredura em segundo plano.
 
 ---
 
@@ -224,12 +227,12 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 1. No topo da tela de rotinas, clique no botão **Busca Mensal**.
 2. Selecione o **Mês** e o **Ano** desejados e clique em **Verificar e Iniciar**.
 3. **Diagnóstico Inteligente de Disponibilidade:**
-   * **Mês Completo no Banco:** A busca inicia imediatamente.
-   * **Matérias Disponíveis para Download (dentro de 120 dias):** O modal exibe a quantidade de dias que serão baixados do INLABS antes do processamento.
+   * **Mês Completo no Banco:** A busca inicia imediatamente para todos os dias úteis do mês.
+   * **Matérias Disponíveis para Download (dentro de 120 dias):** O modal exibe a quantidade de dias que serão baixados do INLABS antes do processamento. O download de múltiplos dias é executado com reaproveitamento de sessão segura, evitando bloqueios de taxa de requisições.
    * **Meses Históricos (fora da janela de 120 dias):** O sistema detecta automaticamente que os dados não estão mais no portal INLABS e realiza a busca diretamente via **API Oficial do DOU**.
-   * **Cenário Misto (Mês Quebrado):** Quando um mês possui ALGUNS dias já no banco local INLABS (ex: abril a partir do dia 24) mas OUTROS dias estão fora da janela de 120 dias, o modal de confirmação exibe um sumário visual claro com 3 categorias separadas por cor:
+   * **Cenário Misto (Mês Quebrado):** Quando um mês possui ALGUNS dias já no banco local INLABS mas OUTROS dias estão fora da janela de 120 dias, o modal de confirmação exibe um sumário visual com 3 categorias:
      * ✅ **No Banco**: Dias já baixados e armazenados localmente no INLABS.
-     * 📥 **Baixar INLABS**: Dias ausentes dentro da janela de 120 dias, disponíveis para download.
+     * 📥 **Baixar INLABS**: Dias ausentes dentro da janela de 120 dias, baixados em lote.
      * 🌐 **Via API DOU**: Dias históricos fora dos 120 dias, pesquisados via API Oficial do DOU.
    * O usuário pode optar por prosseguir com a execução mista completa ou pesquisar apenas os dias já disponíveis no INLABS.
 4. Confirme a opção desejada para iniciar o processamento em segundo plano.
@@ -354,15 +357,37 @@ Na sub-aba **Integrações Gerais** (ou pelo modal de configuração do Assisten
 ---
 
 ### 6.4. Como Criar e Personalizar Templates de E-mail
-Na sub-aba **Templates de E-mail**:
-* Crie modelos visuais de mensagens usando o editor HTML com visualização dinâmica.
-* Insira as tags dinâmicas que o sistema substitui na hora do envio:
-  * `{empresa}`: Razão Social do cliente.
-  * `{cnpj}`: CNPJ do cliente.
-  * `{secao}`: Seção do Diário Oficial.
-  * `{data}`: Data da publicação.
-  * `{trecho}`: Trecho oficial onde o nome foi citado.
-  * `{link}`: Link direto para o ato na Imprensa Nacional.
+Na sub-aba **Templates de E-mail** (Menu Configurações > Templates):
+
+O Ro-DOU Dashboard possui um poderoso **Editor Visual WYSIWYG Integrado** que permite criar, editar e pré-visualizar modelos de e-mail profissionais em tempo real sem precisar mexer em código:
+
+1. **Campos do Modelo:**
+   * **Nome do Template:** Identificação interna do modelo (ex: `Alerta DOU Padrão`, `Resumo Semanal Diretoria`).
+   * **Assunto do E-mail:** Título da mensagem que será enviada. Suporta tags dinâmicas (ex: `Alerta DOU - Nova Publicação de {empresa}`).
+
+2. **Modos de Trabalho:**
+   * 🖊️ **Editor Visual (Preview):** Edição direta e interativa no próprio layout do e-mail, com formatação rica em tempo real.
+   * 👁️ **Demonstração Real:** Simula a renderização final do e-mail com dados de exemplo reais e destaque amarelo aplicado.
+   * 💻 **Código HTML:** Edição direta do código-fonte HTML para ajustes avançados.
+
+3. **Barra de Ferramentas do Editor Visual:**
+   * **Formatação de Texto:** Negrito (**B**), Itálico (*I*), Sublinhado (<u>U</u>) e Limpar Formatação.
+   * 🟡 **Destaque Amarelo Estilo DOU:** Aplica ou remove instantaneamente a marcação amarela (`#FFA`) no texto ou variável selecionada, replicando a identidade visual das menções do Diário Oficial.
+   * **Títulos e Parágrafos:** Seleção rápida entre Parágrafo, Título (H1), Subtítulo (H2) e Seção (H3).
+   * **Alinhamento:** Alinhar à Esquerda, Centralizar ou Alinhar à Direita.
+   * ↩️ / ↪️ **Desfazer e Refazer:** Atalhos rápidos para desfazer (`Ctrl+Z`) ou refazer (`Ctrl+Y`) ações de edição.
+
+4. **Menu de Variáveis Dinâmicas (`+ Inserir Variável`):**
+   * Clique no botão **+ Inserir Variável** na barra de ferramentas para abrir o menu suspenso e inserir automaticamente tags dinâmicas na posição do cursor:
+     * `{content}`: Bloco completo com a estrutura de matérias formatadas do DOU.
+     * `{empresa}`: Razão Social da empresa cliente.
+     * `{cnpj}`: CNPJ formatado do cliente.
+     * `{secao}`: Seção do DOU (`Seção 1`, `Seção 2` ou `Seção 3`).
+     * `{data}`: Data de circulação da matéria no DOU.
+     * `{trecho}`: Trecho oficial da publicação com o termo em destaque.
+     * `{link}`: Link direto e oficial para o ato na Imprensa Nacional.
+
+5. Clique em **Salvar Template** para gravar as alterações. Você pode criar múltiplos modelos e selecioná-los ao disparar relatórios por e-mail.
 
 ---
 

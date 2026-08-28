@@ -1,11 +1,25 @@
 # Changelog
 
-**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.8.0...0.8.1
-## [0.11.1] - 2026-07-23
-<!-- Release notes generated using configuration in .github/release.yml at main -->
+## [0.12.0] - 2026-08-28
 
-## What's Changed
-### 🚀 Outros
+### 🚀 Melhorias e Correções no Ro-DOU Dashboard
+* **Editor Visual de Templates de E-mail (WYSIWYG)**:
+  * Implementação de editor WYSIWYG completo integrado no preview do e-mail com três modos de trabalho (*Editor Visual*, *Demonstração Real* e *Código HTML*).
+  * Adição da ferramenta de **Destaque Amarelo estilo DOU** (`#FFA`) com 1 clique para destacar variáveis e termos no padrão do Diário Oficial.
+  * Menu suspenso de variáveis do modelo (`+ Inserir Variável`) flutuante com inserção contextual de `{content}`, `{empresa}`, `{cnpj}`, `{secao}`, `{data}`, `{trecho}` e `{link}`.
+  * Suporte a Desfazer / Refazer (Ctrl+Z / Ctrl+Y), títulos (H1, H2, H3), alinhamentos e limpeza de formatação.
+* **Seletor de Data Lógica e Detecção Inteligente**:
+  * Normalização e aceitação de datas no formato brasileiro `DD/MM/AAAA` e formato ISO `AAAA-MM-DD`.
+  * Detecção dinâmica de feriados nacionais e finais de semana com alertas contextualizados.
+  * Aviso automático e comutação para a API Oficial do DOU para datas históricas (> 120 dias).
+  * Calendário flutuante Flatpickr estável com `z-index` elevado e sem conflitos de fechamento de modal.
+* **Busca Mensal e Download INLABS em Lote**:
+  * Otimização da sessão autenticada do INLABS para download de múltiplos dias faltantes em lote sem bloqueios de rate limit.
+  * Suporte ao Cenário Misto na busca mensal (No Banco, Baixar INLABS e Via API DOU) com disparo e processamento particionado.
+
+---
+
+## [0.11.1] - 2026-07-23
 * feat: gerador web interativo de configuração YAML na documentação by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/311
 * POC: gerador de YAML de configuração de DAGs via CLI by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/314
 * refactor: split notification into per-channel tasks and remove Slack … by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/297

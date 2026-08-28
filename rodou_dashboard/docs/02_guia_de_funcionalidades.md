@@ -60,11 +60,8 @@ Permite configurar, disparar sob demanda e automatizar as pesquisas nos Diários
   * **Rotinas Personalizadas:** Rotinas customizadas para monitoramento de termos específicos (ex: palavras-chave de licitações, nomes de sócios, órgãos públicos específicos).
 * **Ações por Rotina:**
   * **Rodar Agora:** Dispara imediatamente a rotina para a data corrente.
-  * **Disparar com Data Lógica:** Modal que permite selecionar qualquer data passada para reprocessar ou auditar uma edição específica do DOU.
-  * **Busca Mensal Automatizada:** Dispara a varredura para todos os dias úteis de um mês e ano selecionados. Inclui pré-verificação automática no banco INLABS e suporta o **Cenário Misto** na busca (ex: meses onde parte dos dias está dentro da janela de 120 dias e a outra parte fora). O modal de confirmação exibe um sumário visual com 3 categorias:
-    * ✅ **No Banco (INLABS):** Dias já baixados e armazenados localmente.
-    * 📥 **Baixar INLABS:** Dias faltantes dentro da janela de 120 dias, disponíveis para download.
-    * 🌐 **Via API DOU:** Dias históricos fora da janela de 120 dias, pesquisados diretamente na API Oficial do DOU.
+  * **Disparar com Data Lógica:** Modal inteligente com suporte a datas no formato `DD/MM/AAAA` (com máscara automática) e `AAAA-MM-DD`, calendário flutuante interativo (Flatpickr), detecção de feriados nacionais e finais de semana (informando ausência de circulação do DOU) e aviso automático com comutação para a API Oficial do DOU quando a data for anterior a 120 dias.
+  * **Busca Mensal Automatizada:** Dispara a varredura para todos os dias úteis de um mês e ano selecionados. Inclui download automatizado em lote de múltiplos dias faltantes no portal INLABS com sessão persistente (sem bloqueios de rate limit) e suporte completo ao **Cenário Misto** na busca (sumário visual com 3 categorias: ✅ *No Banco INLABS*, 📥 *Baixar INLABS*, 🌐 *Via API DOU*).
   * **Modos de Execução da Busca Mensal:** A execução suporta perfis variados de busca, tais como `full`, `download_and_search`, `inlabs_only` e `api_dou_only`.
   * **Padronização INLABS:** Todas as novas rotinas criadas automaticamente usam `INLABS` como fonte de dados padrão e replicam os e-mails de destinatário da rotina principal.
   * **Ativar/Pausar Rotina:** Chave para habilitar ou desabilitar o agendamento da rotina.
@@ -117,9 +114,11 @@ Painel restrito a administradores com as seguintes abas:
 * **Credenciais INLABS:** Usuário e senha de acesso à base da Imprensa Nacional.
 
 ### D. Templates de E-mail
-* Editor visual com alternância entre código HTML e Preview dinâmico em `<iframe>`.
-* Suporte a tags dinâmicas: `{empresa}`, `{cnpj}`, `{secao}`, `{data}`, `{trecho}`, `{link}` e `{content}`.
-* Criação, edição e exclusão de modelos de e-mail personalizados.
+* **Editor Visual WYSIWYG Integrado:** Edição direta e intuitiva no preview do e-mail com três modos de trabalho: *Editor Visual (Preview)*, *Demonstração Real* e *Código HTML*.
+* **Ferramenta Destaque Amarelo DOU:** Aplicação em 1 clique da cor `#FFA` com formatação oficial do Diário Oficial no texto ou tag selecionada.
+* **Menu de Variáveis Dinâmicas (`+ Inserir Variável`):** Inserção contextual das tags `{content}`, `{empresa}`, `{cnpj}`, `{secao}`, `{data}`, `{trecho}` e `{link}` na posição do cursor.
+* **Controle de Edição:** Desfazer / Refazer (Ctrl+Z / Ctrl+Y), títulos (H1, H2, H3), alinhamentos e limpeza de formatação.
+* Criação, edição e exclusão de múltiplos modelos de e-mail personalizados.
 
 ### E. Limpeza de Sistema
 * **Limpar Dados:** Reseta os dados gerais do banco local.

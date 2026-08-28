@@ -24,6 +24,12 @@
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; background-color: #f5f5f4; }
         [x-cloak] { display: none !important; }
         
+        .flatpickr-calendar {
+            z-index: 99999 !important;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.15), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+            border-radius: 1rem !important;
+        }
+        
         /* Scrollbar Customizada (Chrome, Edge, Safari e Firefox) */
         ::-webkit-scrollbar {
             width: 8px;
@@ -1358,14 +1364,21 @@
 
                 <!-- Sub Tab: Templates -->
                 <div x-show="settingsSubTab === 'templates'" class="space-y-8" x-cloak>
-                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                        <h3 class="font-bold text-lg mb-6 flex items-center gap-3"><i data-lucide="layout-template" class="w-5 h-5 text-slate-400"></i> Templates de E-mail</h3>
+                    <div class="bg-white dark:bg-stone-900 p-8 rounded-3xl border border-slate-200 dark:border-stone-800 shadow-sm">
+                        <h3 class="font-bold text-lg mb-6 flex items-center gap-3 text-slate-900 dark:text-stone-100"><i data-lucide="layout-template" class="w-5 h-5 text-slate-400"></i> Templates de E-mail</h3>
                         
                         <div class="space-y-4">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Nome do Template</label><input type="text" x-model="editingTemplate.name" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="Ex: Aviso Padrão"></div>
-                                <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Assunto</label><input type="text" x-model="editingTemplate.subject" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="Assunto do email"></div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] font-bold text-slate-400 uppercase">Nome do Template</label>
+                                    <input type="text" x-model="editingTemplate.name" class="w-full p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm text-slate-900 dark:text-stone-100 focus:outline-none" placeholder="Ex: Aviso Padrão">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] font-bold text-slate-400 uppercase">Assunto</label>
+                                    <input type="text" x-model="editingTemplate.subject" class="w-full p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm text-slate-900 dark:text-stone-100 focus:outline-none" placeholder="Assunto do email (ex: Alerta DOU - Publicação de {empresa})">
+                                </div>
                             </div>
+
                             <div class="space-y-3">
                                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Corpo do Email & Modelo Visual</label>
@@ -1387,8 +1400,8 @@
                                     </div>
                                 </div>
 
-                                <!-- Toolbar do Editor Visual (Alinhada sem quebra indesejada) -->
-                                <div x-show="templateEditorMode === 'visual'" class="p-2 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2 text-xs shadow-xs overflow-x-auto">
+                                <!-- Toolbar do Editor Visual (Overflow-visible para o menu de variáveis flutuar livremente sem ser cortado) -->
+                                <div x-show="templateEditorMode === 'visual'" class="p-2 bg-slate-50 dark:bg-stone-800/60 border border-slate-200 dark:border-stone-700 rounded-2xl flex flex-wrap items-center gap-2 text-xs shadow-xs overflow-visible relative z-30">
                                     <!-- Grupo 1: Formatações Básicas (B, I, U) -->
                                     <div class="flex items-center gap-0.5 shrink-0 bg-white dark:bg-stone-800 p-0.5 rounded-xl border border-slate-200 dark:border-stone-700">
                                         <button type="button" @mousedown.prevent @click="execEditorCommand('bold')" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-stone-700 font-black text-slate-700 dark:text-stone-200 transition-colors" title="Negrito (Ctrl+B)">B</button>
@@ -1443,35 +1456,35 @@
                                             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="16"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
                                             + Inserir Variável
                                         </button>
-                                        <div x-show="openVarMenu" @click.outside="openVarMenu = false" x-cloak class="absolute left-0 mt-1 w-56 bg-white dark:bg-stone-900 rounded-xl shadow-lg border border-slate-200 dark:border-stone-700 py-1.5 z-50 text-xs divide-y divide-slate-100 dark:divide-stone-800 animate-in fade-in zoom-in-95">
+                                        <div x-show="openVarMenu" @click.outside="openVarMenu = false" x-cloak class="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-stone-700 py-2 z-50 text-xs divide-y divide-slate-100 dark:divide-stone-800 animate-in fade-in zoom-in-95">
                                             <div class="p-1">
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{content}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg text-blue-700 dark:text-blue-300 font-bold flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{content}'); openVarMenu = false;" class="w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-xl text-blue-700 dark:text-blue-300 font-bold flex items-center justify-between transition-colors">
                                                     <span>Bloco de Menções</span>
-                                                    <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{content}</span>
+                                                    <span class="font-mono text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100/60 dark:bg-blue-900/40 px-1.5 py-0.5 rounded">{content}</span>
                                                 </button>
                                             </div>
                                             <div class="p-1 space-y-0.5">
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{empresa}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{empresa}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between transition-colors">
                                                     <span>Nome da Empresa</span>
                                                     <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{empresa}</span>
                                                 </button>
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{cnpj}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{cnpj}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between transition-colors">
                                                     <span>CNPJ da Empresa</span>
                                                     <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{cnpj}</span>
                                                 </button>
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{secao}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{secao}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between transition-colors">
                                                     <span>Seção do DOU</span>
                                                     <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{secao}</span>
                                                 </button>
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{data}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{data}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between transition-colors">
                                                     <span>Data da Publicação</span>
                                                     <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{data}</span>
                                                 </button>
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{trecho}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{trecho}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between transition-colors">
                                                     <span>Trecho com Destaque</span>
                                                     <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{trecho}</span>
                                                 </button>
-                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{link}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between">
+                                                <button type="button" @mousedown.prevent @click="insertVariableInEditor('{link}'); openVarMenu = false;" class="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-stone-800 rounded-lg text-slate-700 dark:text-stone-300 flex items-center justify-between transition-colors">
                                                     <span>Link do DOU</span>
                                                     <span class="font-mono text-[10px] text-slate-400 dark:text-stone-500">{link}</span>
                                                 </button>
@@ -1493,13 +1506,13 @@
                                 </div>
 
                                 <!-- 1. Iframe do Editor Visual (WYSIWYG Direto no Preview) -->
-                                <div x-show="templateEditorMode === 'visual'" class="border border-slate-200 rounded-2xl overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-blue-500/40 transition-all">
+                                <div x-show="templateEditorMode === 'visual'" class="border border-slate-200 dark:border-stone-700 rounded-2xl overflow-hidden shadow-xs focus-within:ring-2 focus-within:ring-blue-500/40 transition-all">
                                     <iframe x-ref="visualEditorIframe" @load="initVisualEditorIframe()" class="w-full bg-white" style="min-height:380px;height:420px;border:none;"></iframe>
                                 </div>
 
                                 <!-- 2. Iframe de Demonstração com Dados Reais -->
-                                <div x-show="templateEditorMode === 'preview'" class="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                                    <div class="bg-blue-50 px-4 py-2 border-b border-blue-100 text-[11px] font-bold text-blue-700 flex items-center gap-2">
+                                <div x-show="templateEditorMode === 'preview'" class="border border-slate-200 dark:border-stone-700 rounded-2xl overflow-hidden shadow-xs">
+                                    <div class="bg-blue-50 dark:bg-stone-800 px-4 py-2 border-b border-blue-100 dark:border-stone-700 text-[11px] font-bold text-blue-700 dark:text-blue-300 flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
                                         Demonstração Real: Visualizando com publicações de exemplo e destaque amarelo aplicado.
                                     </div>
@@ -1508,7 +1521,7 @@
 
                                 <!-- 3. Código HTML Puro -->
                                 <div x-show="templateEditorMode === 'code'" class="space-y-2">
-                                    <textarea x-model="editingTemplate.body_html" rows="14" class="w-full p-4 bg-slate-900 text-slate-100 border border-slate-800 rounded-2xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="<!DOCTYPE html><html>..."></textarea>
+                                    <textarea x-ref="codeEditorTextarea" x-model="editingTemplate.body_html" rows="14" class="w-full p-4 bg-slate-900 text-slate-100 border border-slate-800 rounded-2xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="<!DOCTYPE html><html>..."></textarea>
                                 </div>
 
                                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400 pt-1">
@@ -1518,7 +1531,7 @@
                             </div>
                             <div class="flex items-center gap-3 pt-2">
                                 <button @click="saveTemplate()" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-6 py-3 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center gap-2 shadow-sm active:scale-95 whitespace-nowrap">Salvar Template</button>
-                                <button type="button" @click="resetTemplateForm()" class="px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all">Limpar / Novo</button>
+                                <button type="button" @click="resetTemplateForm()" class="px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-stone-800 transition-all">Limpar / Novo</button>
                             </div>
                         </div>
 
@@ -1869,13 +1882,13 @@
         </div>
 
         <!-- Modal: Disparar Rotina com Data Lógica -->
-        <div x-show="triggerDateModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm" x-transition.opacity>
-            <div @click.away="triggerDateModal = false" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col animate-in zoom-in duration-200">
+        <div x-show="triggerDateModal" x-cloak @click.self="triggerDateModal = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm" x-transition.opacity>
+            <div class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-md shadow-2xl overflow-visible flex flex-col animate-in zoom-in duration-200">
                 <div class="p-6 border-b border-slate-100 dark:border-stone-800">
                     <h3 class="font-bold text-lg flex items-center gap-2 text-slate-900 dark:text-stone-100"><i data-lucide="calendar" class="w-5 h-5 text-slate-400 dark:text-stone-400"></i> Disparar Pesquisa</h3>
                     <p class="text-sm text-slate-500 dark:text-stone-400 mt-1">Informe uma data específica ou deixe em branco para hoje.</p>
                 </div>
-                <div class="p-6 space-y-3">
+                <div class="p-6 space-y-4">
                     <div class="relative">
                         <i data-lucide="calendar" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i>
                         <input type="text" x-model="triggerLogicalDate" @input="triggerLogicalDate = maskDate($event.target.value); checkSingleDate()" x-init="initDatePicker($el, (val) => { triggerLogicalDate = val; checkSingleDate(); })" placeholder="DD/MM/AAAA (ex: 25/08/2026)" maxlength="10" class="w-full bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl pl-10 pr-4 py-3 text-sm focus:ring-2 focus:ring-slate-900 outline-none font-mono" title="Se vazio, usa a data atual">
@@ -1886,7 +1899,7 @@
                         <div class="p-3 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/80 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
                             <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"></i>
                             <div>
-                                <strong class="block">Feriado / Fim de Semana</strong>
+                                <strong class="block font-bold">Feriado / Fim de Semana</strong>
                                 <span>A data é <span class="font-bold" x-text="singleDateInfo.holiday_reason"></span>. Não há circulação regular do DOU.</span>
                             </div>
                         </div>
@@ -1897,15 +1910,15 @@
                         <div class="p-3 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
                             <i data-lucide="info" class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5"></i>
                             <div>
-                                <strong class="block">Consulta via API Oficial DOU</strong>
+                                <strong class="block font-bold">Consulta via API Oficial DOU</strong>
                                 <span>Data anterior a 120 dias. A pesquisa será realizada diretamente na API Oficial do DOU.</span>
                             </div>
                         </div>
                     </template>
 
-                    <p class="text-[10px] text-slate-400 dark:text-stone-400">Útil para refazer buscas de dias anteriores.</p>
+                    <p class="text-xs text-slate-400 dark:text-stone-400">💡 Se o campo ficar vazio, a busca será realizada para a data de hoje.</p>
                 </div>
-                <div class="p-4 bg-slate-50 dark:bg-stone-800/60 border-t border-slate-100 dark:border-stone-800 flex justify-end gap-2 shrink-0">
+                <div class="p-4 bg-slate-50 dark:bg-stone-800/60 border-t border-slate-100 dark:border-stone-800 flex justify-end gap-2 shrink-0 rounded-b-[2rem]">
                     <button @click="triggerDateModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 dark:text-stone-300 hover:bg-slate-200 dark:hover:bg-stone-700 transition-all">Cancelar</button>
                     <button @click="confirmTriggerRoutine()" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-white transition-all flex items-center gap-2 active:scale-95 shadow-sm whitespace-nowrap">
                         <i data-lucide="play" class="w-4 h-4 fill-current"></i> Iniciar Busca
@@ -1916,10 +1929,10 @@
 
         <!-- Modal: Confirmação de Dias Faltantes no INLABS (Busca Mensal) -->
         <div x-show="monthlyInlabsConfirmModal" x-cloak
+             @click.self="monthlyInlabsConfirmModal = false"
              class="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm"
              x-transition.opacity>
-            <div @click.away="monthlyInlabsConfirmModal = false"
-                 class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in duration-200">
                 
                 <!-- Header Unificado e Coerente -->
                 <div class="p-6 border-b border-slate-100 dark:border-stone-800 bg-white dark:bg-stone-900">
@@ -2060,8 +2073,8 @@
         </div>
 
         <!-- Modal: Busca Mensal -->
-        <div x-show="monthlySearchModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm" x-transition.opacity>
-            <div @click.away="!monthlySearchRunning && (monthlySearchModal = false)" class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col animate-in zoom-in duration-200">
+        <div x-show="monthlySearchModal" x-cloak @click.self="!monthlySearchRunning && (monthlySearchModal = false)" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 dark:bg-black/80 backdrop-blur-sm" x-transition.opacity>
+            <div class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 text-slate-900 dark:text-stone-100 rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col animate-in zoom-in duration-200">
                 <div class="p-6 border-b border-slate-100 dark:border-stone-800">
                     <h3 class="font-bold text-lg flex items-center gap-2 text-slate-900 dark:text-stone-100"><i data-lucide="calendar" class="w-5 h-5 text-slate-400 dark:text-stone-400"></i> Busca Mensal</h3>
                     <p class="text-sm text-slate-500 dark:text-stone-400 mt-1">Dispara busca para todos os dias do mês.</p>
@@ -3628,6 +3641,7 @@
                                 locale: 'pt',
                                 dateFormat: 'd/m/Y',
                                 allowInput: true,
+                                disableMobile: true,
                                 onChange: (selectedDates, dateStr) => {
                                     if (onChange) onChange(dateStr);
                                 }
@@ -4654,16 +4668,17 @@
                     
                     // Se foi informada uma data específica, realiza validação prévia de feriado e existência
                     if (date) {
+                        const dateFormatted = date.includes('/') ? date : date.split('-').reverse().join('/');
                         try {
                             const checkRes = await fetch(`/api/routines/check_date?date=${encodeURIComponent(date)}`);
                             if (checkRes.ok) {
                                 const checkData = await checkRes.json();
                                 if (checkData.is_business_day === false) {
-                                    this.showAlert(`Atenção: A data ${date.split('-').reverse().join('/')} é um ${checkData.holiday_reason || 'feriado/fim de semana'} sem circulação do DOU.`, 'warning');
+                                    this.showAlert(`Atenção: A data ${dateFormatted} é um ${checkData.holiday_reason || 'feriado/fim de semana'} sem circulação do DOU.`, 'warning');
                                 } else if (checkData.already_loaded) {
-                                    this.showAlert(`Data ${date.split('-').reverse().join('/')} já possui dados baixados no banco (${checkData.articles_count} artigo(s)). Disparando busca...`, 'info');
+                                    this.showAlert(`Data ${dateFormatted} já possui dados baixados no banco (${checkData.articles_count} artigo(s)). Disparando busca...`, 'info');
                                 } else if (!checkData.is_within_120) {
-                                    this.showAlert(`Data ${date.split('-').reverse().join('/')} é anterior a 120 dias. Executando via API Oficial do DOU...`, 'info');
+                                    this.showAlert(`Data ${dateFormatted} é anterior a 120 dias. Executando via API Oficial do DOU...`, 'info');
                                 }
                             }
                         } catch (err) {

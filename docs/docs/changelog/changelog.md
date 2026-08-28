@@ -1,7 +1,13 @@
 
 ## Changelog
 
-As principais mudanças realizadas no repositório do [Ro-ou](https://github.com/gestaogovbr/Ro-dou) estão documentadas aqui a partir de 31/08/2023.
+## [0.12.0] - 2026-08-28
+
+* **Editor Visual de Templates de E-mail (WYSIWYG)**: Editor interativo em tempo real com Destaque Amarelo DOU (`#FFA`), menu flutuante de variáveis `{content}`, `{empresa}`, `{cnpj}`, `{secao}`, `{data}`, `{trecho}`, `{link}` e histórico Desfazer/Refazer.
+* **Seletor de Data Lógica e Detecção de Feriados**: Suporte a formatos `DD/MM/AAAA` e `AAAA-MM-DD`, calendário flutuante estável, detecção de feriados nacionais e comutação para API DOU para datas > 120 dias.
+* **Busca Mensal e Download INLABS em Lote**: Download multi-dias com sessão persistente sem bloqueio de taxa e suporte ao Cenário Misto.
+
+---
 
 ## [0.1.0] - 2023-08-31
 

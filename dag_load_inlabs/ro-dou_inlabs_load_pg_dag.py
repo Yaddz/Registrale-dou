@@ -115,22 +115,32 @@ def load_inlabs():
             # 1. Tenta reaproveitar cookie em cache do Airflow
             cached_cookie = Variable.get("inlabs_session_cookie", default_var=None)
             if cached_cookie:
+                session.cookies.set("inlabs_session_cookie", cached_cookie)
+                session.cookies.set("origem", "736372697074")
                 test_headers = {
-                    "Cookie": f"inlabs_session_cookie={cached_cookie}",
-                    "origem": "736372697074",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Cookie": f"inlabs_session_cookie={cached_cookie}; origem=736372697074",
                 }
                 try:
                     r_test = session.get(
-                        urljoin(inlabs_conn.host, f"index.php?p={trigger_date}"),
+                        urljoin(inlabs_conn.host, "index.php"),
                         headers=test_headers,
                         timeout=20,
+                        allow_redirects=True,
                     )
-                    if "Baixar Arquivo" in r_test.text or ".zip" in r_test.text:
+                    # Se não redirecionou para formulário de login e contém indício de sessão autenticada
+                    if "logar.php" not in r_test.url and (
+                        "deslogar" in r_test.text.lower()
+                        or "sair" in r_test.text.lower()
+                        or "usuário" in r_test.text.lower()
+                        or "usuario" in r_test.text.lower()
+                        or "p=" in r_test.text
+                        or "Baixar Arquivo" in r_test.text
+                    ):
                         logging.info("Sessão INLABS reaproveitada com sucesso a partir do cache!")
                         return session, cached_cookie
                     else:
-                        logging.info("Cookie em cache expirou ou não retornou arquivos. Realizando nova autenticação...")
+                        logging.info("Cookie em cache expirou. Realizando nova autenticação...")
                 except Exception as e:
                     logging.warning("Erro ao testar sessão em cache: %s", e)
 
@@ -156,6 +166,8 @@ def load_inlabs():
                     if cookie:
                         logging.info("Autenticação realizada com sucesso na tentativa %s!", attempt)
                         Variable.set("inlabs_session_cookie", cookie)
+                        s_login.cookies.set("inlabs_session_cookie", cookie)
+                        s_login.cookies.set("origem", "736372697074")
                         return s_login, cookie
                     logging.warning("Tentativa %s retornou HTTP %s (aguardando portal se restabelecer)...", attempt, r.status_code)
                 except Exception as ex:
@@ -186,8 +198,8 @@ def load_inlabs():
         def _download_files():
             session, cookie = _get_authenticated_session()
             headers = {
-                "Cookie": f"inlabs_session_cookie={cookie}",
-                "origem": "736372697074",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Cookie": f"inlabs_session_cookie={cookie}; origem=736372697074",
             }
             files = _find_files(session, headers)
             if not files:
