@@ -108,9 +108,19 @@ class INLABSSQLModeHook(INLABSHook):
                 if any(values):
                     key_conditions = []
                     for term in values:
-                        if any(operator in term for operator in term_operators):
+                        term_str = str(term).strip()
+                        if not term_str:
+                            continue
+                        clean_digits = re.sub(r'\D', '', term_str)
+                        if len(clean_digits) == 14:
+                            fmt_escaped = rf"{clean_digits[:2]}\.{clean_digits[2:5]}\.{clean_digits[5:8]}/{clean_digits[8:12]}-{clean_digits[12:]}"
+                            pattern = rf"({fmt_escaped}|{clean_digits})"
+                            key_conditions.append(
+                                rf"dou_inlabs.unaccent(texto) ~* dou_inlabs.unaccent('{pattern}')"
+                            )
+                        elif any(operator in term_str for operator in term_operators):
                             operator_str = "".join(term_operators)
-                            sub_terms = re.split(rf"\s*([{operator_str}])\s*", term)
+                            sub_terms = re.split(rf"\s*([{operator_str}])\s*", term_str)
                             sub_terms = [
                                 sub_term for sub_term in sub_terms if sub_term.strip()
                             ]
@@ -139,18 +149,19 @@ class INLABSSQLModeHook(INLABSHook):
 
                         else:
                             key_conditions.append(
-                                rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{term}\y')"
+                                rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{term_str}\y')"
                             )
 
-                    conditions.append("(" + " OR ".join(key_conditions) + ")")
+                    if key_conditions:
+                        conditions.append("(" + " OR ".join(key_conditions) + ")")
 
             elif key == "artcategory_ignore":
                 conditions.append(
                     "("
                     + " AND ".join(
                         [
-                            rf"dou_inlabs.unaccent(artcategory) !~* dou_inlabs.unaccent('^{value}')"
-                            for value in values
+                            rf"dou_inlabs.unaccent(artcategory) !~* dou_inlabs.unaccent('{value}')"
+                            for value in values if value
                         ]
                     )
                     + ")"
@@ -161,22 +172,18 @@ class INLABSSQLModeHook(INLABSHook):
                     + " AND ".join(
                         [
                             rf"dou_inlabs.unaccent(texto) !~* dou_inlabs.unaccent('\y{value}\y')"
-                            for value in values
+                            for value in values if value
                         ]
                     )
                     + ")"
                 )
             else:
-                conditions.append(
-                    "("
-                    + " OR ".join(
-                        [
-                            rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{value}\y')"
-                            for value in values
-                        ]
-                    )
-                    + ")"
-                )
+                sub_or = [
+                    rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('{value}')"
+                    for value in values if value
+                ]
+                if sub_or:
+                    conditions.append("(" + " OR ".join(sub_or) + ")")
 
         if conditions:
             query = f"{query} AND {' AND '.join(conditions)}"

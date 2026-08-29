@@ -5166,23 +5166,22 @@
 
                 openEmailModal(mentions = []) {
                     this.historyModalOpen = false;
-                    const defaultTpl = this.emailTemplates.find(t => t.name === 'Padrão Registrale');
-                    let bodyHtml = this.generateDefaultEmailBody(mentions);
-                    let subject = 'Notificação Registrale - Menções Detectadas no DOU';
-                    let templateId = '';
-                    if (defaultTpl) {
-                        templateId = defaultTpl.id;
-                        subject = defaultTpl.subject;
-                        bodyHtml = defaultTpl.body_html.replace('{content}', this.generateDefaultEmailBody(mentions));
-                    }
+                    const defaultTpl = this.emailTemplates.find(t => t.name === 'Padrão Registrale') || this.emailTemplates[0];
+                    let templateId = defaultTpl ? defaultTpl.id : '';
                     this.emailForm = {
                         mentions: mentions,
                         to_emails: '',
-                        subject: subject,
-                        body_html: bodyHtml,
+                        subject: '',
+                        body_html: '',
                         templateId: templateId,
                         showHtml: false
                     };
+                    if (templateId) {
+                        this.applyTemplate();
+                    } else {
+                        this.emailForm.subject = 'Notificação Registrale - Menções Detectadas no DOU';
+                        this.emailForm.body_html = this.generateDefaultEmailBody(mentions);
+                    }
                     this.showEmailModal = true;
                     this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
@@ -5234,7 +5233,7 @@
 
                     let preview = rawHtml;
                     if (preview.includes('{content}')) {
-                        preview = preview.replace('{content}', sampleContent);
+                        preview = preview.replace(/\{content\}/g, sampleContent);
                     }
                     preview = preview.replace(/\[TITLE\]/g, 'Notificação Registrale')
                                      .replace(/\[MESSAGE\]/g, 'Foram detectadas as seguintes menções no Diário Oficial da União (DOU):')
@@ -5251,23 +5250,52 @@
                     if (!this.emailForm.templateId) return;
                     const tpl = this.emailTemplates.find(t => t.id == this.emailForm.templateId);
                     if (tpl) {
-                        this.emailForm.subject = tpl.subject;
-                        let body = tpl.body_html;
+                        let subject = tpl.subject || 'Notificação Registrale';
+                        let body = tpl.body_html || '';
                         const mentions = this.emailForm.mentions || [];
-                        if (body.includes('{content}')) {
-                            body = body.replace('{content}', this.generateDefaultEmailBody(mentions));
-                        } else if (mentions.length > 0) {
+
+                        // 1. Extração dos dados das menções selecionadas
+                        let empresa = '';
+                        let cnpj = '';
+                        let secao = '';
+                        let data = '';
+                        let link = '#';
+                        let trechoDestacado = '';
+
+                        if (mentions.length > 0) {
                             const m = mentions[0];
-                            const cnpj = m.cnpj || m.cnpj_norm || '';
-                            const empresa = m.empresa || '';
-                            const trechoDestacado = this.formatTrechoWithHighlight(m.trecho, cnpj, empresa);
-                            body = body.replace(/\{empresa\}/g, empresa);
-                            body = body.replace(/\{cnpj\}/g, cnpj);
-                            body = body.replace(/\{secao\}/g, m.secao || '');
-                            body = body.replace(/\{data\}/g, m.data || '');
-                            body = body.replace(/\{trecho\}/g, trechoDestacado);
-                            body = body.replace(/\{link\}/g, m.link || '#');
+                            cnpj = m.cnpj || m.cnpj_norm || '';
+                            const uniqueEmpresas = [...new Set(mentions.map(x => x.empresa).filter(Boolean))];
+                            empresa = uniqueEmpresas.join(', ') || m.empresa || '';
+                            secao = m.secao || 'DOU';
+                            data = m.data || '';
+                            link = m.link || '#';
+                            trechoDestacado = m.trecho ? this.formatTrechoWithHighlight(m.trecho, cnpj, m.empresa) : '';
                         }
+
+                        // 2. Substituição do bloco consolidado {content}
+                        if (body.includes('{content}')) {
+                            body = body.replace(/\{content\}/g, this.generateDefaultEmailBody(mentions));
+                        } else if (mentions.length > 0) {
+                            // Se o template não tem {content} mas tem menções, anexa o feed de publicações
+                            body += '<br>' + this.generateDefaultEmailBody(mentions);
+                        }
+
+                        // 3. Substituição de todas as tags individuais no corpo do e-mail
+                        body = body.replace(/\{empresa\}/g, empresa || '—')
+                                   .replace(/\{cnpj\}/g, cnpj || '—')
+                                   .replace(/\{secao\}/g, secao || '—')
+                                   .replace(/\{data\}/g, data || '—')
+                                   .replace(/\{trecho\}/g, trechoDestacado || '—')
+                                   .replace(/\{link\}/g, link);
+
+                        // 4. Substituição de tags no assunto do e-mail
+                        subject = subject.replace(/\{empresa\}/g, empresa || '')
+                                         .replace(/\{cnpj\}/g, cnpj || '')
+                                         .replace(/\{secao\}/g, secao || '')
+                                         .replace(/\{data\}/g, data || '');
+
+                        this.emailForm.subject = subject;
                         this.emailForm.body_html = body;
                     }
                 },

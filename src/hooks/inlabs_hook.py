@@ -565,15 +565,20 @@ class INLABSHook(BaseHook):
         def _find_matches(self, text: str, keys: list) -> str:
             """Find configured keys in text using normalized exact matching."""
             normalized_text = self._normalize(text)
-            matches = [
-                key
-                for key in keys
-                if re.search(
-                    r"\b" + re.escape(self._normalize(key)) + r"\b",
-                    normalized_text,
-                    re.IGNORECASE,
-                )
-            ]
+            digits_text = re.sub(r'\D', '', normalized_text)
+            matches = []
+            for key in keys:
+                if not key:
+                    continue
+                norm_key = self._normalize(key)
+                if re.search(r"\b" + re.escape(norm_key) + r"\b", normalized_text, re.IGNORECASE):
+                    matches.append(key)
+                elif re.escape(norm_key) in normalized_text:
+                    matches.append(key)
+                else:
+                    digits_key = re.sub(r'\D', '', norm_key)
+                    if len(digits_key) == 14 and digits_key in digits_text:
+                        matches.append(key)
 
             return ", ".join(sorted(set(matches), key=str.lower))
 
@@ -687,17 +692,30 @@ class INLABSHook(BaseHook):
                     and `</%%>`.
             """
 
-            escaped_terms = [re.escape(self._normalize(term)) for term in terms if term]
-            if not escaped_terms:
+        def _highlight_terms(self, terms: list, text: str) -> str:
+            if not text or not terms:
                 return text
-            pattern = rf"\b({'|'.join(escaped_terms)})\b"
 
+            patterns = []
+            for term in terms:
+                if not term:
+                    continue
+                norm_t = self._normalize(term)
+                digits_t = re.sub(r'\D', '', norm_t)
+                if len(digits_t) == 14:
+                    fmt_pattern = rf"{digits_t[:2]}\.?{digits_t[2:5]}\.?{digits_t[5:8]}/?{digits_t[8:12]}-?{digits_t[12:]}"
+                    patterns.append(fmt_pattern)
+                else:
+                    patterns.append(rf"\b{re.escape(norm_t)}\b")
+
+            if not patterns:
+                return text
+
+            pattern = rf"({'|'.join(patterns)})"
             normalized_text = self._normalize(text)
 
             if len(normalized_text) != len(text):
-                # direct case-insensitive match on original text
-                direct_pattern = rf"\b({'|'.join(re.escape(t) for t in terms if t)})\b"
-                return re.sub(direct_pattern, r"<%%>\1</%%>", text, flags=re.IGNORECASE)
+                return re.sub(pattern, r"<%%>\1</%%>", text, flags=re.IGNORECASE)
 
             result = []
             last_end = 0
