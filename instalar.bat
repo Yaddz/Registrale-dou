@@ -102,6 +102,8 @@ if not exist "data" mkdir "data" >nul 2>&1
 if not exist "flask_sessions" mkdir "flask_sessions" >nul 2>&1
 if not exist "dag_confs" mkdir "dag_confs" >nul 2>&1
 
+docker run --rm -v "%CD%/mnt/pgdata:/var/lib/postgresql/data" alpine sh -c "chown -R 70:70 /var/lib/postgresql/data && chmod -R 700 /var/lib/postgresql/data" >nul 2>&1
+
 echo   Compilando imagens Docker e subindo containers...
 docker compose up -d --build --remove-orphans
 if errorlevel 1 (
