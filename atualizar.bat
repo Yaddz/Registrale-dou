@@ -29,7 +29,7 @@ echo   [OK] Docker Desktop em execucao.
 echo.
 
 REM 2. Puxar alteracoes do Git
-echo [2/3] Atualizando codigo-fonte a partir do Git (git pull)...
+echo [2/3] Atualizando codigo-fonte a partir do Git...
 echo.
 git pull origin main
 if errorlevel 1 (

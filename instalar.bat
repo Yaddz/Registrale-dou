@@ -56,37 +56,44 @@ if errorlevel 1 (
     set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
 )
 
-if exist "docker-compose.yml" (
-    echo   [OK] Repositorio detectado na pasta atual.
-    echo   Puxando atualizacoes mais recentes do Git (git pull)...
+if exist "docker-compose.yml" goto git_current_dir
+if exist "Registrale-dou\docker-compose.yml" goto git_subdir
+goto git_clone
+
+:git_current_dir
+echo   [OK] Repositorio detectado na pasta atual.
+echo   Puxando atualizacoes mais recentes do Git via git pull...
+echo.
+git pull origin main
+echo.
+echo   [OK] Codigo-fonte verificado e atualizado.
+goto git_done
+
+:git_subdir
+cd Registrale-dou
+echo   [OK] Pasta Registrale-dou detectada.
+echo   Puxando atualizacoes mais recentes do Git via git pull...
+echo.
+git pull origin main
+echo.
+echo   [OK] Codigo-fonte verificado e atualizado.
+goto git_done
+
+:git_clone
+echo   Clonando repositorio Registrale-dou...
+echo.
+git clone https://github.com/Yaddz/Registrale-dou.git
+if errorlevel 1 (
     echo.
-    git pull origin main
-    echo.
-    echo   [OK] Codigo-fonte verificado e atualizado.
-) else (
-    if exist "Registrale-dou\docker-compose.yml" (
-        cd Registrale-dou
-        echo   [OK] Pasta Registrale-dou detectada.
-        echo   Puxando atualizacoes mais recentes do Git (git pull)...
-        echo.
-        git pull origin main
-        echo.
-        echo   [OK] Codigo-fonte verificado e atualizado.
-    ) else (
-        echo   Clonando repositorio Registrale-dou...
-        echo.
-        git clone https://github.com/Yaddz/Registrale-dou.git
-        if errorlevel 1 (
-            echo.
-            echo [ERRO] Falha ao clonar o repositorio. Verifique sua conexao.
-            pause
-            exit /b 1
-        )
-        cd Registrale-dou
-        echo.
-        echo   [OK] Repositorio clonado com sucesso.
-    )
+    echo [ERRO] Falha ao clonar o repositorio. Verifique sua conexao.
+    pause
+    exit /b 1
 )
+cd Registrale-dou
+echo.
+echo   [OK] Repositorio clonado com sucesso.
+
+:git_done
 echo.
 
 REM ---------------------------------------------------------------
