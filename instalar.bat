@@ -1,6 +1,7 @@
 @echo off
-cd /d "%~dp0"
-setlocal
+set "PROJECT_DIR=%~dp0"
+if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
+cd /d "%PROJECT_DIR%"
 title Registrale-DOU - Instalador
 
 REM ================================================================
