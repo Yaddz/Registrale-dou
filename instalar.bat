@@ -29,7 +29,6 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-for /f "tokens=*" %%i in ('docker --version 2^^^>nul') do echo   Docker: %%i
 echo   [OK] Docker instalado.
 
 REM Verificar se Docker esta em execucao
@@ -47,10 +46,8 @@ echo   [OK] Docker Desktop em execucao.
 REM Verificar Git
 git --version >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo   [AVISO] Git nao encontrado no PATH (opcional).
+    echo   [AVISO] Git nao encontrado no PATH - opcional.
 ) else (
-    for /f "tokens=*" %%i in ('git --version 2^^^>nul') do echo   Git:    %%i
     echo   [OK] Git instalado.
 )
 
@@ -119,17 +116,17 @@ echo.
 REM ---------------------------------------------------------------
 REM ETAPA 5: Aguardar Airflow e configurar
 REM ---------------------------------------------------------------
-echo [5/6] Aguardando Airflow inicializar (pode levar ate 2 minutos)...
+echo [5/6] Aguardando Airflow inicializar...
 
 set ATTEMPT=0
 :wait_airflow
 set /a ATTEMPT+=1
-if %ATTEMPT% GTR 40 goto configure_airflow
+if %ATTEMPT% GTR 30 goto configure_airflow
 
 docker compose exec -T airflow-webserver curl -f -s -LI http://localhost:8080/ >nul 2>&1
 if errorlevel 1 (
-    <nul set /p =.
-    timeout /t 3 /nobreak >nul
+    echo   Aguardando inicializacao do Airflow - tentativa %ATTEMPT% de 30...
+    ping 127.0.0.1 -n 5 >nul
     goto wait_airflow
 )
 
