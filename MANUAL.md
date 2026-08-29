@@ -73,6 +73,9 @@ Para acessar o sistema, informe seu usuário e senha na tela inicial de login:
 > [!NOTE]
 > A sessão do usuário dura **30 minutos** de inatividade. Qualquer clique ou navegação renova a sessão automaticamente. Quando faltar 1 minuto para expirar, o sistema exibirá um aviso permitindo estender o acesso com um clique.
 
+> [!TIP]
+> **Instalação como Aplicativo Desktop (PWA):** Você pode instalar o Ro-DOU Dashboard como um app nativo no Windows/macOS. No Google Chrome ou Microsoft Edge, clique no ícone **⊕ (Instalar Registrale)** na barra de endereços para fixar o ícone na sua barra de tarefas e abrir o sistema em uma janela dedicada sem poluição visual do navegador.
+
 ---
 
 ### 1.3. Conhecendo a Tela Principal

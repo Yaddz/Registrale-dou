@@ -960,6 +960,157 @@ class TestNewOptimizedFeatures:
         assert excel_resp.status_code == 200
         assert 'spreadsheet' in excel_resp.mimetype or 'openxmlformats' in excel_resp.mimetype or len(excel_resp.data) > 0
 
+    def test_save_main_routine_exact_search_false_persists(self, auth_client, app):
+        import yaml
+        from app.models import db, Settings, Company
+        from app.services.dag_config_service import get_dag_confs_path, rebuild_yaml_from_db, get_base_yaml_path
+
+        # 1. Salva a rotina padrão com busca por termo exato DESATIVADA (is_exact_search=False)
+        resp = auth_client.post('/api/routines', json={
+            "file": "Pesquisa_cnpj.yaml",
+            "name": "MONITORAMENTO PADRAO TESTE",
+            "schedule": "0 8 * * MON-FRI",
+            "terms": ["12345678000190"],
+            "organs": ["ANVISA"],
+            "sections": ["SECAO_1", "SECAO_2"],
+            "emails": ["notificacao@empresa.com"],
+            "subject": "[Monitoramento] Alertas DOU",
+            "active": True,
+            "is_exact_search": False,
+            "source": "INLABS"
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'success'
+
+        # 2. Verifica se persistiu no SQLite
+        with app.app_context():
+            s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+            assert s_rec is not None
+            val = s_rec.get_value()
+            assert val.get('is_exact_search') is False
+
+        # 3. Verifica se a API /api/routines retorna is_exact_search=False
+        routines_resp = auth_client.get('/api/routines')
+        assert routines_resp.status_code == 200
+        routines = routines_resp.get_json()
+        main_r = next((r for r in routines if r.get('file') == 'Pesquisa_cnpj.yaml' or r.get('type') == 'sync'), None)
+        assert main_r is not None
+        assert main_r.get('is_exact_search') is False
+
+        # 4. Força uma reconstrução (simulando cadastro de nova empresa ou sincronização)
+        with app.app_context():
+            new_c = Company(nome="Empresa Rebuild Test", cnpj="33.444.555/0001-66", cnpj_norm="33444555000166", status=True)
+            db.session.add(new_c)
+            db.session.commit()
+            rebuild_yaml_from_db()
+
+        # 5. Verifica se no arquivo YAML gerado a busca exata continua False
+        base_yaml = get_base_yaml_path()
+        assert os.path.exists(base_yaml)
+        with open(base_yaml, 'r', encoding='utf-8') as f:
+            ydata = yaml.safe_load(f)
+            searches = ydata.get('dag', {}).get('search', [])
+            assert len(searches) > 0
+            assert searches[0].get('is_exact_search') is False
+
+    def test_send_email_success_response(self, auth_client, monkeypatch):
+        from unittest.mock import MagicMock
+        from app.services import email_service
+
+        # Mock da chamada SMTP dentro de EmailSender
+        mock_sender = MagicMock()
+        mock_sender.send_custom_email.return_value = True
+        monkeypatch.setattr(email_service, "EmailSender", lambda *args, **kwargs: mock_sender)
+
+        resp = auth_client.post('/api/send_email', json={
+            "to_emails": ["destinatario@teste.com", "outro@teste.com"],
+            "subject": "Relatório de Teste",
+            "body_html": "<p>Conteúdo de Teste</p>"
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'success'
+        assert 'sucesso' in data.get('message', '').lower()
+
+    def test_email_sender_service_returns_true(self, monkeypatch):
+        import smtplib
+        from unittest.mock import MagicMock
+        from app.services.email_service import EmailSender
+
+        mock_smtp = MagicMock()
+        monkeypatch.setattr(smtplib, "SMTP", lambda *a, **kw: mock_smtp)
+
+        sender = EmailSender(config={"server": "smtp.test.com", "port": 587, "user": "u", "password": "p"})
+        result = sender.send_custom_email("dest1@test.com, dest2@test.com", "Assunto", "<b>Html</b>")
+        assert result is True
+
+    def test_export_pdf_with_special_characters_and_urls(self, auth_client):
+        # 1. Export PDF de empresas com & e caracteres especiais
+        special_companies = [
+            {
+                "id": 1,
+                "nome": "COMÉRCIO & INDÚSTRIA LTDA <MATRIZ>",
+                "cnpj": "11.222.333/0001-44",
+                "origem": "Manual & Planilha",
+                "status": True
+            },
+            {
+                "id": 2,
+                "nome": "ALIMENTOS & CIA S.A.",
+                "cnpj": "22.333.444/0001-55",
+                "origem": "GestãoClick",
+                "status": False
+            }
+        ]
+        resp_comp = auth_client.post('/api/export_pdf', json={"companies": special_companies})
+        assert resp_comp.status_code == 200
+        assert resp_comp.mimetype == 'application/pdf'
+        assert len(resp_comp.data) > 0
+
+        # 2. Export PDF de menções com & no nome, trecho com tags e links com query params
+        special_mentions = [
+            {
+                "id": "spec1",
+                "empresa": "DISTRIBUIDORA DE BEBIDAS & ALIMENTOS LTDA",
+                "cnpj": "11.222.333/0001-44",
+                "secao": "DOU - Seção 1 & 2",
+                "data": "25/08/2026",
+                "trecho": "Publicação referente à empresa <b>DISTRIBUIDORA & CIA</b> com CNPJ 11.222.333/0001-44 e valor de R$ 50.000,00 > R$ 30.000,00",
+                "link": "https://in.gov.br/dou?art_id=12345&secao=1&termo=bebidas&data=25/08/2026"
+            }
+        ]
+        resp_mentions = auth_client.post('/api/export_mentions_pdf', json={"mentions": special_mentions})
+        assert resp_mentions.status_code == 200
+        assert resp_mentions.mimetype == 'application/pdf'
+        assert len(resp_mentions.data) > 0
+
+    def test_toggle_main_routine_updates_sqlite(self, auth_client, app):
+        from app.models import Settings
+
+        # Pausa a rotina principal
+        resp = auth_client.post('/api/routines/toggle/Pesquisa_cnpj.yaml', json={"active": False})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('active') is False
+
+        with app.app_context():
+            s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+            assert s_rec is not None
+            val = s_rec.get_value()
+            assert val.get('active') is False
+
+        # Reativa a rotina principal
+        resp2 = auth_client.post('/api/routines/toggle/Pesquisa_cnpj.yaml', json={"active": True})
+        assert resp2.status_code == 200
+        data2 = resp2.get_json()
+        assert data2.get('active') is True
+
+        with app.app_context():
+            s_rec2 = Settings.query.filter_by(key='main_dag_settings').first()
+            assert s_rec2.get_value().get('active') is True
+
+
 
 
 

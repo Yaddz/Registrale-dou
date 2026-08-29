@@ -262,8 +262,8 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
             chunk = [QuotedString(c) for c in cnpjs_ativos[i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE]]
             alvo_busca = copy.deepcopy(alvo_busca_template)
             alvo_busca['terms'] = chunk
-            alvo_busca['is_exact_search'] = True
-            alvo_busca['force_rematch'] = True
+            alvo_busca['is_exact_search'] = alvo_busca_template.get('is_exact_search', True)
+            alvo_busca['force_rematch'] = alvo_busca_template.get('force_rematch', True)
             alvo_busca['full_text'] = False
             
             header_base = alvo_busca.get('header', 'SINCRONIZAÇÃO AUTOMÁTICA')

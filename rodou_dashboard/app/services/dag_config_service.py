@@ -369,7 +369,7 @@ def get_routines():
     
     # Sincronização inteligente com a base de dados
     try:
-        from ..models import Company
+        from ..models import Company, Settings
         db_active_count = Company.query.filter_by(status=True).count()
         if db_active_count > 0 and (total_cnpjs != db_active_count or not os.path.exists(get_base_yaml_path())):
             rebuild_yaml_from_db()
@@ -377,23 +377,34 @@ def get_routines():
     except Exception:
         pass
 
+    db_main_dag = {}
+    try:
+        from ..models import Settings
+        s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+        if s_rec:
+            s_val = s_rec.get_value()
+            if isinstance(s_val, dict):
+                db_main_dag = s_val
+    except Exception:
+        pass
+
     sync_routine = {
         "id": "Monitoramento Padrão (Empresas Ativas)",
         "file": "Pesquisa_cnpj.yaml",
         "description": f"Busca padrão diária vinculada às empresas com monitoramento ativo na base ({total_cnpjs} CNPJs).",
-        "schedule": sync_base_data.get('schedule', '0 8 * * MON-FRI') if sync_base_data else "0 8 * * MON-FRI",
+        "schedule": db_main_dag.get('schedule') or (sync_base_data.get('schedule', '0 8 * * MON-FRI') if sync_base_data else "0 8 * * MON-FRI"),
         "terms": [f"{total_cnpjs} CNPJs monitorados"],
-        "organs": sync_base_data.get('organs', ["Diversos"]) if sync_base_data else ["Diversos"],
-        "department": sync_base_data.get('department', ["Diversos"]) if sync_base_data else ["Diversos"],
-        "sections": sync_base_data.get('sections', ["SECAO_1", "SECAO_2", "SECAO_3"]) if sync_base_data else ["SECAO_1", "SECAO_2", "SECAO_3"],
-        "emails": sync_base_data.get('emails', []) if sync_base_data else [],
-        "subject": sync_base_data.get('subject', '') if sync_base_data else '',
+        "organs": db_main_dag.get('organs') or (sync_base_data.get('organs', ["Diversos"]) if sync_base_data else ["Diversos"]),
+        "department": db_main_dag.get('department') or (sync_base_data.get('department', ["Diversos"]) if sync_base_data else ["Diversos"]),
+        "sections": db_main_dag.get('sections') or (sync_base_data.get('sections', ["SECAO_1", "SECAO_2", "SECAO_3"]) if sync_base_data else ["SECAO_1", "SECAO_2", "SECAO_3"]),
+        "emails": db_main_dag.get('emails') or (sync_base_data.get('emails', []) if sync_base_data else []),
+        "subject": db_main_dag.get('subject') if 'subject' in db_main_dag else (sync_base_data.get('subject', '') if sync_base_data else ''),
         "type": "sync",
-        "active": sync_base_data.get('active', True) if sync_base_data else True,
-        "is_exact_search": sync_base_data.get('is_exact_search', True) if sync_base_data else True,
-        "force_rematch": sync_base_data.get('force_rematch', True) if sync_base_data else True,
-        "terms_ignore": sync_base_data.get('terms_ignore', []) if sync_base_data else [],
-        "source": "INLABS"
+        "active": db_main_dag.get('active', sync_base_data.get('active', True) if sync_base_data else True),
+        "is_exact_search": db_main_dag.get('is_exact_search', sync_base_data.get('is_exact_search', True) if sync_base_data else True),
+        "force_rematch": db_main_dag.get('force_rematch', sync_base_data.get('force_rematch', True) if sync_base_data else True),
+        "terms_ignore": db_main_dag.get('terms_ignore', sync_base_data.get('terms_ignore', []) if sync_base_data else []),
+        "source": db_main_dag.get('source', 'INLABS')
     }
     
     routines.insert(0, sync_routine)
@@ -521,9 +532,11 @@ def rebuild_yaml_from_db():
                 'dataset': 'inlabs',
                 'search': [{
                     'header': 'MONITORAMENTO PADRÃO',
-                    'is_exact_search': True,
-                    'force_rematch': True,
-                    'department': ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
+                    'is_exact_search': db_main_dag.get('is_exact_search', True),
+                    'force_rematch': db_main_dag.get('force_rematch', True),
+                    'department': db_main_dag.get('organs') or db_main_dag.get('department') or ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
+                    'dou_sections': db_main_dag.get('sections') or db_main_dag.get('dou_sections') or ["SECAO_1", "SECAO_2", "SECAO_3"],
+                    'terms_ignore': db_main_dag.get('terms_ignore', []),
                     'terms': []
                 }],
                 'report': {
@@ -586,13 +599,22 @@ def rebuild_yaml_from_db():
 
     chunks = [[QuotedString(c) for c in all_cnpjs[i:i+CHUNK_SIZE]] for i in range(0, max(len(all_cnpjs), 1), CHUNK_SIZE)]
 
+    exact_search_val = db_main_dag.get('is_exact_search', search_template.get('is_exact_search', True))
+    force_rematch_val = db_main_dag.get('force_rematch', search_template.get('force_rematch', True))
+    organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', ['ANVISA', 'Agência Nacional de Vigilância Sanitária'])
+    sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"])
+    terms_ignore_val = db_main_dag.get('terms_ignore', search_template.get('terms_ignore', []))
+
     search_blocks = []
     for idx, chunk in enumerate(chunks, 1):
         block = copy.deepcopy(search_template)
         block['terms'] = chunk
         block['header'] = f"{header_base} - PARTE {idx}" if len(chunks) > 1 else header_base
-        block['is_exact_search'] = True
-        block['force_rematch'] = True
+        block['is_exact_search'] = exact_search_val
+        block['force_rematch'] = force_rematch_val
+        block['department'] = organs_val
+        block['dou_sections'] = sections_val
+        block['terms_ignore'] = terms_ignore_val
         block['full_text'] = False
         search_blocks.append(block)
 

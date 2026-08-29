@@ -278,7 +278,14 @@ def manage_routines():
             "emails": emails,
             "subject": report.get("subject", ""),
             "schedule": dag.get("schedule", "0 8 * * MON-FRI"),
-            "active": dag.get("active", True)
+            "active": dag.get("active", True),
+            "is_exact_search": search.get("is_exact_search", True),
+            "force_rematch": search.get("force_rematch", True),
+            "organs": search.get("department", []),
+            "department": search.get("department", []),
+            "sections": search.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
+            "terms_ignore": search.get("terms_ignore", []),
+            "source": source_input
         })
         db.session.commit()
         rebuild_yaml_from_db()
@@ -422,15 +429,32 @@ def api_configure_main_dag():
     # 1. Salva configurações no SQLite (persistente no volume /data)
     from ..models import db, Settings
     s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+    existing_val = s_rec.get_value() if (s_rec and isinstance(s_rec.get_value(), dict)) else {}
     if not s_rec:
         s_rec = Settings(key='main_dag_settings')
         db.session.add(s_rec)
-    s_rec.set_value({
+    
+    updated_main_settings = dict(existing_val)
+    updated_main_settings.update({
         "emails": emails,
         "subject": subject,
         "schedule": schedule,
         "active": active
     })
+    if 'is_exact_search' in data:
+        updated_main_settings['is_exact_search'] = bool(data['is_exact_search'])
+    if 'force_rematch' in data:
+        updated_main_settings['force_rematch'] = bool(data['force_rematch'])
+    if 'organs' in data or 'department' in data:
+        orgs = data.get('organs') or data.get('department')
+        updated_main_settings['organs'] = orgs
+        updated_main_settings['department'] = orgs
+    if 'sections' in data:
+        updated_main_settings['sections'] = data['sections']
+    if 'terms_ignore' in data:
+        updated_main_settings['terms_ignore'] = data['terms_ignore']
+
+    s_rec.set_value(updated_main_settings)
     db.session.commit()
     
     # 2. Atualiza Pesquisa_cnpj.yaml e reconstrói blocos com base nas novas configurações
@@ -575,8 +599,20 @@ def toggle_routine_route(file):
         from ..services.airflow_service import toggle_airflow_dag
         toggle_airflow_dag(dag_id, is_paused=not new_active)
         
-        # Se for Pesquisa_cnpj.yaml, propaga também para partes particionadas
+        # Se for Pesquisa_cnpj.yaml, atualiza também no SQLite e propaga para partes
         if file == "Pesquisa_cnpj.yaml":
+            from ..models import db, Settings
+            s_rec = Settings.query.filter_by(key='main_dag_settings').first()
+            if not s_rec:
+                s_rec = Settings(key='main_dag_settings')
+                db.session.add(s_rec)
+            s_val = s_rec.get_value() if s_rec.value else {}
+            if not isinstance(s_val, dict):
+                s_val = {}
+            s_val['active'] = bool(new_active)
+            s_rec.set_value(s_val)
+            db.session.commit()
+
             parts = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml")) + \
                     glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
             for p in parts:

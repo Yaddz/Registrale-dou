@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código fonte
 COPY app/ app/
 COPY templates/ templates/
+COPY static/ static/
 
 # Expõe a porta do Flask
 EXPOSE 5000

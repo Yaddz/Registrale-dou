@@ -262,7 +262,8 @@ def send_email():
         sender = EmailSender()
         success = sender.send_custom_email(to_emails, subject, body_html)
         if success:
-            add_history_event("Email Enviado", f"Emails enviados para: {', '.join(to_emails)}")
+            email_list = to_emails if isinstance(to_emails, list) else [str(to_emails)]
+            add_history_event("Email Enviado", f"Emails enviados para: {', '.join(email_list)}")
             return jsonify({"status": "success", "message": "E-mails enviados com sucesso!"})
         else:
             return jsonify({"status": "error", "message": "Falha ao enviar e-mail via servidor SMTP."}), 500
@@ -273,6 +274,7 @@ def send_email():
 @exports_bp.route('/export_pdf', methods=['POST'])
 @login_required
 def export_pdf():
+    import html
     data = request.json or {}
     companies = data.get('companies', [])
     
@@ -339,7 +341,7 @@ def export_pdf():
             Paragraph(str(len(companies)), kpi_val_style),
             Paragraph(f"<font color='#16a34a'>{active_count}</font>", kpi_val_style),
             Paragraph(f"<font color='#dc2626'>{inactive_count}</font>", kpi_val_style),
-            Paragraph(f"{session.get('user', {}).get('username', 'admin')}", kpi_val_style),
+            Paragraph(html.escape(str(session.get('user', {}).get('username', 'admin'))), kpi_val_style),
             Paragraph(get_local_now().strftime('%d/%m/%Y %H:%M'), kpi_val_style)
         ]
     ]
@@ -365,9 +367,9 @@ def export_pdf():
     
     for c in companies:
         table_data.append([
-            Paragraph(c.get('nome', 'N/A'), td_style),
-            Paragraph(c.get('cnpj', 'N/A'), td_mono),
-            Paragraph(c.get('origem', 'Manual'), td_style),
+            Paragraph(html.escape(str(c.get('nome', 'N/A'))), td_style),
+            Paragraph(html.escape(str(c.get('cnpj', 'N/A'))), td_mono),
+            Paragraph(html.escape(str(c.get('origem', 'Manual'))), td_style),
             Paragraph("Ativo" if c.get('status') else "Inativo", td_style)
         ])
     
@@ -395,6 +397,7 @@ def export_pdf():
 @login_required
 def export_mentions_pdf():
     import re
+    import html
     data = request.json or {}
     mentions = data.get('mentions', [])
     
@@ -458,7 +461,7 @@ def export_mentions_pdf():
         [
             Paragraph(str(len(mentions)), kpi_val_style),
             Paragraph(str(unique_cnpjs), kpi_val_style),
-            Paragraph(f"{session.get('user', {}).get('username', 'admin')}", kpi_val_style),
+            Paragraph(html.escape(str(session.get('user', {}).get('username', 'admin'))), kpi_val_style),
             Paragraph(get_local_now().strftime('%d/%m/%Y %H:%M'), kpi_val_style)
         ]
     ]
@@ -487,15 +490,20 @@ def export_mentions_pdf():
     for m in mentions:
         raw_trecho = m.get('trecho', '') or ''
         clean_trecho = re.sub(r'<[^>]+>', ' ', raw_trecho).strip()
-        trecho_snippet = clean_trecho[:160] + ('...' if len(clean_trecho) > 160 else '')
+        escaped_trecho = html.escape(clean_trecho)
+        trecho_snippet = escaped_trecho[:160] + ('...' if len(escaped_trecho) > 160 else '')
         link = m.get('link', '')
-        link_para = Paragraph(f'<a href="{link}">Abrir DOU</a>', link_style) if link and link != '#' else Paragraph('-', td_style)
+        if link and link != '#':
+            link_escaped = html.escape(link, quote=True)
+            link_para = Paragraph(f'<a href="{link_escaped}">Abrir DOU</a>', link_style)
+        else:
+            link_para = Paragraph('-', td_style)
         
         table_data.append([
-            Paragraph(m.get('data', 'N/A'), td_mono),
-            Paragraph(m.get('empresa', 'N/A'), td_style),
-            Paragraph(m.get('cnpj', 'N/A'), td_mono),
-            Paragraph(m.get('secao', 'DOU'), td_style),
+            Paragraph(html.escape(str(m.get('data', 'N/A'))), td_mono),
+            Paragraph(html.escape(str(m.get('empresa', 'N/A'))), td_style),
+            Paragraph(html.escape(str(m.get('cnpj', 'N/A'))), td_mono),
+            Paragraph(html.escape(str(m.get('secao', 'DOU'))), td_style),
             Paragraph(trecho_snippet, td_style),
             link_para
         ])

@@ -104,7 +104,9 @@ def _init_default_data():
 
 def create_app(config=None):
     app = Flask(__name__,
-                template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'))
+                template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'),
+                static_folder=os.path.join(os.path.dirname(__file__), '..', 'static'),
+                static_url_path='/static')
     
     # Configuração base
     app.secret_key = os.getenv("SECRET_KEY", "rodou-secret-key-123")

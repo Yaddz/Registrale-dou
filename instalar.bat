@@ -1,0 +1,195 @@
+@echo off
+setlocal
+title Registrale-DOU - Instalador
+
+REM ================================================================
+REM Registrale-DOU - Instalador Automatizado para Windows
+REM ================================================================
+
+echo.
+echo ==================================================================
+echo                  REGISTRALE-DOU - MONITOR DOU
+echo                    Instalador Automatizado
+echo ==================================================================
+echo.
+
+REM ---------------------------------------------------------------
+REM ETAPA 1: Verificar pre-requisitos
+REM ---------------------------------------------------------------
+echo [1/6] Verificando pre-requisitos...
+echo.
+
+REM Verificar Docker
+docker --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERRO] Docker Desktop nao encontrado.
+    echo        Instale em: https://www.docker.com/products/docker-desktop/
+    echo.
+    pause
+    exit /b 1
+)
+for /f "tokens=*" %%i in ('docker --version 2^>nul') do echo   Docker: %%i
+echo   [OK] Docker instalado.
+
+REM Verificar se Docker esta em execucao
+docker info >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo [ERRO] Docker Desktop nao esta em execucao.
+    echo        Inicie o Docker Desktop e tente novamente.
+    echo.
+    pause
+    exit /b 1
+)
+echo   [OK] Docker Desktop em execucao.
+
+REM Verificar Git
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo   [AVISO] Git nao encontrado no PATH (opcional).
+) else (
+    for /f "tokens=*" %%i in ('git --version 2^>nul') do echo   Git:    %%i
+    echo   [OK] Git instalado.
+)
+
+echo.
+echo Pre-requisitos verificados com sucesso.
+echo.
+
+REM ---------------------------------------------------------------
+REM ETAPA 2: Preparar ambiente
+REM ---------------------------------------------------------------
+echo [2/6] Preparando ambiente...
+
+if not exist ".env" (
+    if exist ".env.example" (
+        copy ".env.example" ".env" >nul
+        echo   [OK] Arquivo .env criado a partir de .env.example
+    ) else (
+        echo   [AVISO] .env.example nao encontrado.
+    )
+) else (
+    echo   [OK] Arquivo .env ja existe.
+)
+
+if not exist "mnt\airflow-logs" mkdir "mnt\airflow-logs"
+if not exist "mnt\pgdata" mkdir "mnt\pgdata"
+if not exist "data" mkdir "data"
+if not exist "flask_sessions" mkdir "flask_sessions"
+if not exist "dag_confs" mkdir "dag_confs"
+echo   [OK] Diretorios criados.
+echo.
+
+REM ---------------------------------------------------------------
+REM ETAPA 3: Build dos containers
+REM ---------------------------------------------------------------
+echo [3/6] Construindo containers Docker...
+echo.
+
+docker compose build
+if errorlevel 1 (
+    echo.
+    echo [ERRO] Falha ao construir os containers.
+    echo.
+    pause
+    exit /b 1
+)
+echo.
+echo   [OK] Containers construidos com sucesso.
+echo.
+
+REM ---------------------------------------------------------------
+REM ETAPA 4: Iniciar containers
+REM ---------------------------------------------------------------
+echo [4/6] Iniciando containers...
+
+docker compose up -d --remove-orphans
+if errorlevel 1 (
+    echo.
+    echo [ERRO] Falha ao iniciar os containers.
+    echo.
+    pause
+    exit /b 1
+)
+echo   [OK] Containers iniciados.
+echo.
+
+REM ---------------------------------------------------------------
+REM ETAPA 5: Aguardar Airflow e configurar
+REM ---------------------------------------------------------------
+echo [5/6] Aguardando Airflow inicializar (isso pode levar ate 1 minuto)...
+
+set ATTEMPT=0
+:wait_airflow
+set /a ATTEMPT+=1
+if %ATTEMPT% GTR 40 goto configure_airflow
+
+docker compose exec -T airflow-webserver curl -f -s -LI http://localhost:8080/ >nul 2>&1
+if errorlevel 1 (
+    <nul set /p =.
+    timeout /t 3 /nobreak >nul
+    goto wait_airflow
+)
+
+echo.
+echo   [OK] Airflow pronto para configuracao.
+echo.
+
+:configure_airflow
+echo   Configurando variaveis e conexoes do Airflow...
+
+REM Variavel termos_exemplo
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"termos_exemplo_variavel\", \"value\": \"LGPD\nlei geral de protecao de dados\nacesso a informacao\"}'" >nul 2>&1
+
+REM Variavel email_admin
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"email_admin\", \"value\": \"admin@rodou.gov.br\"}'" >nul 2>&1
+
+REM Variavel path_tmp
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"path_tmp\", \"value\": \"/tmp\"}'" >nul 2>&1
+
+REM Inicializar schema do banco inlabs
+docker compose exec -T -e PGPASSWORD=airflow postgres sh -c "psql -q -U airflow -f /sql/init-db.sql" >nul 2>&1
+
+REM Conexao inlabs_db
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/connections' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"connection_id\": \"inlabs_db\", \"conn_type\": \"postgres\", \"schema\": \"inlabs\", \"host\": \"postgres\", \"login\": \"airflow\", \"password\": \"airflow\", \"port\": 5432}'" >nul 2>&1
+
+REM Conexao inlabs_portal
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/connections' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"connection_id\": \"inlabs_portal\", \"conn_type\": \"http\", \"description\": \"Credencial INLabs\", \"host\": \"https://inlabs.in.gov.br/\", \"login\": \"user@email.com\", \"password\": \"password\"}'" >nul 2>&1
+
+REM Ativar DAG de carga INLABS
+docker compose exec -T airflow-webserver sh -c "curl -s -X PATCH 'http://localhost:8080/api/v1/dags/ro-dou_inlabs_load_pg' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"is_paused\": false}'" >nul 2>&1
+
+echo   [OK] Airflow configurado com sucesso.
+echo.
+
+REM ---------------------------------------------------------------
+REM ETAPA 6: Abrir o Dashboard
+REM ---------------------------------------------------------------
+echo [6/6] Abrindo o Dashboard no navegador...
+
+start http://localhost:5000
+
+echo.
+echo ==================================================================
+echo       Registrale-DOU instalado e inicializado com sucesso!
+echo ==================================================================
+echo.
+echo   * Dashboard Web:   http://localhost:5000  (Login: admin / admin)
+echo   * Apache Airflow:  http://localhost:8080  (Login: airflow / airflow)
+echo   * Webmail Testes:  http://localhost:5001  (smtp4dev)
+echo.
+echo ------------------------------------------------------------------
+echo   DICA PWA: No Chrome/Edge, clique no icone de instalacao na
+echo   barra de endereco para instalar como aplicativo nativo.
+echo ------------------------------------------------------------------
+echo.
+echo   Comandos uteis no dia a dia:
+echo     docker compose up -d     (Iniciar servicos)
+echo     docker compose down      (Parar servicos)
+echo     docker compose logs -f   (Ver logs em tempo real)
+echo.
+echo ==================================================================
+echo.
+
+pause

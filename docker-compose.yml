@@ -148,6 +148,7 @@ services:
     volumes:
       - ./rodou_dashboard/app:/app/app
       - ./rodou_dashboard/templates:/app/templates
+      - ./rodou_dashboard/static:/app/static
       - ./dag_confs:/dag_confs
       - ./data:/data
       - ./mnt/airflow-logs:/mnt/airflow-logs

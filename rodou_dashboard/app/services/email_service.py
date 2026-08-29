@@ -7,7 +7,7 @@ from ..models import Settings
 
 class EmailSender:
     def __init__(self, config=None):
-        self._smtp_config = None
+        self._smtp_config = config
         
     def _get_smtp_config(self):
         """Carrega config SMTP uma única vez por instância para evitar lookups no BD e lentidão."""
@@ -27,6 +27,16 @@ class EmailSender:
     def send_custom_email(self, to_emails, subject, html_content):
         smtp_config = self._get_smtp_config()
 
+        if isinstance(to_emails, str):
+            to_emails = [e.strip() for e in to_emails.replace(';', ',').split(',') if e.strip()]
+        elif isinstance(to_emails, (list, tuple, set)):
+            to_emails = [str(e).strip() for e in to_emails if str(e).strip()]
+        else:
+            to_emails = []
+
+        if not to_emails:
+            raise ValueError("Nenhum destinatário de e-mail válido informado.")
+
         host = (smtp_config.get('server') or smtp_config.get('host') or os.getenv('AIRFLOW__SMTP__SMTP_HOST', 'smtp4dev')).strip()
         port_raw = smtp_config.get('port') or os.getenv('AIRFLOW__SMTP__SMTP_PORT', 25)
         port = int(str(port_raw).strip())
@@ -45,6 +55,7 @@ class EmailSender:
         part = MIMEText(html_content, "html", "utf-8")
         msg.attach(part)
 
+        server_conn = None
         try:
             if port == 465:
                 server_conn = smtplib.SMTP_SSL(host, port, timeout=15)
@@ -53,17 +64,23 @@ class EmailSender:
                 if port in (587, 25):
                     try:
                         server_conn.starttls()
-                    except:
-                        pass
+                    except Exception as tls_err:
+                        logging.warning(f"STARTTLS warning: {tls_err}")
 
             if user and password:
                 server_conn.login(user, password)
             server_conn.sendmail(sender_email, to_emails, msg.as_string())
-            server_conn.quit()
             logging.info(f"Email enviado com sucesso via {host} para {to_emails}")
+            return True
         except Exception as e:
             logging.error(f"Falha ao enviar email via {host}:{port}: {str(e)}")
             raise
+        finally:
+            if server_conn:
+                try:
+                    server_conn.quit()
+                except Exception:
+                    pass
 
 def apply_highlight_to_trecho(trecho: str, cnpj: str = '', cnpj_norm: str = '', terms: list = None, empresa: str = '') -> str:
     """Aplica o destaque amarelo em trechos para CNPJ, termos ou placeholders de busca com limites de palavra."""

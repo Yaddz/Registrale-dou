@@ -19,6 +19,7 @@ O projeto é um **fork customizado do [Ro-DOU](https://gestaogovbr.github.io/Ro-
 * 🔄 **Sincronização com ERP GestãoClick:** Consumo automático da API de clientes com normalização de CNPJs e particionamento inteligente em blocos de até 150 empresas para execução paralela de alta velocidade no Airflow.
 * 📊 **Integração com Google Sheets (API v4):** Sincronização segura com planilhas privadas via Conta de Serviço (*Service Account*), suporte a orientações por Linhas ou Colunas, mapeamento de cabeçalhos e agendamento automático (*background scheduler*).
 * 🖥️ **Ro-DOU Dashboard:** Painel web moderno, reativo e responsivo construído com Alpine.js, Tailwind CSS e Lucide Icons, com suporte completo a **Modo Escuro (*Dark Mode*)** e Modo Claro.
+* 📱 **Suporte a PWA (Progressive Web App):** Instale o painel como aplicativo nativo no Windows/macOS/Linux diretamente via Google Chrome ou Microsoft Edge (janela independente sem barra de navegação).
 * 📢 **Feed em Tempo Real de Menções:** Detecção instantânea de publicações com badges por Seção do DOU, destaques no texto original, alertas sonoros e links diretos para a Imprensa Nacional (`in.gov.br`).
 * 📑 **Central de Relatórios Executivos:** Exportação em lote para **Microsoft Excel (.xlsx)** formatado e **Adobe PDF Diagramado** com identidade visual oficial da Registrale, além de disparo por e-mail.
 * 📧 **Templates Dinâmicos de E-mail:** Editor de templates HTML com preview em tempo real e tags dinâmicas (`{empresa}`, `{cnpj}`, `{secao}`, `{data}`, `{trecho}`, `{link}`).
@@ -91,10 +92,21 @@ Registrale-dou/
 
 ---
 
-### ⚡ Instalação Rápida (`make run`)
+### ⚡ Instalação Rápida
 
 O projeto está 100% preparado para subir todo o ambiente (Dashboard, Airflow, PostgreSQL, OpenSearch, SMTP e conexões) automaticamente:
 
+#### No Windows (Script Automatizado `.bat`):
+```cmd
+# 1. Clonar o repositório
+git clone https://github.com/Yaddz/Registrale-dou.git
+cd Registrale-dou
+
+# 2. Executar o instalador (ou dê 2 cliques no arquivo instalar.bat)
+.\instalar.bat
+```
+
+#### No Linux / macOS / WSL (`make run`):
 ```bash
 # 1. Clonar o repositório
 git clone https://github.com/Yaddz/Registrale-dou.git
@@ -104,7 +116,7 @@ cd Registrale-dou
 make run
 ```
 
-> **O que o `make run` faz automaticamente por você:**
+> **O que a inicialização faz automaticamente por você:**
 > 1. Cria o arquivo `.env` a partir de `.env.example` (se ainda não existir).
 > 2. Cria todos os diretórios de logs, dados e volumes necessários.
 > 3. Constrói e inicializa todos os containers Docker (`docker compose`).
@@ -113,6 +125,17 @@ make run
 > 6. Inicializa o schema do banco PostgreSQL (`inlabs`).
 > 7. Configura as conexões do Airflow (`inlabs_db` e `inlabs_portal`).
 > 8. Ativa a DAG principal de carga do INLABS (`ro-dou_inlabs_load_pg`).
+> 9. Abre automaticamente o Dashboard no seu navegador.
+
+---
+
+### 📱 Como Instalar como Aplicativo Desktop (PWA)
+
+O Dashboard possui suporte nativo a **PWA (Progressive Web App)**:
+
+1. Acesse o painel em `http://localhost:5000` pelo **Google Chrome** ou **Microsoft Edge**.
+2. Na barra de endereços, clique no ícone **⊕ (Instalar Registrale)** ou vá em *Menu (três pontos) > Apps > Instalar Registrale*.
+3. O Dashboard será instalado como um aplicativo independente no seu computador, com atalho na Área de Trabalho/Menu Iniciar e abrindo em janela dedicada sem barras de navegador.
 
 ---
 
