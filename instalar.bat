@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 setlocal
 title Registrale-DOU - Instalador
 
@@ -28,7 +29,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-for /f "tokens=*" %%i in ('docker --version 2^>nul') do echo   Docker: %%i
+for /f "tokens=*" %%i in ('docker --version 2^^^>nul') do echo   Docker: %%i
 echo   [OK] Docker instalado.
 
 REM Verificar se Docker esta em execucao
@@ -49,7 +50,7 @@ if errorlevel 1 (
     echo.
     echo   [AVISO] Git nao encontrado no PATH (opcional).
 ) else (
-    for /f "tokens=*" %%i in ('git --version 2^>nul') do echo   Git:    %%i
+    for /f "tokens=*" %%i in ('git --version 2^^^>nul') do echo   Git:    %%i
     echo   [OK] Git instalado.
 )
 
@@ -118,7 +119,7 @@ echo.
 REM ---------------------------------------------------------------
 REM ETAPA 5: Aguardar Airflow e configurar
 REM ---------------------------------------------------------------
-echo [5/6] Aguardando Airflow inicializar (isso pode levar ate 1 minuto)...
+echo [5/6] Aguardando Airflow inicializar (pode levar ate 2 minutos)...
 
 set ATTEMPT=0
 :wait_airflow
@@ -133,31 +134,24 @@ if errorlevel 1 (
 )
 
 echo.
-echo   [OK] Airflow pronto para configuracao.
+echo   [OK] Airflow pronto.
 echo.
 
 :configure_airflow
 echo   Configurando variaveis e conexoes do Airflow...
 
-REM Variavel termos_exemplo
-docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"termos_exemplo_variavel\", \"value\": \"LGPD\nlei geral de protecao de dados\nacesso a informacao\"}'" >nul 2>&1
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"termos_exemplo_variavel\", \"value\": \"LGPD\"}'" >nul 2>&1
 
-REM Variavel email_admin
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"email_admin\", \"value\": \"admin@rodou.gov.br\"}'" >nul 2>&1
 
-REM Variavel path_tmp
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"path_tmp\", \"value\": \"/tmp\"}'" >nul 2>&1
 
-REM Inicializar schema do banco inlabs
 docker compose exec -T -e PGPASSWORD=airflow postgres sh -c "psql -q -U airflow -f /sql/init-db.sql" >nul 2>&1
 
-REM Conexao inlabs_db
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/connections' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"connection_id\": \"inlabs_db\", \"conn_type\": \"postgres\", \"schema\": \"inlabs\", \"host\": \"postgres\", \"login\": \"airflow\", \"password\": \"airflow\", \"port\": 5432}'" >nul 2>&1
 
-REM Conexao inlabs_portal
-docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/connections' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"connection_id\": \"inlabs_portal\", \"conn_type\": \"http\", \"description\": \"Credencial INLabs\", \"host\": \"https://inlabs.in.gov.br/\", \"login\": \"user@email.com\", \"password\": \"password\"}'" >nul 2>&1
+docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/connections' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"connection_id\": \"inlabs_portal\", \"conn_type\": \"http\", \"host\": \"https://inlabs.in.gov.br/\", \"login\": \"user@email.com\", \"password\": \"password\"}'" >nul 2>&1
 
-REM Ativar DAG de carga INLABS
 docker compose exec -T airflow-webserver sh -c "curl -s -X PATCH 'http://localhost:8080/api/v1/dags/ro-dou_inlabs_load_pg' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"is_paused\": false}'" >nul 2>&1
 
 echo   [OK] Airflow configurado com sucesso.
