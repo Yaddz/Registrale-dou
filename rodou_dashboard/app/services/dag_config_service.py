@@ -43,6 +43,22 @@ def get_base_yaml_path():
     dag_confs_path = get_dag_confs_path()
     return os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
 
+def touch_dag_generator():
+    """Atualiza o timestamp de modificação do gerador de DAGs do Airflow para forçar recarregamento imediato."""
+    candidates = [
+        os.path.join(BASE_DIR, "src", "dou_dag_generator.py"),
+        "/opt/airflow/dags/ro_dou_src/dou_dag_generator.py",
+        "/app/src/dou_dag_generator.py",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "src", "dou_dag_generator.py"))
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                os.utime(p, None)
+                logger.info(f"Gerador de DAGs atualizado com sucesso: {p}")
+            except Exception as e:
+                logger.warning(f"Aviso ao atualizar mtime do gerador DAG {p}: {e}")
+
 def get_monitored_cnpjs():
     global _cnpjs_cache
     now = time.time()
@@ -400,9 +416,9 @@ def get_routines():
         "emails": db_main_dag.get('emails') or (sync_base_data.get('emails', []) if sync_base_data else []),
         "subject": db_main_dag.get('subject') if 'subject' in db_main_dag else (sync_base_data.get('subject', '') if sync_base_data else ''),
         "type": "sync",
-        "active": db_main_dag.get('active', sync_base_data.get('active', True) if sync_base_data else True),
-        "is_exact_search": db_main_dag.get('is_exact_search', sync_base_data.get('is_exact_search', True) if sync_base_data else True),
-        "force_rematch": db_main_dag.get('force_rematch', sync_base_data.get('force_rematch', True) if sync_base_data else True),
+        "active": bool(db_main_dag['active'] if 'active' in db_main_dag else (sync_base_data.get('active', True) if sync_base_data else True)),
+        "is_exact_search": bool(db_main_dag['is_exact_search'] if 'is_exact_search' in db_main_dag else (sync_base_data.get('is_exact_search', False) if sync_base_data else False)),
+        "force_rematch": bool(db_main_dag['force_rematch'] if 'force_rematch' in db_main_dag else (sync_base_data.get('force_rematch', True) if sync_base_data else True)),
         "terms_ignore": db_main_dag.get('terms_ignore', sync_base_data.get('terms_ignore', []) if sync_base_data else []),
         "source": db_main_dag.get('source', 'INLABS')
     }
@@ -599,8 +615,14 @@ def rebuild_yaml_from_db():
 
     chunks = [[QuotedString(c) for c in all_cnpjs[i:i+CHUNK_SIZE]] for i in range(0, max(len(all_cnpjs), 1), CHUNK_SIZE)]
 
-    exact_search_val = db_main_dag.get('is_exact_search', search_template.get('is_exact_search', True))
-    force_rematch_val = db_main_dag.get('force_rematch', search_template.get('force_rematch', True))
+    if 'is_exact_search' in db_main_dag:
+        exact_search_val = bool(db_main_dag['is_exact_search'])
+    elif 'is_exact_search' in search_template:
+        exact_search_val = bool(search_template['is_exact_search'])
+    else:
+        exact_search_val = False
+
+    force_rematch_val = bool(db_main_dag.get('force_rematch', search_template.get('force_rematch', True)))
     organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', ['ANVISA', 'Agência Nacional de Vigilância Sanitária'])
     sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"])
     terms_ignore_val = db_main_dag.get('terms_ignore', search_template.get('terms_ignore', []))
@@ -649,7 +671,9 @@ def rebuild_yaml_from_db():
         except Exception as final_err:
             logger.error(f"Erro ao salvar YAML base em {base_yaml}: {final_err}")
 
-    logger.info(f"YAML reconstruído com {len(all_cnpjs)} CNPJs em 1 arquivo com {len(chunks)} parte(s).")
+    # Notifica o Airflow para recarregar o gerador de DAGs imediatamente
+    touch_dag_generator()
+    logger.info(f"YAML reconstruído com {len(all_cnpjs)} CNPJs em 1 arquivo com {len(chunks)} parte(s) (is_exact_search={exact_search_val}).")
 
 def sync_json_to_db():
     import json

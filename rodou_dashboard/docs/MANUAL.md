@@ -71,7 +71,10 @@ Para acessar o sistema, informe seu usuário e senha na tela inicial de login:
   * Executa rotinas de limpeza de dados e diagnóstico de armazenamento.
 
 > [!NOTE]
-> A sessão do usuário dura **30 minutos** de inatividade. Qualquer clique ou navegação renova a sessão automaticamente. Quando faltar 1 minuto para expirar, o sistema exibirá um aviso permitindo estender o acesso com um clique.
+> A sessão dura **30 minutos de inatividade**. Quando faltar 1 minuto para expirar, o painel exibirá um aviso permitindo estender o acesso com um clique.
+
+> [!TIP]
+> **Instalação como Aplicativo Desktop (PWA):** Você pode instalar o Ro-DOU Dashboard como um app nativo no Windows/macOS. No Google Chrome ou Microsoft Edge, clique no ícone **⊕ (Instalar Registrale)** na barra de endereços para fixar o ícone na sua barra de tarefas e abrir o sistema em uma janela dedicada sem poluição visual do navegador.
 
 ---
 
@@ -175,7 +178,7 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 
 * **Rotina Principal do Sistema (`Pesquisa_cnpj_sync`):**
   * Varre automaticamente todas as empresas ativas cadastradas no sistema.
-  * O sistema divide a lista em blocos de até **150 CNPJs** para garantir buscas rápidas e em paralelo.
+  * O sistema divide a lista em blocos escaláveis de até **1.500 CNPJs** por bloco de busca para garantir alto desempenho e resiliência no Airflow.
 * **Rotinas Personalizadas:**
   * Rotinas criadas por você para buscar termos específicos, palavras-chave de licitações, nomes de sócios ou monitorar atos de órgãos públicos específicos.
 
@@ -194,14 +197,17 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
      * **Seção 3:** Contratos, Editais, Licitações, Avisos e Extratos.
 5. **Termos de Busca:**
    * Digite os termos ou palavras-chave desejadas separados por vírgula (ex: `pregão eletrônico, registro de preços, tecnologia`).
-6. **Filtro por Órgãos (Opcional):**
+6. **Tipo de Busca (Busca por termo exato / aproximada):**
+   * **Desmarcado (Recomendado para CNPJs e termos com pontuação):** Realiza busca flexível, permitindo encontrar tanto formatos pontuados (`09.364.298/0001-93`) quanto unificados.
+   * **Marcado:** Aplica correspondência estrita com aspas (`"..."`).
+7. **Filtro por Órgãos (Opcional):**
    * Especifique ministérios, agências reguladoras ou autarquias que deseja filtrar (ex: `ANVISA, Ministério da Saúde`).
-7. **E-mails de Notificação:**
+8. **E-mails de Notificação:**
    * Digite os e-mails que devem receber alertas automáticos quando forem encontradas publicações nesta rotina.
-8. Clique em **Salvar Configurações**.
+9. Clique em **Salvar Configurações**.
 
 > [!NOTE]
-> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Você não precisa configurar esses padrões manualmente a cada nova rotina.
+> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Qualquer alteração realizada e salva no painel é sincronizada **imediatamente** com a DAG do Airflow.
 
 ---
 
@@ -252,6 +258,7 @@ Na barra lateral, clique em **Todas as Menções** para auditar todas as ocorrê
 
 ### 4.1. Visualizando o Feed de Publicações em Tempo Real
 * A lista exibe a data da publicação, o nome da empresa, o CNPJ e o badge indicando a Seção do DOU (`Seção 1`, `Seção 2` ou `Seção 3`).
+* **Busca Inteligente Unificada:** O campo de pesquisa permite buscar por Razão Social, CNPJ (com ou sem pontuação), data específica (`28/08/2026`), mês por extenso (`agosto`, `08/2026`) ou palavras contidas no trecho da publicação.
 * Quando uma nova publicação é detectada pelo sistema, o contador na barra lateral acende em vermelho e um alerta sonoro suave é emitido.
 
 ---
@@ -279,7 +286,7 @@ Na barra lateral, clique em **Relatórios** para gerar documentos corporativos p
 1. **Atalhos de Período:** Clique em um dos botões rápidos:
    * `Hoje` | `Últimos 7 dias` | `Este Mês` | `Últimos 30 dias` | `Ano Atual`
    * Ou selecione uma **Data Inicial** e **Data Final** no calendário.
-2. **Filtro de Empresas:** Digite o nome de uma ou mais empresas no campo de busca para gerar um relatório segmentado.
+2. **Filtro de Busca Global:** Digite o nome da empresa, CNPJ, data (`28/08/2026`), mês por extenso (`agosto`) ou palavras-chave do trecho para gerar um relatório segmentado.
 3. **Filtro por Seção:** Selecione apenas as seções de interesse (Seção 1, 2 ou 3).
 
 ---
@@ -446,4 +453,4 @@ Na sub-aba **Limpeza do Sistema**:
 ---
 
 ### ❓ "Como evitar que minha sessão expire enquanto estou trabalhando?"
-**Resposta:** Qualquer clique de navegação entre abas ou botões estende a sessão automaticamente por mais 30 minutos. Quando faltar 1 minuto para expirar, clique em **Continuar** no aviso na tela para renovar o acesso.
+**Resposta:** A sessão dura 30 minutos de inatividade. Quando faltar 1 minuto para expirar, o painel exibirá um aviso permitindo estender o acesso com um clique. Basta clicar em **Continuar Conectado** no aviso na tela para renovar o acesso por mais 30 minutos.

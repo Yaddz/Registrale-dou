@@ -16,7 +16,7 @@ O projeto é um **fork customizado do [Ro-DOU](https://gestaogovbr.github.io/Ro-
 
 ## 🌟 Principais Recursos & Diferenciais da Registrale
 
-* 🔄 **Sincronização com ERP GestãoClick:** Consumo automático da API de clientes com normalização de CNPJs e particionamento inteligente em blocos de até 150 empresas para execução paralela de alta velocidade no Airflow.
+* 🔄 **Sincronização com ERP GestãoClick:** Consumo automático da API de clientes com normalização de CNPJs e particionamento inteligente em blocos escaláveis de até 1.500 empresas para execução paralela de alta velocidade no Airflow.
 * 📊 **Integração com Google Sheets (API v4):** Sincronização segura com planilhas privadas via Conta de Serviço (*Service Account*), suporte a orientações por Linhas ou Colunas, mapeamento de cabeçalhos e agendamento automático (*background scheduler*).
 * 🖥️ **Ro-DOU Dashboard:** Painel web moderno, reativo e responsivo construído com Alpine.js, Tailwind CSS e Lucide Icons, com suporte completo a **Modo Escuro (*Dark Mode*)** e Modo Claro.
 * 📱 **Suporte a PWA (Progressive Web App):** Instale o painel como aplicativo nativo no Windows/macOS/Linux diretamente via Google Chrome ou Microsoft Edge (janela independente sem barra de navegação).

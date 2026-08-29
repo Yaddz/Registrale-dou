@@ -16,7 +16,7 @@ A integração com o GestãoClick é responsável por manter a base de clientes 
 3. Percorre todas as páginas de clientes e filtra apenas registros que possuem CNPJ válido preenchido.
 4. Normaliza e formata os números de CNPJ (padrão `XX.XXX.XXX/XXXX-XX`).
 5. Persiste as empresas na tabela `Company` do SQLite com `origem = 'gestaoclick'` e `status = True`.
-6. Divide automaticamente os CNPJs ativos em **blocos de até 150 empresas** e regrava os arquivos YAML particionados (`Pesquisa_cnpj_part_1.yaml`, `Pesquisa_cnpj_part_2.yaml`, etc.) e o arquivo consolidado `Pesquisa_cnpj_sync.yaml`.
+6. Divide automaticamente os CNPJs ativos em **blocos escaláveis de até 1.500 empresas** e regrava o arquivo consolidado `Pesquisa_cnpj.yaml`.
 
 ---
 

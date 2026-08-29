@@ -662,7 +662,7 @@
                     <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
                         <div class="relative flex-1 min-w-[200px] sm:w-72">
                             <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-                            <input type="text" x-model="mentionsSearchQuery" placeholder="Buscar empresa ou CNPJ..." class="w-full h-10 pl-10 pr-4 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-stone-100/10 text-slate-900 dark:text-stone-100 placeholder-slate-400">
+                            <input type="text" x-model="mentionsSearchQuery" placeholder="Buscar empresa, CNPJ, data ou trecho..." class="w-full h-10 pl-10 pr-4 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-stone-100/10 text-slate-900 dark:text-stone-100 placeholder-slate-400">
                         </div>
                         <div class="relative shrink-0 flex items-center">
                             <i data-lucide="calendar" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i>
@@ -2621,7 +2621,7 @@
                 <div class="mt-6 pt-6 border-t border-slate-100 dark:border-stone-800">
                     <div class="relative">
                         <i data-lucide="search" class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input type="text" x-model.debounce.250ms="manualSearch" placeholder="Pesquisar no manual (ex: Permissões, Criar rotina, 150 CNPJs, Busca Mensal, SMTP, Google Sheets, GestãoClick, FAQ)..." class="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-stone-800/60 border border-slate-200 dark:border-stone-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 dark:text-stone-200">
+                        <input type="text" x-model.debounce.250ms="manualSearch" placeholder="Pesquisar no manual (ex: Permissões, Criar rotina, 1.500 CNPJs, Busca Mensal, SMTP, Google Sheets, GestãoClick, FAQ)..." class="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-stone-800/60 border border-slate-200 dark:border-stone-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 dark:text-stone-200">
                     </div>
                 </div>
             </div>
@@ -2675,7 +2675,7 @@
                                     <span>Rotinas de Busca</span>
                                 </a>
                                 <div class="pl-7 space-y-1 text-[11px] text-slate-500 dark:text-stone-400 font-medium">
-                                    <a href="#u-3-1" class="block hover:text-amber-600 dark:hover:text-amber-400 py-0.5">3.1. Tipos & 150 CNPJs</a>
+                                    <a href="#u-3-1" class="block hover:text-amber-600 dark:hover:text-amber-400 py-0.5">3.1. Tipos & 1.500 CNPJs</a>
                                     <a href="#u-3-2" class="block hover:text-amber-600 dark:hover:text-amber-400 py-0.5">3.2. Criar Nova Rotina</a>
                                     <a href="#u-3-3" class="block hover:text-amber-600 dark:hover:text-amber-400 py-0.5">3.3. Rodar Agora</a>
                                     <a href="#u-3-4" class="block hover:text-amber-600 dark:hover:text-amber-400 py-0.5">3.4. Data Retroativa</a>
@@ -2818,7 +2818,7 @@
                                 <i data-lucide="clock" class="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"></i>
                                 <div class="space-y-1 leading-relaxed">
                                     <strong>Regra de Sessão (30 minutos):</strong>
-                                    <p>A sessão dura 30 minutos de inatividade. Qualquer navegação ou clique renova o tempo automaticamente. Quando faltar 1 minuto para expirar, o painel exibirá um aviso permitindo estender o acesso com um clique.</p>
+                                    <p>A sessão dura 30 minutos de inatividade. Quando faltar 1 minuto para expirar, o painel exibirá um aviso permitindo estender o acesso com um clique.</p>
                                 </div>
                             </div>
                         </div>
@@ -2969,7 +2969,7 @@
                             <div class="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 flex items-center justify-center font-bold text-sm">3</div>
                             <div>
                                 <h3 class="text-xl font-bold text-slate-900 dark:text-stone-100">3. Como Criar e Gerenciar Rotinas de Busca</h3>
-                                <p class="text-xs text-slate-400">Particionamento em 150 CNPJs, termos livres, buscas imediatas, retroativas e mensais</p>
+                                <p class="text-xs text-slate-400">Particionamento em 1.500 CNPJs, termos livres, buscas imediatas, retroativas e mensais</p>
                             </div>
                         </div>
 
@@ -2982,7 +2982,7 @@
                                 <div class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/40 border border-slate-100 dark:border-stone-800 space-y-2">
                                     <strong class="text-slate-900 dark:text-stone-100 text-sm block">Rotina Principal (<code class="text-xs text-blue-600 dark:text-blue-400">Pesquisa_cnpj_sync</code>)</strong>
                                     <p class="text-slate-500 dark:text-stone-400 leading-relaxed">
-                                        Varre automaticamente todas as empresas ativas. O sistema divide a lista em <strong>blocos de até 150 CNPJs</strong> para garantir buscas rápidas, paralelas e resilientes no Airflow.
+                                        Varre automaticamente todas as empresas ativas. O sistema divide a lista em <strong>blocos de até 1.500 CNPJs</strong> para garantir alto desempenho, processamento paralelo e resiliência no Airflow.
                                     </p>
                                 </div>
                                 <div class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/40 border border-slate-100 dark:border-stone-800 space-y-2">
@@ -3012,12 +3012,13 @@
                                         </ul>
                                     </li>
                                     <li><strong>Termos de Busca:</strong> Digite as palavras-chave separadas por vírgula.</li>
+                                    <li><strong>Tipo de Busca:</strong> Desmarque a opção <em>Busca por termo exato</em> para busca flexível (recomendado para CNPJs e termos com pontuação no DOU), ou marque para correspondência estrita com aspas.</li>
                                     <li><strong>Órgãos Específicos (Opcional):</strong> Filtre ministérios ou agências (ex: <code class="text-slate-800 dark:text-stone-200">ANVISA</code>).</li>
                                     <li><strong>E-mails de Alerta:</strong> Insira os e-mails para notificações automáticas.</li>
                                     <li>Clique em <strong>Salvar Configurações</strong>.</li>
                                 </ol>
                                 <div class="p-3 mt-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 text-[11px] text-blue-800 dark:text-blue-300">
-                                    💡 Todas as novas rotinas utilizam por padrão o <strong>INLABS</strong> como fonte e replicam automaticamente os e-mails da rotina principal.
+                                    💡 Todas as novas rotinas utilizam por padrão o <strong>INLABS</strong> como fonte e replicam automaticamente os e-mails da rotina principal. Qualquer alteração feita no painel sincroniza imediatamente com a DAG no Airflow.
                                 </div>
                             </div>
                         </div>
@@ -3330,7 +3331,7 @@
                                     <i data-lucide="help-circle" class="w-4 h-4 text-rose-600"></i> Como evitar que minha sessão expire enquanto estou trabalhando?
                                 </h4>
                                 <p class="text-slate-600 dark:text-stone-300 leading-relaxed">
-                                    Qualquer clique de navegação entre abas ou botões estende a sessão automaticamente por mais 30 minutos. Quando faltar 1 minuto para expirar, clique em <strong>Continuar</strong> no aviso na tela para renovar o acesso.
+                                    A sessão dura 30 minutos de inatividade. Quando faltar 1 minuto para expirar, o painel exibirá um aviso permitindo estender o acesso com um clique. Basta clicar em <strong>Continuar Conectado</strong> no aviso na tela para renovar o acesso por mais 30 minutos.
                                 </p>
                             </div>
                         </div>
@@ -3818,10 +3819,19 @@
                     let result = this.allMentions;
                     
                     if (this.mentionsSearchQuery) {
-                        const q = this.mentionsSearchQuery.toLowerCase();
+                        const q = this.mentionsSearchQuery.toLowerCase().trim();
+                        const monthsMap = {
+                            'janeiro': '/01/', 'fevereiro': '/02/', 'março': '/03/', 'marco': '/03/',
+                            'abril': '/04/', 'maio': '/05/', 'junho': '/06/', 'julho': '/07/',
+                            'agosto': '/08/', 'setembro': '/09/', 'outubro': '/10/', 'novembro': '/11/', 'dezembro': '/12/'
+                        };
+                        const monthCode = monthsMap[q] || '';
                         result = result.filter(m => 
                             (m.empresa || '').toLowerCase().includes(q) || 
-                            (m.cnpj || '').includes(q)
+                            (m.cnpj || '').includes(q) ||
+                            (m.data || '').toLowerCase().includes(q) ||
+                            (monthCode && (m.data || '').includes(monthCode)) ||
+                            (m.trecho || '').toLowerCase().includes(q)
                         );
                     }
                     
@@ -3832,7 +3842,7 @@
                             const parts = raw.split('-');
                             if (parts.length === 3) target = `${parts[2]}/${parts[1]}/${parts[0]}`;
                         }
-                        result = result.filter(m => m && m.data === target);
+                        result = result.filter(m => m && ((m.data || '') === target || (m.data || '').includes(target)));
                     }
                     return result;
                 },
@@ -3940,8 +3950,16 @@
 
                         // Filtro de Texto Global
                         if (q) {
+                            const monthsMap = {
+                                'janeiro': '/01/', 'fevereiro': '/02/', 'março': '/03/', 'marco': '/03/',
+                                'abril': '/04/', 'maio': '/05/', 'junho': '/06/', 'julho': '/07/',
+                                'agosto': '/08/', 'setembro': '/09/', 'outubro': '/10/', 'novembro': '/11/', 'dezembro': '/12/'
+                            };
+                            const monthCode = monthsMap[q] || '';
                             const match = (m.empresa || '').toLowerCase().includes(q) || 
                                           (m.cnpj || '').toLowerCase().includes(q) || 
+                                          (m.data || '').toLowerCase().includes(q) ||
+                                          (monthCode && (m.data || '').includes(monthCode)) ||
                                           (m.trecho || '').toLowerCase().includes(q);
                             if (!match) return false;
                         }

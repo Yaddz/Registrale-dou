@@ -234,9 +234,12 @@ def manage_routines():
         search["terms"] = [QuotedString(t) for t in raw_terms]
     
     search["dou_sections"] = data.get('sections', search.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"]))
-    search["field"] = search.get("field", "TUDO")
-    search["is_exact_search"] = data.get('is_exact_search', True)
-    search["force_rematch"] = data.get('force_rematch', True)
+    is_exact_val = data.get('is_exact_search')
+    if is_exact_val is None:
+        is_exact_val = search.get("is_exact_search", True)
+    is_exact_val = bool(is_exact_val)
+    search["is_exact_search"] = is_exact_val
+    search["force_rematch"] = bool(data.get('force_rematch', True))
     search["terms_ignore"] = data.get('terms_ignore', [])
     search["full_text"] = search.get("full_text", True)
     search["date"] = search.get("date", "DIA")
@@ -267,6 +270,7 @@ def manage_routines():
         yaml.safe_dump(new_dag, f, allow_unicode=True, sort_keys=False)
     os.replace(tmp_path, file_path)
     
+    from ..services.dag_config_service import touch_dag_generator
     if filename == "Pesquisa_cnpj.yaml":
         from ..models import db, Settings
         from ..services.dag_config_service import rebuild_yaml_from_db
@@ -279,8 +283,8 @@ def manage_routines():
             "subject": report.get("subject", ""),
             "schedule": dag.get("schedule", "0 8 * * MON-FRI"),
             "active": dag.get("active", True),
-            "is_exact_search": search.get("is_exact_search", True),
-            "force_rematch": search.get("force_rematch", True),
+            "is_exact_search": is_exact_val,
+            "force_rematch": bool(search.get("force_rematch", True)),
             "organs": search.get("department", []),
             "department": search.get("department", []),
             "sections": search.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
@@ -289,6 +293,8 @@ def manage_routines():
         })
         db.session.commit()
         rebuild_yaml_from_db()
+    else:
+        touch_dag_generator()
     
     return jsonify({"status": "success", "message": "Rotina salva com sucesso!"})
 
@@ -632,6 +638,9 @@ def toggle_routine_route(file):
                         toggle_airflow_dag(pdag_id, is_paused=not new_active)
                 except Exception as part_err:
                     pass
+        
+        from ..services.dag_config_service import touch_dag_generator
+        touch_dag_generator()
         
         action_str = "ativada" if new_active else "desativada"
         add_history_event(
