@@ -193,6 +193,10 @@ def test_smtp():
     saved_smtp = saved_settings.get('smtp', {}) if isinstance(saved_settings, dict) else {}
     
     server = str(smtp.get('server') or saved_smtp.get('server') or '').strip()
+    if server.lower().startswith('stmp.'):
+        server = 'smtp.' + server[5:]
+    elif server.lower().startswith('smpt.'):
+        server = 'smtp.' + server[5:]
     port = str(smtp.get('port') or saved_smtp.get('port') or '587').strip()
     user = str(smtp.get('user') or saved_smtp.get('user') or '').strip()
     password = str(smtp.get('password') or saved_smtp.get('password') or '').strip()

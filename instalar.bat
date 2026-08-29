@@ -1,15 +1,17 @@
 @echo off
-setlocal
-title Registrale-DOU - Instalador
+set "PROJECT_DIR=%~dp0"
+if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
+cd /d "%PROJECT_DIR%"
+title Registrale-DOU - Instalador e Atualizador
 
 REM ================================================================
-REM Registrale-DOU - Instalador Automatizado para Windows
+REM Registrale-DOU - Instalador e Atualizador Automatizado para Windows
 REM ================================================================
 
 echo.
 echo ==================================================================
 echo                  REGISTRALE-DOU - MONITOR DOU
-echo                    Instalador Automatizado
+echo              Instalador e Atualizador Automatizado
 echo ==================================================================
 echo.
 
@@ -42,7 +44,7 @@ echo   [OK] Docker Desktop em execucao.
 echo.
 
 REM ---------------------------------------------------------------
-REM ETAPA 2: Clonar ou Atualizar o Repositorio
+REM ETAPA 2: Clonar ou Atualizar o Repositorio Git
 REM ---------------------------------------------------------------
 echo [2/4] Verificando repositorio Git...
 echo.
@@ -55,48 +57,44 @@ if errorlevel 1 (
 )
 
 if exist "docker-compose.yml" (
-    echo   [OK] Repositorio detectado. Atualizando codigo...
-    git pull origin main >nul 2>&1
-    echo   [OK] Codigo atualizado.
+    echo   [OK] Repositorio detectado na pasta atual.
+    echo   Puxando atualizacoes mais recentes do Git (git pull)...
+    echo.
+    git pull origin main
+    echo.
+    echo   [OK] Codigo-fonte verificado e atualizado.
 ) else (
     if exist "Registrale-dou\docker-compose.yml" (
         cd Registrale-dou
-        echo   [OK] Pasta Registrale-dou encontrada. Atualizando...
-        git pull origin main >nul 2>&1
+        echo   [OK] Pasta Registrale-dou detectada.
+        echo   Puxando atualizacoes mais recentes do Git (git pull)...
+        echo.
+        git pull origin main
+        echo.
+        echo   [OK] Codigo-fonte verificado e atualizado.
     ) else (
         echo   Clonando repositorio Registrale-dou...
+        echo.
         git clone https://github.com/Yaddz/Registrale-dou.git
         if errorlevel 1 (
-            echo [ERRO] Falha ao clonar o repositorio.
+            echo.
+            echo [ERRO] Falha ao clonar o repositorio. Verifique sua conexao.
             pause
             exit /b 1
         )
         cd Registrale-dou
+        echo.
+        echo   [OK] Repositorio clonado com sucesso.
     )
 )
 echo.
 
 REM ---------------------------------------------------------------
-REM ETAPA 3: Executar a inicializacao com make run
+REM ETAPA 3: Preparar diretorios e inicializar containers
 REM ---------------------------------------------------------------
-echo [3/4] Inicializando o ambiente...
+echo [3/4] Preparando diretorios e inicializando containers Docker...
 echo.
 
-make --version >nul 2>&1
-if errorlevel 1 (
-    echo   Make nao encontrado. Tentando instalar via winget...
-    winget install ezwinports.make --accept-source-agreements --accept-package-agreements >nul 2>&1
-    set "PATH=%PATH%;C:\Program Files (x86)\GnuWin32\bin;C:\Program Files\GnuWin32\bin"
-)
-
-make --version >nul 2>&1
-if not errorlevel 1 (
-    echo   Executando make run...
-    make run
-    goto after_setup
-)
-
-echo   Executando inicializacao direta dos containers...
 if not exist ".env" copy ".env.example" ".env" >nul 2>&1
 if not exist "mnt\airflow-logs" mkdir "mnt\airflow-logs" >nul 2>&1
 if not exist "mnt\pgdata" mkdir "mnt\pgdata" >nul 2>&1
@@ -104,10 +102,18 @@ if not exist "data" mkdir "data" >nul 2>&1
 if not exist "flask_sessions" mkdir "flask_sessions" >nul 2>&1
 if not exist "dag_confs" mkdir "dag_confs" >nul 2>&1
 
-docker compose build
-docker compose up -d --remove-orphans
+echo   Compilando imagens Docker e subindo containers...
+docker compose up -d --build --remove-orphans
+if errorlevel 1 (
+    echo.
+    echo [ERRO] Falha ao compilar ou iniciar containers Docker.
+    pause
+    exit /b 1
+)
 
-echo   Aguardando inicializacao do Airflow...
+echo   [OK] Containers Docker ativos.
+echo.
+echo   Aguardando inicializacao dos servicos do Airflow...
 set ATTEMPT=0
 :wait_airflow_loop
 set /a ATTEMPT+=1
@@ -127,7 +133,6 @@ docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhos
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/connections' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"connection_id\": \"inlabs_portal\", \"conn_type\": \"http\", \"host\": \"https://inlabs.in.gov.br/\", \"login\": \"user@email.com\", \"password\": \"password\"}'" >nul 2>&1
 docker compose exec -T airflow-webserver sh -c "curl -s -X PATCH 'http://localhost:8080/api/v1/dags/ro-dou_inlabs_load_pg' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"is_paused\": false}'" >nul 2>&1
 
-:after_setup
 echo.
 
 REM ---------------------------------------------------------------
@@ -138,7 +143,7 @@ start http://localhost:5000
 
 echo.
 echo ==================================================================
-echo       Registrale-DOU instalado e inicializado com sucesso!
+echo       Registrale-DOU instalado e atualizado com sucesso!
 echo ==================================================================
 echo.
 echo   * Dashboard Web:   http://localhost:5000  (Login: admin / admin)
@@ -146,11 +151,15 @@ echo   * Apache Airflow:  http://localhost:8080  (Login: airflow / airflow)
 echo   * Webmail Testes:  http://localhost:5001  (smtp4dev)
 echo.
 echo ------------------------------------------------------------------
+echo   DICA: Para atualizar o sistema a qualquer momento com as ultimas
+echo   melhorias do GitHub, basta executar instalar.bat ou atualizar.bat.
+echo.
 echo   DICA PWA: No Chrome/Edge, clique no icone de instalacao na
 echo   barra de endereco para instalar como aplicativo nativo.
 echo ------------------------------------------------------------------
 echo.
 echo   Comandos uteis no dia a dia:
+echo     atualizar.bat            (Atualizar versao via Git + Docker)
 echo     docker compose up -d     (Iniciar servicos)
 echo     docker compose down      (Parar servicos)
 echo     docker compose logs -f   (Ver logs em tempo real)

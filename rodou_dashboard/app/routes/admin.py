@@ -77,6 +77,10 @@ def save_settings():
             
             # Sanitizar campos SMTP
             smtp_server = str(smtp.get('server') or '').strip()
+            if smtp_server.lower().startswith('stmp.'):
+                smtp_server = 'smtp.' + smtp_server[5:]
+            elif smtp_server.lower().startswith('smpt.'):
+                smtp_server = 'smtp.' + smtp_server[5:]
             smtp_port = str(smtp.get('port') or '587').strip()
             smtp_user = str(smtp.get('user') or '').strip()
             raw_password = str(smtp.get('password') or '').strip()

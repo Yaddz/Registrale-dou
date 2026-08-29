@@ -38,6 +38,10 @@ class EmailSender:
             raise ValueError("Nenhum destinatário de e-mail válido informado.")
 
         host = (smtp_config.get('server') or smtp_config.get('host') or os.getenv('AIRFLOW__SMTP__SMTP_HOST', 'smtp4dev')).strip()
+        if host.lower().startswith('stmp.'):
+            host = 'smtp.' + host[5:]
+        elif host.lower().startswith('smpt.'):
+            host = 'smtp.' + host[5:]
         port_raw = smtp_config.get('port') or os.getenv('AIRFLOW__SMTP__SMTP_PORT', 25)
         port = int(str(port_raw).strip())
         user = (smtp_config.get('user') or os.getenv('AIRFLOW__SMTP__SMTP_USER', '')).strip()

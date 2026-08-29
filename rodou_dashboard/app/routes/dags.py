@@ -471,6 +471,10 @@ def api_configure_main_dag():
     if 'smtp' in data and isinstance(data['smtp'], dict):
         smtp = data['smtp']
         server = str(smtp.get('server') or '').strip()
+        if server.lower().startswith('stmp.'):
+            server = 'smtp.' + server[5:]
+        elif server.lower().startswith('smpt.'):
+            server = 'smtp.' + server[5:]
         user = str(smtp.get('user') or '').strip()
         
         if server and user:
