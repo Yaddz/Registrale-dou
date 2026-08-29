@@ -150,11 +150,13 @@ O Dashboard possui suporte nativo a **PWA (Progressive Web App)**:
 
 ---
 
-### 🛠️ Comandos Úteis do Makefile
+### 🛠️ Scripts e Comandos Úteis
 
-| Comando | Ação |
+| Comando / Script | Ação |
 | :--- | :--- |
-| `make run` | Executa o setup completo inicial e sobe todos os serviços. |
+| `.\instalar.bat` | **(Windows)** Setup automatizado em 1 clique (clona/atualiza, sobe Docker, configura e abre). |
+| `.\desinstalar.bat` | **(Windows)** Para containers, remove volumes, destrava permissões e limpa dados com confirmação. |
+| `make run` | **(Linux/macOS)** Executa o setup completo inicial e sobe todos os serviços. |
 | `make up` | Inicia os containers existentes em segundo plano. |
 | `make down` | Para todos os containers do projeto. |
 | `make logs` | Exibe os logs unificados de todos os serviços em tempo real. |

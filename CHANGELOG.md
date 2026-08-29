@@ -8,13 +8,9 @@
   * Ícones nativos vetorizados em SVG e PNG de alta resolução (192×192 e 512×512) com o símbolo oficial do robô (`bot-message-square`) sobre fundo escuro.
   * Meta tags no cabeçalho das páginas e registro de Service Worker no `index.html` e `login.html`.
   * Configuração de rota estática no Flask (`static_folder` e `static_url_path`) e mapeamento nos containers Docker.
-* **Instalador Automatizado Windows (`instalar.bat`)**:
-  * Script em lote compatível com Windows para instalação em 1 clique.
-  * Verificação automática de pré-requisitos (Docker Desktop em execução, Git).
-  * Criação automática do arquivo `.env` e dos diretórios persistentes.
-  * Build e inicialização dos containers (`docker compose up -d`).
-  * Aguardo inteligente e configuração automatizada do Apache Airflow (variáveis padrão, conexões `inlabs_db` e `inlabs_portal`, schema PostgreSQL do INLABS e ativação da DAG de carga).
-  * Abertura automática do navegador em `http://localhost:5000`.
+* **Instalador e Desinstalador Automatizados para Windows (`instalar.bat` e `desinstalar.bat`)**:
+  * `instalar.bat`: Script em lote compatível com Windows para instalação em 1 clique (Docker, Git pull/clone, Make winget/make run e abertura do Dashboard).
+  * `desinstalar.bat`: Script interativo de desinstalação que solicita confirmação antes de executar, para todos os containers, destrava permissões do Windows nas pastas do PostgreSQL (`takeown` + `icacls`) e limpa todos os volumes e bancos de dados persistidos (`mnt/`, `data/`, `flask_sessions/`, `.env`).
 
 
 ### 🚀 Melhorias e Correções no Ro-DOU Dashboard
