@@ -13,9 +13,11 @@ dag:
     is_exact_search: false
     force_rematch: true
     department:
-    - Agencia Nacional de Vigilancia Sanitaria
     - ANVISA
     - Agência Nacional de Vigilância Sanitária
+    - Ministério da Saúde
+    - Agencia Nacional de Vigilancia Sanitaria
+    - Ministerio da Saude
     terms:
     - '00.097.446/0001-86'
     - '00.866.902/0001-05'
@@ -144,6 +146,8 @@ dag:
     - ANVISA
     dou_sections:
     - SECAO_1
+    - SECAO_2
+    - SECAO_3
     field: TUDO
     terms_ignore: []
     date: DIA

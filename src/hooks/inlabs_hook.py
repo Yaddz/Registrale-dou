@@ -703,7 +703,7 @@ class INLABSHook(BaseHook):
                 norm_t = self._normalize(term)
                 digits_t = re.sub(r'\D', '', norm_t)
                 if len(digits_t) == 14:
-                    fmt_pattern = rf"{digits_t[:2]}\.?{digits_t[2:5]}\.?{digits_t[5:8]}/?{digits_t[8:12]}-?{digits_t[12:]}"
+                    fmt_pattern = rf"{digits_t[:2]}\.?\s*{digits_t[2:5]}\.?\s*{digits_t[5:8]}/?\s*{digits_t[8:12]}-?\s*{digits_t[12:]}"
                     patterns.append(fmt_pattern)
                 else:
                     patterns.append(rf"\b{re.escape(norm_t)}\b")

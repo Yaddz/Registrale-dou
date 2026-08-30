@@ -113,10 +113,9 @@ class INLABSSQLModeHook(INLABSHook):
                             continue
                         clean_digits = re.sub(r'\D', '', term_str)
                         if len(clean_digits) == 14:
-                            fmt_escaped = rf"{clean_digits[:2]}\.{clean_digits[2:5]}\.{clean_digits[5:8]}/{clean_digits[8:12]}-{clean_digits[12:]}"
-                            pattern = rf"({fmt_escaped}|{clean_digits})"
+                            fmt_pattern = rf"{clean_digits[:2]}\.?\s*{clean_digits[2:5]}\.?\s*{clean_digits[5:8]}/?\s*{clean_digits[8:12]}-?\s*{clean_digits[12:]}"
                             key_conditions.append(
-                                rf"dou_inlabs.unaccent(texto) ~* dou_inlabs.unaccent('{pattern}')"
+                                rf"dou_inlabs.unaccent(texto) ~* dou_inlabs.unaccent('{fmt_pattern}')"
                             )
                         elif any(operator in term_str for operator in term_operators):
                             operator_str = "".join(term_operators)

@@ -511,11 +511,11 @@ def get_main_dag_info():
     }
 
 ORGAN_EXPANSIONS = {
-    'ANVISA': ['ANVISA', 'Agência Nacional de Vigilância Sanitária', 'Agencia Nacional de Vigilancia Sanitaria'],
-    'RFB': ['RFB', 'Receita Federal do Brasil', 'Secretaria Especial da Receita Federal', 'Receita Federal'],
-    'INPI': ['INPI', 'Instituto Nacional da Propriedade Industrial'],
-    'MAPA': ['MAPA', 'Ministério da Agricultura e Pecuária', 'Ministerio da Agricultura'],
-    'IBAMA': ['IBAMA', 'Instituto Brasileiro do Meio Ambiente e dos Recursos Naturais Renováveis'],
+    'ANVISA': ['ANVISA', 'Agência Nacional de Vigilância Sanitária', 'Agencia Nacional de Vigilancia Sanitaria', 'Ministério da Saúde', 'Ministerio da Saude'],
+    'RFB': ['RFB', 'Receita Federal do Brasil', 'Secretaria Especial da Receita Federal', 'Receita Federal', 'Ministério da Fazenda'],
+    'INPI': ['INPI', 'Instituto Nacional da Propriedade Industrial', 'Ministério do Desenvolvimento'],
+    'MAPA': ['MAPA', 'Ministério da Agricultura e Pecuária', 'Ministerio da Agricultura', 'Agricultura'],
+    'IBAMA': ['IBAMA', 'Instituto Brasileiro do Meio Ambiente e dos Recursos Naturais Renováveis', 'Meio Ambiente'],
     'BACEN': ['BACEN', 'Banco Central do Brasil', 'Banco Central'],
     'BCB': ['BCB', 'Banco Central do Brasil', 'Banco Central'],
     'CVM': ['CVM', 'Comissão de Valores Mobiliários'],
