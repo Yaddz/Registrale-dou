@@ -26,6 +26,40 @@ def get_inlabs_postgres_engine():
         )
     return _inlabs_engine
 
+def sync_inlabs_logs_with_postgres():
+    """
+    Sincroniza os registros do InlabsDownloadLog no SQLite com as datas
+    efetivamente presentes no PostgreSQL do INLABS.
+    """
+    try:
+        engine = get_inlabs_postgres_engine()
+        with engine.connect() as conn:
+            conn.execute(text("SET statement_timeout = 5000"))
+            result = conn.execute(text("SELECT DISTINCT CAST(pubdate AS DATE)::text FROM dou_inlabs.article_raw"))
+            pg_dates = set(row[0] for row in result if row[0])
+
+        if not pg_dates:
+            return
+
+        from ..models import InlabsDownloadLog, db
+        existing_logs = {log.date_str: log for log in InlabsDownloadLog.query.all()}
+        now_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%Y-%m-%d %H:%M:%S')
+
+        added = False
+        for dt in pg_dates:
+            if dt not in existing_logs:
+                new_log = InlabsDownloadLog(date_str=dt, downloaded_at=now_str, status='success')
+                db.session.add(new_log)
+                added = True
+            elif existing_logs[dt].status != 'success':
+                existing_logs[dt].status = 'success'
+                added = True
+
+        if added:
+            db.session.commit()
+    except Exception as e:
+        logger.warning(f"Aviso ao sincronizar logs com PostgreSQL: {e}")
+
 def get_downloaded_dates(start_date=None, end_date=None):
     """
     Retorna o conjunto (set) de datas (formato 'YYYY-MM-DD') com matérias salvas
@@ -44,7 +78,14 @@ def get_downloaded_dates(start_date=None, end_date=None):
                 result = conn.execute(query, {"s_dt": start_date, "e_dt": end_date})
             else:
                 result = conn.execute(text("SELECT DISTINCT CAST(pubdate AS DATE)::text FROM dou_inlabs.article_raw"))
-            downloaded = set(row[0] for row in result)
+            downloaded = set(row[0] for row in result if row[0])
+            
+            # Sincroniza logs do SQLite em segundo plano se houver datas no banco
+            if downloaded:
+                try:
+                    sync_inlabs_logs_with_postgres()
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning(f"Erro ao consultar datas no PostgreSQL do INLABS: {e}")
         try:

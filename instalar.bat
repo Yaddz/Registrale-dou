@@ -104,12 +104,13 @@ echo.
 
 if not exist ".env" copy ".env.example" ".env" >nul 2>&1
 if not exist "mnt\airflow-logs" mkdir "mnt\airflow-logs" >nul 2>&1
-if not exist "mnt\pgdata" mkdir "mnt\pgdata" >nul 2>&1
 if not exist "data" mkdir "data" >nul 2>&1
 if not exist "flask_sessions" mkdir "flask_sessions" >nul 2>&1
 if not exist "dag_confs" mkdir "dag_confs" >nul 2>&1
 
-docker run --rm -v "%CD%/mnt/pgdata:/var/lib/postgresql/data" alpine sh -c "chown -R 70:70 /var/lib/postgresql/data && chmod -R 700 /var/lib/postgresql/data" >nul 2>&1
+if exist "mnt\pgdata\PG_VERSION" (
+    docker run --rm -v "%CD%/mnt/pgdata:/source_data:ro" -v "registrale-dou_postgres-data:/var/lib/postgresql/data" alpine sh -c "if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then cp -a /source_data/* /var/lib/postgresql/data/; fi; chown -R 70:70 /var/lib/postgresql/data && chmod -R 700 /var/lib/postgresql/data" >nul 2>&1
+)
 
 echo   Compilando imagens Docker e subindo containers...
 docker compose up -d --build --remove-orphans

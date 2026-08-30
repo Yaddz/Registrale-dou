@@ -95,7 +95,7 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - ./mnt/pgdata:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
       - ./dag_load_inlabs/sql/:/sql
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "airflow" ]
@@ -153,6 +153,9 @@ services:
       - ./data:/data
       - ./mnt/airflow-logs:/mnt/airflow-logs
       - ./flask_sessions:/flask_sessions
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: always
 
 # selenium:
@@ -161,4 +164,5 @@ services:
 #       - /dev/shm:/dev/shm
 volumes:
   smtp4dev-data:
+  postgres-data:
 

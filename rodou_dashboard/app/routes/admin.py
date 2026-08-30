@@ -455,7 +455,7 @@ def get_inlabs_stats():
         return jsonify(_inlabs_cache['data'])
         
     from sqlalchemy import text
-    from ..services.inlabs_service import get_inlabs_postgres_engine
+    from ..services.inlabs_service import get_inlabs_postgres_engine, sync_inlabs_logs_with_postgres
     import logging
     try:
         engine = get_inlabs_postgres_engine()
@@ -480,6 +480,12 @@ def get_inlabs_stats():
                     for row in rows if row[0] is not None
                 ]
                 days_res = len(days_list)
+                
+                if days_res > 0:
+                    try:
+                        sync_inlabs_logs_with_postgres()
+                    except Exception:
+                        pass
             except Exception as q_err:
                 logging.error(f"Erro ao listar datas do INLABS: {q_err}")
                 days_list = []
