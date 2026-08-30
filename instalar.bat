@@ -58,7 +58,7 @@ if errorlevel 1 (
 
 if exist "docker-compose.yml" (
     echo   [OK] Repositorio detectado na pasta atual.
-    echo   Puxando atualizacoes mais recentes do Git (git pull)...
+    echo   Puxando atualizacoes mais recentes do Git...
     echo.
     git pull origin main
     echo.
@@ -67,7 +67,7 @@ if exist "docker-compose.yml" (
     if exist "Registrale-dou\docker-compose.yml" (
         cd Registrale-dou
         echo   [OK] Pasta Registrale-dou detectada.
-        echo   Puxando atualizacoes mais recentes do Git (git pull)...
+        echo   Puxando atualizacoes mais recentes do Git...
         echo.
         git pull origin main
         echo.
