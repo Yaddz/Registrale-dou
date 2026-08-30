@@ -29,7 +29,7 @@ dag:
     subject: Alerta DOU
     skip_null: true
     emails:
-    - sousalimapg@outlook.com
+    - 
   dataset: inlabs
   active: true
   is_paused: false
