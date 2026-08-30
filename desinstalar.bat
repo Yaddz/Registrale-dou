@@ -56,7 +56,7 @@ if /i not "%CONFIRM_ALL%"=="S" goto cancel_uninstall
 
 echo.
 echo ---------------------------------------------------------------
-echo [1/4] Parando e removendo containers, volumes e imagens Docker...
+echo [1/3] Parando e removendo containers, volumes e imagens Docker...
 echo ---------------------------------------------------------------
 cd /d "%PROJECT_DIR%" 2>nul
 docker compose down -v --rmi local --remove-orphans >nul 2>&1
@@ -66,7 +66,7 @@ echo   [OK] Containers, volumes e redes Docker removidos.
 echo.
 
 echo ---------------------------------------------------------------
-echo [2/4] Liberando permissoes de arquivos do Windows...
+echo [2/3] Liberando permissoes de arquivos do Windows...
 echo ---------------------------------------------------------------
 cd /d "%TEMP%"
 if exist "%PROJECT_DIR%" (
@@ -77,34 +77,29 @@ if exist "%PROJECT_DIR%" (
 echo.
 
 echo ---------------------------------------------------------------
-echo [3/4] Removendo todos os arquivos e diretorios do projeto...
+echo [3/3] Removendo todos os arquivos e diretorios do projeto...
 echo ---------------------------------------------------------------
-REM Criar script temporario em %TEMP% para poder remover a propria pasta do projeto
-set "TEMP_SCRIPT=%TEMP%\registrale_self_remove_%RANDOM%.bat"
-(
-    echo @echo off
-    echo timeout /t 2 /nobreak ^>nul
-    echo powershell -NoProfile -Command "try { Remove-Item -LiteralPath '%PROJECT_DIR%' -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Seconds 2; Remove-Item -LiteralPath '%PROJECT_DIR%' -Recurse -Force -ErrorAction SilentlyContinue }"
-    echo if not exist "%PROJECT_DIR%" (
-    echo     echo.
-    echo     echo ==================================================================
-    echo     echo       Desinstalacao Completa Concluida com Sucesso!
-    echo     echo ==================================================================
-    echo     echo.
-    echo     echo   Todos os containers, volumes Docker e arquivos do Registrale-DOU
-    echo     echo   foram completamente excluidos do seu computador.
-    echo     echo ==================================================================
-    echo     echo.
-    echo ) else (
-    echo     echo   [AVISO] Alguns arquivos podem estar em uso por outro programa.
-    echo     echo           Voce pode excluir a pasta manualmente se desejar.
-    echo )
-    echo pause
-    echo del "%%~f0" ^>nul 2^>^&1
-    echo exit
-) > "%TEMP_SCRIPT%"
+set "TEMP_SCRIPT=%TEMP%\registrale_uninstall_clean.bat"
 
-echo   [OK] Delegando remocao final ao assistente temporario...
+> "%TEMP_SCRIPT%" echo @echo off
+>> "%TEMP_SCRIPT%" echo title Registrale-DOU - Finalizando Desinstalacao
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo echo Finalizando a exclusao dos arquivos do sistema...
+>> "%TEMP_SCRIPT%" echo timeout /t 2 /nobreak ^>nul
+>> "%TEMP_SCRIPT%" echo powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 2; try { Remove-Item -LiteralPath '%PROJECT_DIR%' -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Seconds 2; Remove-Item -LiteralPath '%PROJECT_DIR%' -Recurse -Force -ErrorAction SilentlyContinue }"
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo echo ==================================================================
+>> "%TEMP_SCRIPT%" echo echo       Desinstalacao Completa Concluida com Sucesso!
+>> "%TEMP_SCRIPT%" echo echo ==================================================================
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo echo   Todos os containers, volumes Docker e arquivos do Registrale-DOU
+>> "%TEMP_SCRIPT%" echo echo   foram completamente excluidos do seu computador.
+>> "%TEMP_SCRIPT%" echo echo ==================================================================
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo pause
+>> "%TEMP_SCRIPT%" echo (goto) 2^^^>nul ^^^& del "%%%%~f0" ^^^& exit
+
+echo   [OK] Processo de limpeza final iniciado.
 start "" "%TEMP_SCRIPT%"
 exit
 
