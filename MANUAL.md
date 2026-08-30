@@ -42,6 +42,7 @@
    - [6.4. Como Criar e Personalizar Templates de E-mail](#64-como-criar-e-personalizar-templates-de-e-mail)
    - [6.5. Como Conectar ao ERP GestãoClick](#65-como-conectar-ao-erp-gestãoclick)
    - [6.6. Limpeza e Manutenção do Sistema](#66-limpeza-e-manutenção-do-sistema)
+   - [6.7. Como Atualizar ou Desinstalar o Sistema](#67-como-atualizar-ou-desinstalar-o-sistema)
 7. [Perguntas Frequentes (FAQ) & Dúvidas do Dia a Dia](#7-perguntas-frequentes-faq--dúvidas-do-dia-a-dia)
 
 ---
@@ -412,6 +413,29 @@ Na sub-aba **Limpeza do Sistema**:
 * **Limpar INLABS:** Remove edições antigas do banco com mais de 120 dias para liberar espaço em disco.
 * **Limpar Histórico:** Limpa a linha do tempo de sincronizações passadas.
 * **Limpar Menções:** Remove menções arquivadas.
+
+---
+
+### 6.7. Como Atualizar ou Desinstalar o Sistema
+
+O Registrale-DOU inclui utilitários automatizados para manutenção e ciclo de vida do ambiente no Windows:
+
+#### 🔄 Como Atualizar o Sistema (`atualizar.bat`)
+Para obter novas funcionalidades, melhorias de desempenho e correções de segurança:
+1. Abra a pasta do projeto no Windows Explorer.
+2. Dê um duplo clique no arquivo **`atualizar.bat`**.
+3. O script irá:
+   - Baixar as atualizações mais recentes do repositório Git (`git pull origin main`).
+   - Recompilar e reiniciar automaticamente os containers Docker com as novas versões (`docker compose up -d --build`).
+   - Abrir o Dashboard atualizado no navegador em `http://localhost:5000`.
+
+#### 🗑️ Como Desinstalar o Sistema (`desinstalar.bat`)
+Caso precise remover ou resetar a instalação:
+1. Dê um duplo clique no arquivo **`desinstalar.bat`**.
+2. O assistente apresentará um menu interativo com as opções:
+   - **Opção [1] — Desinstalação Completa:** Para e remove todos os containers e redes Docker, remove os volumes e imagens locais, destrava permissões do Windows e **exclui definitivamente todos os arquivos e a pasta do projeto** do computador.
+   - **Opção [2] — Limpeza de Dados (Reset):** Para e remove os containers e bancos de dados locais (`/data`, `/mnt`), logs e sessões temporárias, preservando o código-fonte para permitir uma nova instalação limpa executando `instalar.bat`.
+   - **Opção [3] — Cancelar:** Fecha o desinstalador sem alterar nada.
 
 ---
 

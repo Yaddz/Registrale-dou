@@ -95,37 +95,44 @@ docker run -d \
 
 ## 🧪 4. Execução dos Testes Automatizados
 
-A suíte de testes do dashboard agora possui **45 testes** cobrindo:
+A suíte de testes do dashboard possui **84 testes** cobrindo:
 - Autenticação e sessão
 - CRUD de empresas (com validação de CNPJ e duplicatas)
 - Templates de e-mail (CRUD e proteção de templates padrão)
 - Limpeza de dados (com controle de permissão master)
 - Busca e autocomplete de empresas
-- Exportação Excel e PDF corporativo
+- Exportação Excel e PDF corporativo diagramado
 - Verificação de datas (feriados, janela 120 dias INLABS)
 - Disparo individual e mensal de rotinas
 - Status e configuração da rotina principal
 - Política de retenção INLABS (LRU com proteção de datas)
 - Limpeza de DAGs temporárias
 - Padronização INLABS em novas rotinas
+- Normalização e matching flexível de CNPJ com e sem pontuação
 
 ```bash
-# Execução completa (recomendado)
-python -m pytest rodou_dashboard/tests/test_dashboard.py -v
+# Execução completa da suíte de testes do Dashboard:
+python -m pytest rodou_dashboard/tests/ -v
 
-# Execução rápida sem warnings
-python -m pytest rodou_dashboard/tests/test_dashboard.py -q
-
-# Testes de integração Google Sheets
-python -m pytest rodou_dashboard/tests/test_google_sheets.py -v
-
-# Testes de sincronização GestãoClick
-python -m pytest rodou_dashboard/tests/test_sync_cnpj.py -v
+# Execução completa dos testes do Core Ro-DOU (Airflow):
+pytest tests/ -v
 ```
 
 ---
 
-## 🛡️ 5. Backup e Manutenção do Banco SQLite
+## 🛠️ 5. Scripts Automatizados no Windows (`.bat`)
+
+O projeto conta com scripts para simplificar o ciclo de vida completo da aplicação no Windows:
+
+| Script | Finalidade e Comportamento |
+| :--- | :--- |
+| **`instalar.bat`** | Cria `.env`, pastas de logs/dados, sobe os containers Docker (`docker compose up -d --build`), inicializa o Airflow/Postgres e abre o painel no navegador (`http://localhost:5000`). |
+| **`atualizar.bat`** | Atualizador rápido: obtém os commits mais recentes (`git pull origin main`) e recompila/reinicia os containers (`docker compose up -d --build`). |
+| **`desinstalar.bat`** | Desinstalador interativo com 2 modos:<br>• **Opção 1 (Desinstalação Completa):** Para e remove containers, volumes, redes, imagens Docker e **exclui todos os arquivos e a própria pasta do projeto** do computador.<br>• **Opção 2 (Limpeza de Dados):** Para containers e limpa os dados locais (`data/`, `mnt/`), logs e sessões, mantendo o código para reinstalação. |
+
+---
+
+## 🛡️ 6. Backup e Manutenção do Banco SQLite e PostgreSQL
 
 O banco SQLite `/data/dashboard.db` opera em modo WAL (*Write-Ahead Logging*).
 

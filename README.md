@@ -154,8 +154,9 @@ O Dashboard possui suporte nativo a **PWA (Progressive Web App)**:
 
 | Comando / Script | Ação |
 | :--- | :--- |
-| `.\instalar.bat` | **(Windows)** Setup automatizado em 1 clique (clona/atualiza, sobe Docker, configura e abre). |
-| `.\desinstalar.bat` | **(Windows)** Para containers, remove volumes, destrava permissões e limpa dados com confirmação. |
+| `.\instalar.bat` | **(Windows)** Setup automatizado em 1 clique (cria `.env`, diretórios, sobe Docker com `--build`, inicializa Airflow/Postgres e abre o painel). |
+| `.\atualizar.bat` | **(Windows)** Atualizador rápido: puxa alterações do Git (`git pull`) e recompila os containers (`docker compose up -d --build`). |
+| `.\desinstalar.bat` | **(Windows)** Desinstalador com menu interativo: Opção [1] Desinstalação Completa (remove containers, volumes, imagens e todos os arquivos do projeto) ou Opção [2] Limpeza de Dados (reset para reinstalação). |
 | `make run` | **(Linux/macOS)** Executa o setup completo inicial e sobe todos os serviços. |
 | `make up` | Inicia os containers existentes em segundo plano. |
 | `make down` | Para todos os containers do projeto. |

@@ -187,14 +187,16 @@ ai_config:
   api_key_var: OPENAI_API_KEY
 ```
 
-9. Desligando o ambiente:
+9. Desligando o ambiente ou desinstalando:
 
-Quando tiver terminado de utilizar o ambiente de teste do Ro-DOU, desligue-o por meio do seguinte comando:
+* **No Windows (via Scripts Batch):**
+  * Para atualizar: execute `atualizar.bat`
+  * Para desinstalar ou resetar dados: execute `desinstalar.bat` (oferece Desinstalação Completa ou Limpeza de Dados)
 
-```bash
-make down
-```
-
+* **No Linux / macOS (via Makefile):**
+  * Para parar: `make down`
+  * Para limpar temporários e logs: `make clean`
+  * Para limpar e reinstalar do zero: `make clean-install`
 
 <iframe width="560" height="315" src="https://www.youtube.com/embed/NpumeNLBuI8?si=g_i99R2d2k23yISX" title="Utilizando o INLABS como fonte de dados-pt1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
