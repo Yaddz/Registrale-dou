@@ -510,52 +510,13 @@ def get_main_dag_info():
         "missing_fields": missing_fields
     }
 
-ORGAN_EXPANSIONS = {
-    'ANVISA': ['ANVISA', 'Agência Nacional de Vigilância Sanitária', 'Agencia Nacional de Vigilancia Sanitaria', 'Ministério da Saúde', 'Ministerio da Saude'],
-    'RFB': ['RFB', 'Receita Federal do Brasil', 'Secretaria Especial da Receita Federal', 'Receita Federal', 'Ministério da Fazenda'],
-    'INPI': ['INPI', 'Instituto Nacional da Propriedade Industrial', 'Ministério do Desenvolvimento'],
-    'MAPA': ['MAPA', 'Ministério da Agricultura e Pecuária', 'Ministerio da Agricultura', 'Agricultura'],
-    'IBAMA': ['IBAMA', 'Instituto Brasileiro do Meio Ambiente e dos Recursos Naturais Renováveis', 'Meio Ambiente'],
-    'BACEN': ['BACEN', 'Banco Central do Brasil', 'Banco Central'],
-    'BCB': ['BCB', 'Banco Central do Brasil', 'Banco Central'],
-    'CVM': ['CVM', 'Comissão de Valores Mobiliários'],
-    'ANATEL': ['ANATEL', 'Agência Nacional de Telecomunicações'],
-    'ANEEL': ['ANEEL', 'Agência Nacional de Energia Elétrica'],
-    'ANS': ['ANS', 'Agência Nacional de Saúde Suplementar'],
-    'ANP': ['ANP', 'Agência Nacional do Petróleo'],
-}
-
-def format_cnpj_for_yaml(cnpj_val):
-    if not cnpj_val:
-        return ""
-    cnpj_limpo = re.sub(r'[^A-Za-z0-9]', '', str(cnpj_val)).upper()
-    if len(cnpj_limpo) == 14:
-        return f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
-    return str(cnpj_val).strip()
-
-def expand_organs(organs):
-    if not organs:
-        return []
-    if isinstance(organs, str):
-        organs = [o.strip() for o in organs.replace(';', ',').split(',') if o.strip()]
-    expanded = set()
-    for o in organs:
-        o_clean = str(o).strip()
-        if not o_clean: continue
-        expanded.add(o_clean)
-        upper_o = o_clean.upper()
-        if upper_o in ORGAN_EXPANSIONS:
-            for exp in ORGAN_EXPANSIONS[upper_o]:
-                expanded.add(exp)
-    return list(expanded)
-
 def rebuild_yaml_from_db():
     import copy, math, shutil
     from ..models import Company, Settings
 
-    # 1. Buscar CNPJs ativos e formatá-los para correspondência exata no DOU
+    # 1. Buscar CNPJs ativos
     active_companies = Company.query.filter_by(status=True).all()
-    all_cnpjs = sorted(set(format_cnpj_for_yaml(c.cnpj) for c in active_companies if c.cnpj and c.cnpj.strip()))
+    all_cnpjs = sorted(set(normalize_cnpj(c.cnpj) for c in active_companies if c.cnpj))
 
     # 2. Carregar configurações persistentes da DAG principal no SQLite
     db_main_dag = {}
@@ -587,9 +548,9 @@ def rebuild_yaml_from_db():
                 'dataset': 'inlabs',
                 'search': [{
                     'header': 'MONITORAMENTO PADRÃO',
-                    'is_exact_search': db_main_dag.get('is_exact_search', False),
+                    'is_exact_search': db_main_dag.get('is_exact_search', True),
                     'force_rematch': db_main_dag.get('force_rematch', True),
-                    'department': expand_organs(db_main_dag.get('organs') or db_main_dag.get('department') or ['ANVISA']),
+                    'department': db_main_dag.get('organs') or db_main_dag.get('department') or ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
                     'dou_sections': db_main_dag.get('sections') or db_main_dag.get('dou_sections') or ["SECAO_1", "SECAO_2", "SECAO_3"],
                     'terms_ignore': db_main_dag.get('terms_ignore', []),
                     'terms': []
@@ -662,8 +623,7 @@ def rebuild_yaml_from_db():
         exact_search_val = False
 
     force_rematch_val = bool(db_main_dag.get('force_rematch', search_template.get('force_rematch', True)))
-    raw_organs = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', ['ANVISA'])
-    organs_val = expand_organs(raw_organs)
+    organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', ['ANVISA', 'Agência Nacional de Vigilância Sanitária'])
     sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"])
     terms_ignore_val = db_main_dag.get('terms_ignore', search_template.get('terms_ignore', []))
 

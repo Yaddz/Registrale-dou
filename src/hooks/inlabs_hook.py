@@ -672,27 +672,6 @@ class INLABSHook(BaseHook):
             return self._opensearch_highlight_excerpt(text, highlights)
 
         def _highlight_terms(self, terms: list, text: str) -> str:
-            """Wrap `terms` values in `text` with `<%%>` and `</%%>`.
-
-            Matching is done against a normalized (accent-stripped) version of
-            the text so that a search term like "Ministerio" also highlights
-            "Ministério" in the original text.  Positions found in the normalized
-            text are mapped back to the original text — this is safe because
-            ``_normalize`` maps each source character to exactly one ASCII
-            character (accented Latin letters, cedillas, etc.).  If the lengths
-            diverge for any reason, the method falls back to direct matching.
-
-            Args:
-                terms (list): List of terms to be wrapped on text.
-                text (str): String content to be updated with wrapped
-                    `terms`.
-
-            Returns:
-                str: `text` with values on `terms` wrapped with `<%%>`
-                    and `</%%>`.
-            """
-
-        def _highlight_terms(self, terms: list, text: str) -> str:
             if not text or not terms:
                 return text
 

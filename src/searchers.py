@@ -113,19 +113,15 @@ class BaseSearcher(ABC):
             dpt_grouped_result[term] = {}
 
             for result in results:
+                # change all units in hierarchyList to lower case
+                # for unit in result['hierarchyList']:
                 if department:
-                    matched_dept = False
                     for dept in department:
-                        if dept.casefold() in str(result.get("hierarchyList", "")).casefold() or unidecode(str(dept)).casefold() in unidecode(str(result.get("hierarchyList", ""))).casefold():
+                        if dept.casefold() in str(result["hierarchyList"]).casefold():
+                            # Initialize the group if not present
                             if dept not in dpt_grouped_result[term]:
                                 dpt_grouped_result[term][dept] = []
                             dpt_grouped_result[term][dept].append(result)
-                            matched_dept = True
-                    if not matched_dept:
-                        dept_key = str(result.get("hierarchyList") or "single_department")
-                        if dept_key not in dpt_grouped_result[term]:
-                            dpt_grouped_result[term][dept_key] = []
-                        dpt_grouped_result[term][dept_key].append(result)
                 else:
                     dpt_grouped_result[term].setdefault("single_department", [])
                     dpt_grouped_result[term]["single_department"].append(result)
@@ -142,15 +138,8 @@ class BaseSearcher(ABC):
         norm_whole_match = self._normalize(whole_match)
 
         norm_term = self._normalize(search_term)
-        if norm_term in norm_whole_match:
-            return True
 
-        digits_term = re.sub(r'\D', '', norm_term)
-        digits_match = re.sub(r'\D', '', norm_whole_match)
-        if len(digits_term) == 14 and digits_term in digits_match:
-            return True
-
-        return False
+        return norm_term in norm_whole_match
 
     def _clean_html(self, raw_html: str) -> str:
         clean_text = re.sub(self.CLEAN_HTML_RE, "", raw_html)
