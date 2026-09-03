@@ -709,6 +709,37 @@ class TestNewOptimizedFeatures:
         assert cleaned >= 1
         assert not os.path.exists(temp_file)
 
+    def test_cleanup_temp_dags_skips_active_runs(self, app, monkeypatch):
+        import os
+        import requests
+        from app.services.dag_config_service import get_dag_confs_path, cleanup_orphaned_temp_dags
+        dag_confs_path = get_dag_confs_path()
+        
+        # Cria um arquivo temporário de teste
+        temp_file = os.path.join(dag_confs_path, "temp_active_dag_test.yaml")
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            f.write("dag:\n  id: temp_active_dag_test\n  schedule: null\n")
+            
+        assert os.path.exists(temp_file)
+        
+        # Simula resposta do Airflow indicando que há DAG run em execução (running)
+        class MockResponse:
+            status_code = 200
+            def json(self):
+                return {"dag_runs": [{"dag_run_id": "run_1", "state": "running"}]}
+                
+        monkeypatch.setattr(requests, "get", lambda *args, **kwargs: MockResponse())
+        
+        # Sem force_all, a DAG não deve ser removida pois tem execuções ativas
+        cleaned = cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
+        assert cleaned == 0
+        assert os.path.exists(temp_file)
+        
+        # Limpeza forçada deve remover
+        cleaned_forced = cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=True)
+        assert cleaned_forced >= 1
+        assert not os.path.exists(temp_file)
+
     def test_cleanup_temp_dags_endpoint(self, auth_client):
         resp = auth_client.post('/api/routines/cleanup_temp')
         assert resp.status_code == 200

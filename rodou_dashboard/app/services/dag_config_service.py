@@ -228,7 +228,29 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
                     except Exception:
                         pass
                     
-                    # 2. Excluir o arquivo YAML do disco
+                    # 2. Verificar se a DAG possui execuções ativas ('running' ou 'queued') no Airflow.
+                    # Nunca apagar se ainda estiver em execução (a menos que force_all seja explicitamente True).
+                    if not force_all:
+                        try:
+                            auth = get_airflow_auth()
+                            airflow_url = get_airflow_url()
+                            import urllib.parse
+                            dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
+                            r_check = requests.get(
+                                f"{airflow_url}/api/v1/dags/{dag_id_quoted}/dagRuns?order_by=-execution_date&limit=15",
+                                auth=auth,
+                                timeout=5
+                            )
+                            if r_check.status_code == 200:
+                                runs = r_check.json().get('dag_runs', [])
+                                has_active = any(run.get('state') in ('running', 'queued') for run in runs)
+                                if has_active:
+                                    logger.info(f"DAG temporária {dag_id} ainda possui execuções ativas no Airflow. Limpeza ignorada.")
+                                    continue
+                        except Exception:
+                            pass
+
+                    # 3. Excluir o arquivo YAML do disco
                     try:
                         if os.path.exists(f_path):
                             os.remove(f_path)
@@ -237,7 +259,7 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
                     except Exception as rm_err:
                         logger.warning(f"Erro ao remover arquivo temporário {f_path}: {rm_err}")
                         
-                    # 3. Desregistrar DAG do Airflow se disponível
+                    # 4. Desregistrar DAG do Airflow se disponível
                     try:
                         auth = get_airflow_auth()
                         airflow_url = get_airflow_url()
@@ -245,7 +267,7 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
                     except Exception:
                         pass
                         
-                    # 4. Remover pastas de logs temporárias em mnt/airflow-logs/dag_id=...
+                    # 5. Remover pastas de logs temporárias em mnt/airflow-logs/dag_id=...
                     try:
                         temp_log_dir = os.path.join(LOGS_DIR, f"dag_id={dag_id}")
                         if os.path.exists(temp_log_dir) and os.path.isdir(temp_log_dir):
@@ -275,9 +297,9 @@ def clear_routines_cache():
 
 def get_routines():
     global _routines_cache, _routines_cache_sig, _routines_cache_time
-    # Executa limpeza automática de DAGs temporárias órfãs (arquivos com mais de 30s ou concluídos)
+    # Executa limpeza automática de DAGs temporárias órfãs (arquivos com mais de 1h e sem execuções ativas)
     try:
-        cleanup_orphaned_temp_dags(max_age_seconds=30)
+        cleanup_orphaned_temp_dags(max_age_seconds=3600)
     except Exception as e:
         logger.warning(f"Erro na limpeza automática de DAGs temporárias: {e}")
 

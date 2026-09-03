@@ -87,8 +87,8 @@ docker run -d \
 
 ### Parâmetros do Gunicorn configurados no Dockerfile:
 * `-w 2`: 2 workers simultâneos para balanceamento de carga.
-* `--max-requests 200`: Reciclagem automática do worker a cada 200 requisições para evitar vazamentos de memória.
-* `--max-requests-jitter 30`: Jitter aleatório para evitar que múltiplos workers reiniciem no mesmo instante.
+* `--max-requests 5000`: Reciclagem automática do worker a cada 5.000 requisições para evitar vazamentos de memória sem interromper pesquisas longas em background.
+* `--max-requests-jitter 500`: Jitter aleatório para evitar que múltiplos workers reiniciem no mesmo instante.
 * `--timeout 120`: Timeout de 120 segundos para operações de sincronização em massa.
 
 ---

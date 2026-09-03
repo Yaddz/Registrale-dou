@@ -207,10 +207,10 @@ def create_app(config=None):
             try: db.session.rollback()
             except Exception: pass
         
-    # Limpeza de DAGs temporárias órfãs na inicialização
+    # Limpeza de DAGs temporárias órfãs na inicialização (somente órfãs sem execuções ativas)
     try:
         from .services.dag_config_service import cleanup_orphaned_temp_dags
-        cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=True)
+        cleanup_orphaned_temp_dags(max_age_seconds=3600, force_all=False)
     except Exception as e:
         app.logger.warning(f"Erro ao limpar DAGs temporárias na inicialização: {e}")
 
