@@ -127,6 +127,31 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 
 ### `POST /api/routines/trigger_monthly`
 * **Descrição:** Dispara a execução das buscas para todos os dias do mês selecionado.
+* **Payload (JSON):**
+```json
+{
+  "month": 8,
+  "year": 2026,
+  "routines": ["Pesquisa_cnpj.yaml"],
+  "mode": "download_and_search"
+}
+```
+* **Modos suportados (`mode`):**
+  * `"full"`: Executa dias INLABS e pesquisa dias faltantes via API DOU.
+  * `"download_and_search"`: Baixa dias faltantes na janela de 120 dias no INLABS e busca dias históricos via API DOU.
+  * `"inlabs_only"`: Executa buscas somente para os dias com dados já disponíveis no PostgreSQL.
+  * `"api_dou_only"`: Executa todas as buscas diretamente via API Oficial do DOU (para meses fora da janela de 120 dias).
+
+### `POST /api/routines/cleanup_temp`
+* **Descrição:** Força a limpeza manual imediata de arquivos YAML temporários (`temp_*.yaml`), desregistra DAGs órfãs na API do Airflow e remove pastas de logs temporárias (com `force_all=True`).
+* **Resposta de Sucesso (200):**
+```json
+{
+  "status": "success",
+  "message": "2 DAG(s) e arquivo(s) temporário(s) removido(s) com sucesso.",
+  "cleaned_count": 2
+}
+```
 
 ---
 

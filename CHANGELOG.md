@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.14.0] - 2026-09-02
+
+### 🛡️ Proteção e Estabilidade de Buscas Temporárias (API DOU & Histórico)
+* **Prevenção de Exclusão Prematura de DAGs Ativas**:
+  * Implementada verificação via API REST do Airflow (`GET /api/v1/dags/{dag_id}/dagRuns`) na rotina de manutenção [`cleanup_orphaned_temp_dags()`](file:///c:/Users/Pedro/Documents/Projetos/Mari/Registrale-dou/rodou_dashboard/app/services/dag_config_service.py).
+  * DAGs temporárias geradas para consultas mensais históricas ou ad-hoc agora são protegidas contra exclusão acidental enquanto houver execuções com status `running` ou `queued`.
+* **Aumento da Tolerância de Limpeza de Arquivos Temporários**:
+  * Janela de expiração de DAGs temporárias em `get_routines()` e na inicialização da aplicação ampliada de 30 segundos para 1 hora (`max_age_seconds=3600`), garantindo que buscas longas com centenas de termos não sejam interrompidas durante a navegação no painel.
+* **Estabilidade do Servidor WSGI (Gunicorn)**:
+  * Parâmetro `--max-requests` elevado de 200 para **5.000** (e jitter para 500) no `Dockerfile` de produção, evitando reciclagens prematuras de workers provocadas pelo polling frequente da interface web e preservando as threads de processamento em segundo plano.
+* **Resgate e Persistência de Menções de Consultas Históricas**:
+  * Recuperação e salvamento de menções capturadas via API Oficial do DOU em execuções de meses fora da retenção do INLABS (> 120 dias), garantindo encerramento correto do ciclo de busca com registro do evento no `SyncHistory`.
+
+### 🪟 Correções nos Scripts de Automação Windows (`.bat`)
+* **`instalar.bat`**: Correção de erro de sintaxe em comandos `echo` que continham parênteses, prevenindo falha no interpretador de lote do Windows.
+* **`desinstalar.bat`**: Correção de erro de parsing de blocos `else` e adição de destravamento avançado de permissões via `takeown` e `icacls` para pastas do PostgreSQL.
+
+### 💾 Otimizações de Persistência e Rotinas
+* **Storage PostgreSQL**: Migração da base de dados do PostgreSQL para Docker named volume, assegurando integridade e reconhecimento das matérias históricas baixadas do INLABS.
+* **Rotina Padrão de Monitoramento**: Sincronização e validação da lista de termos monitorados na rotina padrão `Pesquisa_cnpj.yaml` com normalização rigorosa de CNPJs.
+
+---
+
 ## [0.13.0] - 2026-08-29
 
 ### 📱 Suporte a PWA (Progressive Web App) & Instalador Windows

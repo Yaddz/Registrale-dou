@@ -427,6 +427,11 @@ Na sub-aba **Limpeza do Sistema**:
 
 ---
 
+### ❓ "Quanto tempo leva uma busca mensal histórica via API Oficial do DOU e como acompanhar?"
+**Resposta:** Como a API Oficial do DOU consulta a Imprensa Nacional termo a termo para cada dia útil do mês pesquisado, o processamento pode levar de 5 a 15 minutos dependendo da quantidade de empresas monitoradas. O sistema processa tudo de forma assíncrona e protegida em segundo plano no Airflow. Você pode acompanhar o andamento diretamente no **Histórico de Eventos** da barra lateral, que registrará o evento **"Busca Mensal Concluída"** assim que todos os dias forem consolidados, atualizando automaticamente os KPIs e a aba **Todas as Menções**.
+
+---
+
 ### ❓ "Cadastrei uma empresa hoje, quando ela começará a ser buscada?"
 **Resposta:** Imediatamente nas próximas execuções automáticas. Se quiser conferir a edição do dia de hoje para essa nova empresa imediatamente, vá em **Rotinas de Busca** e clique em **Rodar Agora** na rotina `Pesquisa_cnpj_sync`.
 

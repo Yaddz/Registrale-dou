@@ -49,7 +49,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
 | **Sessão** | Flask-Session (Filesystem) | Gerenciamento de sessões com expiração de 30 min |
 | **ORM & DB Local** | Flask-SQLAlchemy / SQLite | Persistência rápida de empresas, menções, configurações e usuários |
 | **DB Histórico DOU** | PostgreSQL (`pg8000`) | Leitura de artigos e matérias capturadas do INLABS |
-| **Servidor WSGI** | Gunicorn (2 workers + jitter) | Execução concorrente com reciclagem de memória |
+| **Servidor WSGI** | Gunicorn (2 workers + 5.000 max-requests) | Execução concorrente estável com reciclagem para processos longos em background |
 | **Frontend Reativo** | Alpine.js | Estado reativo no cliente sem necessidade de build |
 | **Estilização** | Tailwind CSS (via CDN) | Interface moderna, responsiva e com suporte a modais |
 | **Exportações** | ReportLab + Pandas + OpenPyXL | Geração de PDFs diagramados e planilhas Excel nativas |
@@ -136,6 +136,7 @@ Para garantir alta performance e tempo de resposta instantâneo na interface web
 * Thread daemon dedicada que verifica a cada 60 segundos se o recurso de sincronização automática com o Google Sheets está ativo nas configurações (`settings.google_sheets.auto_sync`).
 * Caso o intervalo configurado (ex: a cada 15, 30, 60 minutos ou 24 horas) tenha sido atingido, conecta-se de forma segura à API v4 do Google Sheets usando a Conta de Serviço, sincroniza novos CNPJs no banco e atualiza os arquivos YAML de busca.
 
-### 3. Limpeza de DAGs Órfãs (`cleanup_orphaned_temp_dags()`)
-* Função executada na inicialização da aplicação para realizar a manutenção do ambiente.
-* Responsável por identificar e remover arquivos YAML temporários residuais e desregistrar DAGs órfãs do Airflow, mantendo o ambiente de execução limpo e consistente.
+### 3. Limpeza Segura de DAGs Órfãs (`cleanup_orphaned_temp_dags()`)
+* Função executada periodicamente na listagem de rotinas (`get_routines`) e no boot da aplicação para manutenção preventiva do ambiente.
+* **Proteção contra Remoção Prematura:** Antes de excluir qualquer arquivo YAML temporário (`temp_*.yaml`) ou desregistrar a DAG do Airflow, a função consulta a API REST do Airflow (`GET /api/v1/dags/{dag_id}/dagRuns`). Caso a DAG possua execuções com status `running` ou `queued`, a limpeza é imediatamente ignorada para garantir que buscas mensais históricas ou ad-hoc em lote não sejam interrompidas.
+* **Janela de Tolerância:** Utiliza janela de segurança de 1 hora (`max_age_seconds=3600`) para expurgar apenas arquivos verdadeiramente abandonados ou sem execuções ativas, mantendo o ambiente de execução limpo sem afetar buscas de longa duração.

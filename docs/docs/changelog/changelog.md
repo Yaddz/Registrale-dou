@@ -1,6 +1,29 @@
 
 ## Changelog
 
+## [0.14.0] - 2026-09-02
+
+* **Proteção e Estabilidade de Buscas Temporárias (API DOU & Histórico)**:
+  * Verificação ativa via API REST do Airflow antes de qualquer limpeza de DAGs temporárias (`cleanup_orphaned_temp_dags`), preservando execuções com status `running` ou `queued`.
+  * Janela de tolerância estendida para 1 hora (`max_age_seconds=3600`) em `get_routines()` e no boot da aplicação, evitando interrupções em buscas volumosas.
+  * Elevação do `--max-requests` de 200 para 5.000 (e jitter para 500) no Gunicorn, prevenindo término prematuro de threads daemon em segundo plano causadas por polling da UI.
+  * Resgate e consolidação no SQLite das menções capturadas via API Oficial do DOU em pesquisas de meses fora da janela INLABS (> 120 dias).
+* **Automações e Scripts Windows**:
+  * Correções nos scripts `instalar.bat` (parênteses no `echo`) e `desinstalar.bat` (parsing de `else` e destravamento de permissões com `takeown`/`icacls`).
+* **Storage PostgreSQL**:
+  * Persistência do PostgreSQL em Docker named volume para integridade do acervo histórico INLABS.
+
+---
+
+## [0.13.0] - 2026-08-29
+
+* **PWA & Desktop App**: Suporte completo a Progressive Web App (manifest, ícones em alta resolução e service worker) e instalador desktop automatizado para Windows (`instalar.bat` / `desinstalar.bat`).
+* **Exclusão de Registros Obsoletos (Sheets)**: Opção configurável para remover automaticamente empresas apagadas da planilha Google Sheets.
+* **Filtros e Relatórios**: Normalização semântica do filtro de seções do DOU (`matchSection`) e exportações em memória via `io.BytesIO`.
+* **Performance e Banco**: 4 novos índices no SQLite, conexão singleton para PostgreSQL, compilação estática de regex e aumento do limite de sessões para 10.000.
+
+---
+
 ## [0.12.0] - 2026-08-28
 
 * **Editor Visual de Templates de E-mail (WYSIWYG)**: Editor interativo em tempo real com Destaque Amarelo DOU (`#FFA`), menu flutuante de variáveis `{content}`, `{empresa}`, `{cnpj}`, `{secao}`, `{data}`, `{trecho}`, `{link}` e histórico Desfazer/Refazer.

@@ -55,5 +55,5 @@ A documentação está dividida nos seguintes módulos:
 * **Frontend:** Alpine.js, Tailwind CSS (CDN), Lucide Icons.
 * **Bancos de Dados:** SQLite (banco de aplicação local `/data/dashboard.db`) + PostgreSQL (banco INLABS `/data/dou_inlabs`).
 * **Sincronização:** Airflow DAGs + Workers em background (Google Sheets Scheduler e Mentions Watcher).
-* **Testes:** 45 testes automatizados com pytest.
+* **Testes:** 85 testes automatizados com pytest.
 * **Feriados:** Cálculo dinâmico de dias úteis com feriados nacionais (algoritmo Computus de Butcher).

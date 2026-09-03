@@ -272,12 +272,13 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 ```
 
 ### `POST /api/routines/cleanup_temp`
-* **Descrição:** Força a limpeza imediata de arquivos YAML temporários (`temp_*.yaml`) e DAGs órfãs do Airflow.
+* **Descrição:** Força a limpeza manual imediata de arquivos YAML temporários (`temp_*.yaml`), desregistra DAGs órfãs na API do Airflow e remove pastas de logs temporárias (com `force_all=True`).
 * **Resposta de Sucesso (200):**
 ```json
 {
-  "status": "ok",
-  "message": "Limpeza executada."
+  "status": "success",
+  "message": "2 DAG(s) e arquivo(s) temporário(s) removido(s) com sucesso.",
+  "cleaned_count": 2
 }
 ```
 
