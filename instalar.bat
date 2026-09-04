@@ -30,13 +30,7 @@ echo.
 echo   [3] INSTALAR / REPARAR PRE-REQUISITOS
 echo       - Instala ou atualiza Git, Docker Desktop e WSL 2
 echo.
-echo   [4] INICIAR SERVICOS DOCKER
-echo       - Inicia os containers em segundo plano e abre o Dashboard
-echo.
-echo   [5] PARAR SERVICOS DOCKER
-echo       - Pausa a execucao de todos os containers com seguranca
-echo.
-echo   [6] DESINSTALAR / LIMPAR O SISTEMA
+echo   [4] DESINSTALAR / LIMPAR O SISTEMA
 echo       - Opcoes de limpeza de dados ou desinstalacao completa
 echo.
 echo   [0] SAIR
@@ -45,20 +39,18 @@ echo ==================================================================
 echo.
 
 set "MENU_CHOICE="
-set /p "MENU_CHOICE=Digite o numero da opcao desejada [0 a 6]: "
+set /p "MENU_CHOICE=Digite o numero da opcao desejada [0 a 4]: "
 if not defined MENU_CHOICE goto main_menu
 set "MENU_CHOICE=%MENU_CHOICE: =%"
 
 if "%MENU_CHOICE%"=="1" goto opt_install
 if "%MENU_CHOICE%"=="2" goto opt_update
 if "%MENU_CHOICE%"=="3" goto opt_prereqs
-if "%MENU_CHOICE%"=="4" goto opt_start
-if "%MENU_CHOICE%"=="5" goto opt_stop
-if "%MENU_CHOICE%"=="6" goto opt_uninstall
+if "%MENU_CHOICE%"=="4" goto opt_uninstall
 if "%MENU_CHOICE%"=="0" goto opt_exit
 
 echo.
-echo Opcao invalida. Digite um numero de 0 a 6.
+echo Opcao invalida. Digite um numero de 0 a 4.
 pause
 goto main_menu
 
@@ -460,88 +452,7 @@ goto main_menu
 
 
 REM ===================================================================
-REM OPCAO 4: INICIAR SERVICOS
-REM ===================================================================
-:opt_start
-cls
-echo.
-echo ==================================================================
-echo               Iniciando Servicos Registrale-DOU
-echo ==================================================================
-echo.
-
-if not exist "docker-compose.yml" (
-    if exist "Registrale-dou\docker-compose.yml" (
-        cd Registrale-dou
-        set "PROJECT_DIR=%CD%"
-    ) else (
-        echo.
-        echo [ERRO] Arquivo docker-compose.yml nao encontrado nesta pasta.
-        echo        Execute primeiro a opcao [1] para realizar a Instalacao Completa.
-        pause
-        goto main_menu
-    )
-)
-
-set "PREREQ_ERROR="
-call :ensure_docker_running
-if defined PREREQ_ERROR (
-    pause
-    goto main_menu
-)
-
-echo Iniciando containers em segundo plano...
-docker compose up -d
-if errorlevel 1 (
-    echo [ERRO] Falha ao iniciar containers.
-) else (
-    echo.
-    echo   [OK] Todos os servicos estao em execucao!
-    echo   Dashboard acessivel em: http://localhost:5000
-    start http://localhost:5000
-)
-echo.
-echo Pressione qualquer tecla para retornar ao menu...
-pause >nul
-goto main_menu
-
-
-REM ===================================================================
-REM OPCAO 5: PARAR SERVICOS
-REM ===================================================================
-:opt_stop
-cls
-echo.
-echo ==================================================================
-echo                 Parando Servicos Docker
-echo ==================================================================
-echo.
-
-if not exist "docker-compose.yml" (
-    if exist "Registrale-dou\docker-compose.yml" (
-        cd Registrale-dou
-        set "PROJECT_DIR=%CD%"
-    ) else (
-        echo.
-        echo [ERRO] Arquivo docker-compose.yml nao encontrado nesta pasta.
-        echo        Nao ha servicos ativos para parar.
-        pause
-        goto main_menu
-    )
-)
-
-echo Parando containers sem remover dados salvos...
-docker compose down
-echo.
-echo   [OK] Servicos parados com sucesso.
-echo.
-echo Pressione qualquer tecla para retornar ao menu...
-pause >nul
-goto main_menu
-
-
-REM ===================================================================
-REM OPCAO 6: DESINSTALAR / LIMPAR O SISTEMA
+REM OPCAO 4: DESINSTALAR / LIMPAR O SISTEMA
 REM ===================================================================
 :opt_uninstall
 cls
