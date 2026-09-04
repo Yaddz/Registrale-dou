@@ -3,7 +3,10 @@ setlocal EnableExtensions
 set "PROJECT_DIR=%~dp0"
 if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 cd /d "%PROJECT_DIR%"
+set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;%LOCALAPPDATA%\Programs\Git\cmd;C:\Program Files\Docker\Docker\resources\bin"
 title Registrale-DOU - Central de Gerenciamento e Instalacao
+
+if not "%~1"=="" goto %~1
 
 :main_menu
 cls
@@ -16,7 +19,7 @@ echo.
 echo   Selecione a opcao desejada:
 echo.
 echo   [1] INSTALACAO COMPLETA (Recomendado)
-echo       - Verifica e instala Git, Docker Desktop e WSL via winget
+echo       - Verifica e instala Git, Docker Desktop e WSL (winget ou download)
 echo       - Prepara diretorios e compila todos os containers Docker
 echo       - Configura banco de dados e abre o Dashboard no navegador
 echo.
@@ -25,7 +28,7 @@ echo       - Puxa as ultimas melhorias do GitHub (git pull)
 echo       - Recompila os containers Docker preservando seus dados
 echo.
 echo   [3] INSTALAR / REPARAR PRE-REQUISITOS
-echo       - Instala ou atualiza Git, Docker Desktop e WSL 2 via winget
+echo       - Instala ou atualiza Git, Docker Desktop e WSL 2
 echo.
 echo   [4] INICIAR SERVICOS DOCKER
 echo       - Inicia os containers em segundo plano e abre o Dashboard
@@ -65,6 +68,7 @@ REM SUB-ROTINAS DE PRE-REQUISITOS (GIT, DOCKER, WSL)
 REM ===================================================================
 
 :check_and_install_git
+set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;%LOCALAPPDATA%\Programs\Git\cmd"
 git --version >nul 2>&1
 if not errorlevel 1 (
     echo   [OK] Git instalado.
@@ -72,22 +76,48 @@ if not errorlevel 1 (
 )
 echo   [AVISO] Git nao foi encontrado no sistema.
 echo.
-set /p "INSTALL_GIT=Deseja instalar o Git automaticamente agora via winget? [S/N]: "
-if /i "%INSTALL_GIT%"=="S" (
+set /p "INSTALL_GIT=Deseja instalar o Git automaticamente agora? [S/N]: "
+if /i not "%INSTALL_GIT%"=="S" (
+    echo [ERRO] O Git e necessario para clonar e atualizar o projeto.
+    set "PREREQ_ERROR=1"
+    goto :eof
+)
+
+where winget >nul 2>&1
+if not errorlevel 1 (
     echo   Instalando Git via winget...
     winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
-    set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
+    set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;%LOCALAPPDATA%\Programs\Git\cmd"
     git --version >nul 2>&1
     if not errorlevel 1 (
-        echo   [OK] Git instalado com sucesso!
+        echo   [OK] Git instalado com sucesso via winget!
         goto :eof
     )
+    echo   [AVISO] Instalacao via winget nao concluiu. Tentando download direto...
+) else (
+    echo   [AVISO] winget nao detectado neste ambiente.
+    echo   Baixando instalador oficial do Git diretamente do GitHub...
 )
-echo [ERRO] O Git e necessario para clonar e atualizar o projeto.
+
+echo   Baixando e instalando Git em segundo plano (aguarde)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { $r = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{'User-Agent'='Registrale'} -TimeoutSec 10; $u = ($r.assets | Where-Object { $_.name -match '^Git-.*-64-bit\.exe$' } | Select-Object -First 1).browser_download_url } catch {}; if (-not $u) { $u = 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/Git-2.55.0.5-64-bit.exe' }; $d = Join-Path $env:TEMP 'Git-Installer.exe'; Write-Host ('  Baixando: ' + $u); if (Get-Command curl.exe -ErrorAction SilentlyContinue) { curl.exe -L --progress-bar -o $d $u } else { Invoke-WebRequest -Uri $u -OutFile $d }; Write-Host '  Instalando Git silenciosamente...'; Start-Process -FilePath $d -ArgumentList '/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS' -Wait; Remove-Item -Path $d -Force -ErrorAction SilentlyContinue"
+
+set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;%LOCALAPPDATA%\Programs\Git\cmd"
+git --version >nul 2>&1
+if not errorlevel 1 (
+    echo   [OK] Git instalado com sucesso!
+    goto :eof
+)
+
+echo.
+echo [ERRO] Nao foi possivel concluir a instalacao automatica do Git.
+echo        Por favor, baixe e instale manualmente em: https://git-scm.com/download/win
 set "PREREQ_ERROR=1"
 goto :eof
 
+
 :check_and_install_docker
+set "PATH=%PATH%;C:\Program Files\Docker\Docker\resources\bin"
 docker --version >nul 2>&1
 if not errorlevel 1 (
     echo   [OK] Docker instalado.
@@ -95,12 +125,43 @@ if not errorlevel 1 (
 )
 echo   [AVISO] Docker Desktop nao foi encontrado neste computador.
 echo.
-set /p "INSTALL_DK=Deseja instalar o Docker Desktop agora via winget? [S/N]: "
-if /i "%INSTALL_DK%"=="S" (
+set /p "INSTALL_DK=Deseja instalar o Docker Desktop agora? [S/N]: "
+if /i not "%INSTALL_DK%"=="S" (
+    echo [ERRO] O Docker Desktop e necessario para executar a aplicacao.
+    set "PREREQ_ERROR=1"
+    goto :eof
+)
+
+where winget >nul 2>&1
+if not errorlevel 1 (
     echo   Instalando Docker Desktop via winget...
     winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements
+    set "PATH=%PATH%;C:\Program Files\Docker\Docker\resources\bin"
+    docker --version >nul 2>&1
+    if not errorlevel 1 (
+        echo.
+        echo   [OK] Instalador do Docker Desktop concluido via winget!
+        echo   AVISO: O Windows pode solicitar reiniciar o computador para ativar
+        echo   a virtualizacao do WSL. Apos reiniciar, abra o Docker Desktop
+        echo   uma vez e rode este instalador novamente.
+        echo.
+        pause
+        goto :eof
+    )
+    echo   [AVISO] Instalacao via winget nao concluiu. Tentando download direto...
+) else (
+    echo   [AVISO] winget nao detectado neste ambiente.
+    echo   Baixando instalador oficial do Docker Desktop...
+)
+
+echo   Baixando Docker Desktop Installer (aprox. 600MB, aguarde)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; $u = 'https://desktop.docker.com/win/main/amd64/Docker%%20Desktop%%20Installer.exe'; $d = Join-Path $env:TEMP 'DockerDesktopInstaller.exe'; Write-Host ('  Baixando: ' + $u); if (Get-Command curl.exe -ErrorAction SilentlyContinue) { curl.exe -L --progress-bar -o $d $u } else { Invoke-WebRequest -Uri $u -OutFile $d }; Write-Host '  Executando instalador do Docker Desktop...'; Start-Process -FilePath $d -ArgumentList 'install --quiet' -Wait; Remove-Item -Path $d -Force -ErrorAction SilentlyContinue"
+
+set "PATH=%PATH%;C:\Program Files\Docker\Docker\resources\bin"
+docker --version >nul 2>&1
+if not errorlevel 1 (
     echo.
-    echo   [OK] Instalador do Docker Desktop concluido!
+    echo   [OK] Docker Desktop instalado com sucesso!
     echo   AVISO: O Windows pode solicitar reiniciar o computador para ativar
     echo   a virtualizacao do WSL. Apos reiniciar, abra o Docker Desktop
     echo   uma vez e rode este instalador novamente.
@@ -108,9 +169,21 @@ if /i "%INSTALL_DK%"=="S" (
     pause
     goto :eof
 )
-echo [ERRO] O Docker Desktop e necessario para executar a aplicacao.
+
+if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
+    echo.
+    echo   [OK] Arquivos do Docker Desktop instalados com sucesso!
+    echo   Abra o Docker Desktop pelo menu Iniciar e reinicie o instalador.
+    pause
+    goto :eof
+)
+
+echo.
+echo [ERRO] Nao foi possivel concluir a instalacao automatica do Docker Desktop.
+echo        Baixe e instale manualmente em: https://www.docker.com/products/docker-desktop/
 set "PREREQ_ERROR=1"
 goto :eof
+
 
 :check_and_install_wsl
 echo   Verificando suporte ao WSL (Windows Subsystem for Linux)...
@@ -127,7 +200,9 @@ if /i "%CONFIRM_WSL%"=="S" (
 )
 goto :eof
 
+
 :ensure_docker_running
+set "PATH=%PATH%;C:\Program Files\Docker\Docker\resources\bin"
 docker info >nul 2>&1
 if not errorlevel 1 (
     echo   [OK] Docker Desktop em execucao.
@@ -145,6 +220,8 @@ if %DOCKER_WAIT% GTR 15 (
     echo.
     echo [ERRO] Docker Desktop nao esta respondendo.
     echo        Abra o Docker Desktop pelo menu Iniciar e execute este script novamente.
+    echo        (Nota: Em ambientes de maquina virtual ou Windows Sandbox, certifique-se
+    echo        de que a Virtualizacao Aninhada / Hyper-V esteja ativada no host).
     set "PREREQ_ERROR=1"
     goto :eof
 )
@@ -172,7 +249,12 @@ call :check_and_install_git
 call :check_and_install_docker
 call :check_and_install_wsl
 echo.
-echo Todos os pre-requisitos foram verificados!
+if defined PREREQ_ERROR (
+    echo [AVISO] Um ou mais pre-requisitos nao foram concluidos com sucesso.
+) else (
+    echo [OK] Todos os pre-requisitos foram verificados!
+)
+echo.
 echo Pressione qualquer tecla para retornar ao menu principal...
 pause >nul
 goto main_menu
@@ -314,6 +396,20 @@ echo ==================================================================
 echo                   Atualizacao do Sistema
 echo ==================================================================
 echo.
+
+if not exist "docker-compose.yml" (
+    if exist "Registrale-dou\docker-compose.yml" (
+        cd Registrale-dou
+        set "PROJECT_DIR=%CD%"
+    ) else (
+        echo.
+        echo [ERRO] Arquivo docker-compose.yml nao encontrado nesta pasta.
+        echo        Execute primeiro a opcao [1] para realizar a Instalacao Completa.
+        pause
+        goto main_menu
+    )
+)
+
 set "PREREQ_ERROR="
 call :ensure_docker_running
 if defined PREREQ_ERROR (
@@ -373,6 +469,20 @@ echo ==================================================================
 echo               Iniciando Servicos Registrale-DOU
 echo ==================================================================
 echo.
+
+if not exist "docker-compose.yml" (
+    if exist "Registrale-dou\docker-compose.yml" (
+        cd Registrale-dou
+        set "PROJECT_DIR=%CD%"
+    ) else (
+        echo.
+        echo [ERRO] Arquivo docker-compose.yml nao encontrado nesta pasta.
+        echo        Execute primeiro a opcao [1] para realizar a Instalacao Completa.
+        pause
+        goto main_menu
+    )
+)
+
 set "PREREQ_ERROR="
 call :ensure_docker_running
 if defined PREREQ_ERROR (
@@ -406,6 +516,20 @@ echo ==================================================================
 echo                 Parando Servicos Docker
 echo ==================================================================
 echo.
+
+if not exist "docker-compose.yml" (
+    if exist "Registrale-dou\docker-compose.yml" (
+        cd Registrale-dou
+        set "PROJECT_DIR=%CD%"
+    ) else (
+        echo.
+        echo [ERRO] Arquivo docker-compose.yml nao encontrado nesta pasta.
+        echo        Nao ha servicos ativos para parar.
+        pause
+        goto main_menu
+    )
+)
+
 echo Parando containers sem remover dados salvos...
 docker compose down
 echo.
@@ -464,6 +588,13 @@ echo.
 set /p "CONFIRM_DATA=Deseja prosseguir com a limpeza dos dados? [S/N]: "
 if /i not "%CONFIRM_DATA%"=="S" goto opt_uninstall
 
+if not exist "docker-compose.yml" (
+    if exist "Registrale-dou\docker-compose.yml" (
+        cd Registrale-dou
+        set "PROJECT_DIR=%CD%"
+    )
+)
+
 echo.
 echo Parando containers e removendo volumes...
 docker compose down -v --remove-orphans >nul 2>&1
@@ -499,6 +630,13 @@ echo     "%PROJECT_DIR%"
 echo.
 set /p "CONFIRM_FULL=Tem certeza absoluta que deseja excluir tudo do sistema? [S/N]: "
 if /i not "%CONFIRM_FULL%"=="S" goto opt_uninstall
+
+if not exist "docker-compose.yml" (
+    if exist "Registrale-dou\docker-compose.yml" (
+        cd Registrale-dou
+        set "PROJECT_DIR=%CD%"
+    )
+)
 
 echo.
 echo [1/3] Parando e removendo recursos Docker...
