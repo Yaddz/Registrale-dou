@@ -1,100 +1,241 @@
 @echo off
+setlocal EnableExtensions
 set "PROJECT_DIR=%~dp0"
 if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 cd /d "%PROJECT_DIR%"
-title Registrale-DOU - Instalador e Atualizador
+title Registrale-DOU - Central de Gerenciamento e Instalacao
 
-REM ================================================================
-REM Registrale-DOU - Instalador e Atualizador Automatizado para Windows
-REM ================================================================
-
+:main_menu
+cls
 echo.
 echo ==================================================================
 echo                  REGISTRALE-DOU - MONITOR DOU
-echo              Instalador e Atualizador Automatizado
+echo          Central de Instalacao e Gerenciamento do Sistema
+echo ==================================================================
+echo.
+echo   Selecione a opcao desejada:
+echo.
+echo   [1] INSTALACAO COMPLETA (Recomendado)
+echo       - Verifica e instala Git, Docker Desktop e WSL via winget
+echo       - Prepara diretorios e compila todos os containers Docker
+echo       - Configura banco de dados e abre o Dashboard no navegador
+echo.
+echo   [2] ATUALIZAR SISTEMA
+echo       - Puxa as ultimas melhorias do GitHub (git pull)
+echo       - Recompila os containers Docker preservando seus dados
+echo.
+echo   [3] INSTALAR / REPARAR PRE-REQUISITOS
+echo       - Instala ou atualiza Git, Docker Desktop e WSL 2 via winget
+echo.
+echo   [4] INICIAR SERVICOS DOCKER
+echo       - Inicia os containers em segundo plano e abre o Dashboard
+echo.
+echo   [5] PARAR SERVICOS DOCKER
+echo       - Pausa a execucao de todos os containers com seguranca
+echo.
+echo   [6] DESINSTALAR / LIMPAR O SISTEMA
+echo       - Opcoes de limpeza de dados ou desinstalacao completa
+echo.
+echo   [0] SAIR
+echo.
 echo ==================================================================
 echo.
 
-REM ---------------------------------------------------------------
-REM ETAPA 1: Verificar Docker Desktop
-REM ---------------------------------------------------------------
-echo [1/4] Verificando Docker Desktop...
-echo.
+set "MENU_CHOICE="
+set /p "MENU_CHOICE=Digite o numero da opcao desejada [0 a 6]: "
+if not defined MENU_CHOICE goto main_menu
+set "MENU_CHOICE=%MENU_CHOICE: =%"
 
+if "%MENU_CHOICE%"=="1" goto opt_install
+if "%MENU_CHOICE%"=="2" goto opt_update
+if "%MENU_CHOICE%"=="3" goto opt_prereqs
+if "%MENU_CHOICE%"=="4" goto opt_start
+if "%MENU_CHOICE%"=="5" goto opt_stop
+if "%MENU_CHOICE%"=="6" goto opt_uninstall
+if "%MENU_CHOICE%"=="0" goto opt_exit
+
+echo.
+echo Opcao invalida. Digite um numero de 0 a 6.
+pause
+goto main_menu
+
+
+REM ===================================================================
+REM SUB-ROTINAS DE PRE-REQUISITOS (GIT, DOCKER, WSL)
+REM ===================================================================
+
+:check_and_install_git
+git --version >nul 2>&1
+if not errorlevel 1 (
+    echo   [OK] Git instalado.
+    goto :eof
+)
+echo   [AVISO] Git nao foi encontrado no sistema.
+echo.
+set /p "INSTALL_GIT=Deseja instalar o Git automaticamente agora via winget? [S/N]: "
+if /i "%INSTALL_GIT%"=="S" (
+    echo   Instalando Git via winget...
+    winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+    set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
+    git --version >nul 2>&1
+    if not errorlevel 1 (
+        echo   [OK] Git instalado com sucesso!
+        goto :eof
+    )
+)
+echo [ERRO] O Git e necessario para clonar e atualizar o projeto.
+set "PREREQ_ERROR=1"
+goto :eof
+
+:check_and_install_docker
 docker --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERRO] Docker Desktop nao encontrado.
-    echo        Instale em: https://www.docker.com/products/docker-desktop/
+if not errorlevel 1 (
+    echo   [OK] Docker instalado.
+    goto :eof
+)
+echo   [AVISO] Docker Desktop nao foi encontrado neste computador.
+echo.
+set /p "INSTALL_DK=Deseja instalar o Docker Desktop agora via winget? [S/N]: "
+if /i "%INSTALL_DK%"=="S" (
+    echo   Instalando Docker Desktop via winget...
+    winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements
+    echo.
+    echo   [OK] Instalador do Docker Desktop concluido!
+    echo   AVISO: O Windows pode solicitar reiniciar o computador para ativar
+    echo   a virtualizacao do WSL. Apos reiniciar, abra o Docker Desktop
+    echo   uma vez e rode este instalador novamente.
     echo.
     pause
-    exit /b 1
+    goto :eof
 )
-echo   [OK] Docker instalado.
+echo [ERRO] O Docker Desktop e necessario para executar a aplicacao.
+set "PREREQ_ERROR=1"
+goto :eof
 
+:check_and_install_wsl
+echo   Verificando suporte ao WSL (Windows Subsystem for Linux)...
+wsl --status >nul 2>&1
+if not errorlevel 1 (
+    echo   [OK] WSL habilitado.
+    goto :eof
+)
+echo   [AVISO] WSL 2 pode nao estar ativado.
+set /p "CONFIRM_WSL=Deseja ativar/atualizar o WSL agora? [S/N]: "
+if /i "%CONFIRM_WSL%"=="S" (
+    wsl --install --no-distribution >nul 2>&1 || wsl --update >nul 2>&1
+    echo   [OK] Comando WSL executado.
+)
+goto :eof
+
+:ensure_docker_running
+docker info >nul 2>&1
+if not errorlevel 1 (
+    echo   [OK] Docker Desktop em execucao.
+    goto :eof
+)
+echo   Docker Desktop nao parece estar ativo. Tentando iniciar automaticamente...
+if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
+    start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+)
+echo   Aguardando o servico do Docker responder (ate 45 segundos)...
+set DOCKER_WAIT=0
+:wait_docker_loop
+set /a DOCKER_WAIT+=1
+if %DOCKER_WAIT% GTR 15 (
+    echo.
+    echo [ERRO] Docker Desktop nao esta respondendo.
+    echo        Abra o Docker Desktop pelo menu Iniciar e execute este script novamente.
+    set "PREREQ_ERROR=1"
+    goto :eof
+)
 docker info >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo [ERRO] Docker Desktop nao esta em execucao.
-    echo        Inicie o Docker Desktop e execute este instalador novamente.
-    echo.
-    pause
-    exit /b 1
+    ping 127.0.0.1 -n 4 >nul
+    goto wait_docker_loop
 )
-echo   [OK] Docker Desktop em execucao.
+echo   [OK] Docker Desktop conectado e em execucao!
+goto :eof
+
+
+REM ===================================================================
+REM OPCAO 3: INSTALAR / REPARAR PRE-REQUISITOS
+REM ===================================================================
+:opt_prereqs
+cls
+echo.
+echo ==================================================================
+echo         Instalacao e Verificacao de Pre-Requisitos
+echo ==================================================================
+echo.
+set "PREREQ_ERROR="
+call :check_and_install_git
+call :check_and_install_docker
+call :check_and_install_wsl
+echo.
+echo Todos os pre-requisitos foram verificados!
+echo Pressione qualquer tecla para retornar ao menu principal...
+pause >nul
+goto main_menu
+
+
+REM ===================================================================
+REM OPCAO 1: INSTALACAO COMPLETA DO SISTEMA
+REM ===================================================================
+:opt_install
+cls
+echo.
+echo ==================================================================
+echo             Instalacao Completa do Registrale-DOU
+echo ==================================================================
 echo.
 
-REM ---------------------------------------------------------------
-REM ETAPA 2: Clonar ou Atualizar o Repositorio Git
-REM ---------------------------------------------------------------
-echo [2/4] Verificando repositorio Git...
+REM 1. Pre-requisitos
+echo [Etapa 1/4] Verificando pre-requisitos de sistema...
 echo.
+set "PREREQ_ERROR="
+call :check_and_install_git
+if defined PREREQ_ERROR goto install_abort
 
-git --version >nul 2>&1
-if errorlevel 1 (
-    echo   Git nao encontrado. Tentando instalar via winget...
-    winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements >nul 2>&1
-    set "PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
-)
+call :check_and_install_docker
+if defined PREREQ_ERROR goto install_abort
 
+call :ensure_docker_running
+if defined PREREQ_ERROR goto install_abort
+
+REM 2. Repositorio Git
+echo.
+echo [Etapa 2/4] Verificando integridade do repositorio...
+echo.
 if exist "docker-compose.yml" (
     echo   [OK] Repositorio detectado na pasta atual.
-    echo   Puxando atualizacoes mais recentes do Git...
-    echo.
-    git pull origin main
-    echo.
-    echo   [OK] Codigo-fonte verificado e atualizado.
+    echo   Atualizando com a versao mais recente do GitHub...
+    git pull origin main 2>nul
 ) else (
     if exist "Registrale-dou\docker-compose.yml" (
         cd Registrale-dou
+        set "PROJECT_DIR=%CD%"
         echo   [OK] Pasta Registrale-dou detectada.
-        echo   Puxando atualizacoes mais recentes do Git...
-        echo.
-        git pull origin main
-        echo.
-        echo   [OK] Codigo-fonte verificado e atualizado.
+        git pull origin main 2>nul
     ) else (
         echo   Clonando repositorio Registrale-dou...
-        echo.
         git clone https://github.com/Yaddz/Registrale-dou.git
         if errorlevel 1 (
             echo.
-            echo [ERRO] Falha ao clonar o repositorio. Verifique sua conexao.
+            echo [ERRO] Falha ao clonar o repositorio do GitHub.
+            echo        Verifique sua conexao com a internet.
             pause
-            exit /b 1
+            goto main_menu
         )
         cd Registrale-dou
-        echo.
-        echo   [OK] Repositorio clonado com sucesso.
+        set "PROJECT_DIR=%CD%"
     )
 )
+echo   [OK] Codigo-fonte pronto.
 echo.
 
-REM ---------------------------------------------------------------
-REM ETAPA 3: Preparar diretorios e inicializar containers
-REM ---------------------------------------------------------------
-echo [3/4] Preparando diretorios e inicializando containers Docker...
+REM 3. Diretorios e Containers Docker
+echo [Etapa 3/4] Preparando diretorios e compilando containers Docker...
 echo.
-
 if not exist ".env" copy ".env.example" ".env" >nul 2>&1
 if not exist "mnt\airflow-logs" mkdir "mnt\airflow-logs" >nul 2>&1
 if not exist "mnt\pgdata" mkdir "mnt\pgdata" >nul 2>&1
@@ -102,22 +243,28 @@ if not exist "data" mkdir "data" >nul 2>&1
 if not exist "flask_sessions" mkdir "flask_sessions" >nul 2>&1
 if not exist "dag_confs" mkdir "dag_confs" >nul 2>&1
 
-echo   Compilando imagens Docker e subindo containers...
+echo   Compilando imagens e inicializando containers (isso pode levar alguns minutos)...
+echo.
 docker compose up -d --build --remove-orphans
 if errorlevel 1 (
     echo.
-    echo [ERRO] Falha ao compilar ou iniciar containers Docker.
+    echo [ERRO] Falha ao compilar ou iniciar os containers Docker.
+    echo        Verifique se o Docker Desktop esta totalmente aberto e com memoria suficiente.
     pause
-    exit /b 1
+    goto main_menu
 )
-
+echo.
 echo   [OK] Containers Docker ativos.
 echo.
-echo   Aguardando inicializacao dos servicos do Airflow...
+
+REM 4. Aguardar Airflow e Configurar Conexoes
+echo [Etapa 4/4] Inicializando configuracoes do Airflow e banco de dados...
+echo.
+echo   Aguardando servicos web do Airflow responderem...
 set ATTEMPT=0
 :wait_airflow_loop
 set /a ATTEMPT+=1
-if %ATTEMPT% GTR 30 goto configure_airflow_direct
+if %ATTEMPT% GTR 35 goto configure_airflow_direct
 docker compose exec -T airflow-webserver curl -f -s -LI http://localhost:8080/ >nul 2>&1
 if errorlevel 1 (
     ping 127.0.0.1 -n 4 >nul
@@ -125,6 +272,7 @@ if errorlevel 1 (
 )
 
 :configure_airflow_direct
+echo   Configurando variaveis e conexoes do sistema...
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"termos_exemplo_variavel\", \"value\": \"LGPD\"}'" >nul 2>&1
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"email_admin\", \"value\": \"admin@rodou.gov.br\"}'" >nul 2>&1
 docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhost:8080/api/v1/variables' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"key\": \"path_tmp\", \"value\": \"/tmp\"}'" >nul 2>&1
@@ -134,37 +282,263 @@ docker compose exec -T airflow-webserver sh -c "curl -s -X POST 'http://localhos
 docker compose exec -T airflow-webserver sh -c "curl -s -X PATCH 'http://localhost:8080/api/v1/dags/ro-dou_inlabs_load_pg' -H 'Content-Type: application/json' --user 'airflow:airflow' -d '{\"is_paused\": false}'" >nul 2>&1
 
 echo.
-
-REM ---------------------------------------------------------------
-REM ETAPA 4: Abrir o Dashboard no navegador
-REM ---------------------------------------------------------------
-echo [4/4] Abrindo o Dashboard no navegador...
-start http://localhost:5000
-
-echo.
 echo ==================================================================
-echo       Registrale-DOU instalado e atualizado com sucesso!
+echo       Registrale-DOU instalado e configurado com sucesso!
 echo ==================================================================
 echo.
 echo   * Dashboard Web:   http://localhost:5000  (Login: admin / admin)
 echo   * Apache Airflow:  http://localhost:8080  (Login: airflow / airflow)
 echo   * Webmail Testes:  http://localhost:5001  (smtp4dev)
 echo.
-echo ------------------------------------------------------------------
-echo   DICA: Para atualizar o sistema a qualquer momento com as ultimas
-echo   melhorias do GitHub, basta executar instalar.bat ou atualizar.bat.
+echo   Abrindo o Dashboard no seu navegador...
+start http://localhost:5000
 echo.
-echo   DICA PWA: No Chrome/Edge, clique no icone de instalacao na
-echo   barra de endereco para instalar como aplicativo nativo.
-echo ------------------------------------------------------------------
+echo Pressione qualquer tecla para retornar ao menu principal...
+pause >nul
+goto main_menu
+
+:install_abort
 echo.
-echo   Comandos uteis no dia a dia:
-echo     atualizar.bat            (Atualizar versao via Git + Docker)
-echo     docker compose up -d     (Iniciar servicos)
-echo     docker compose down      (Parar servicos)
-echo     docker compose logs -f   (Ver logs em tempo real)
+echo [AVISO] Instalacao nao pode ser concluida. Verifique os avisos acima.
+pause
+goto main_menu
+
+
+REM ===================================================================
+REM OPCAO 2: ATUALIZAR SISTEMA
+REM ===================================================================
+:opt_update
+cls
+echo.
+echo ==================================================================
+echo                   Atualizacao do Sistema
+echo ==================================================================
+echo.
+set "PREREQ_ERROR="
+call :ensure_docker_running
+if defined PREREQ_ERROR (
+    pause
+    goto main_menu
+)
+
+echo [1/2] Baixando as ultimas alteracoes do GitHub (git pull)...
+echo.
+git pull origin main
+if errorlevel 1 (
+    echo.
+    echo [AVISO] Ocorreu uma advertencia no git pull. Continuando com a recompilacao...
+) else (
+    echo.
+    echo   [OK] Codigo-fonte atualizado com sucesso.
+)
+echo.
+
+echo [2/2] Recompilando imagens e reiniciando servicos...
+echo.
+if not exist ".env" copy ".env.example" ".env" >nul 2>&1
+if not exist "mnt\airflow-logs" mkdir "mnt\airflow-logs" >nul 2>&1
+if not exist "mnt\pgdata" mkdir "mnt\pgdata" >nul 2>&1
+if not exist "data" mkdir "data" >nul 2>&1
+if not exist "flask_sessions" mkdir "flask_sessions" >nul 2>&1
+if not exist "dag_confs" mkdir "dag_confs" >nul 2>&1
+
+docker compose up -d --build --remove-orphans
+if errorlevel 1 (
+    echo.
+    echo [ERRO] Falha ao recompilar os containers.
+    pause
+    goto main_menu
+)
+
+echo.
+echo ==================================================================
+echo            Sistema Atualizado com Sucesso!
+echo ==================================================================
+echo.
+echo   Dashboard pronto em: http://localhost:5000
+start http://localhost:5000
+echo.
+echo Pressione qualquer tecla para retornar ao menu principal...
+pause >nul
+goto main_menu
+
+
+REM ===================================================================
+REM OPCAO 4: INICIAR SERVICOS
+REM ===================================================================
+:opt_start
+cls
+echo.
+echo ==================================================================
+echo               Iniciando Servicos Registrale-DOU
+echo ==================================================================
+echo.
+set "PREREQ_ERROR="
+call :ensure_docker_running
+if defined PREREQ_ERROR (
+    pause
+    goto main_menu
+)
+
+echo Iniciando containers em segundo plano...
+docker compose up -d
+if errorlevel 1 (
+    echo [ERRO] Falha ao iniciar containers.
+) else (
+    echo.
+    echo   [OK] Todos os servicos estao em execucao!
+    echo   Dashboard acessivel em: http://localhost:5000
+    start http://localhost:5000
+)
+echo.
+echo Pressione qualquer tecla para retornar ao menu...
+pause >nul
+goto main_menu
+
+
+REM ===================================================================
+REM OPCAO 5: PARAR SERVICOS
+REM ===================================================================
+:opt_stop
+cls
+echo.
+echo ==================================================================
+echo                 Parando Servicos Docker
+echo ==================================================================
+echo.
+echo Parando containers sem remover dados salvos...
+docker compose down
+echo.
+echo   [OK] Servicos parados com sucesso.
+echo.
+echo Pressione qualquer tecla para retornar ao menu...
+pause >nul
+goto main_menu
+
+
+REM ===================================================================
+REM OPCAO 6: DESINSTALAR / LIMPAR O SISTEMA
+REM ===================================================================
+:opt_uninstall
+cls
+echo.
+echo ==================================================================
+echo              Central de Desinstalacao e Limpeza
+echo ==================================================================
+echo.
+echo   Escolha a modalidade de desinstalacao:
+echo.
+echo   [1] DESINSTALACAO COMPLETA (Excluir Tudo)
+echo       - Para todos os containers e apaga imagens/volumes Docker
+echo       - Destrava permissoes do Windows (takeown/icacls)
+echo       - Remove completamente todos os arquivos e pastas do projeto
+echo.
+echo   [2] LIMPEZA DE DADOS (Reset para Reinstalacao)
+echo       - Para os containers e exclui apenas bancos de dados e volumes
+echo       - Mantem os arquivos de codigo-fonte preservados
+echo.
+echo   [3] CANCELAR E VOLTAR
 echo.
 echo ==================================================================
 echo.
 
+set "UNINST_CHOICE="
+set /p "UNINST_CHOICE=Digite sua opcao [1, 2 ou 3]: "
+
+if "%UNINST_CHOICE%"=="1" goto uninst_full
+if "%UNINST_CHOICE%"=="2" goto uninst_data
+if "%UNINST_CHOICE%"=="3" goto main_menu
+echo Opcao invalida.
 pause
+goto opt_uninstall
+
+:uninst_data
+echo.
+echo ==================================================================
+echo  CONFIRMACAO: LIMPEZA DE BANCOS E VOLUMES DOCKER
+echo ==================================================================
+echo  Esta acao vai parar os servicos e apagar:
+echo   - Volumes Docker (postgres-data, smtp4dev-data)
+echo   - Pastas locais de dados: data/, mnt/, flask_sessions/
+echo.
+set /p "CONFIRM_DATA=Deseja prosseguir com a limpeza dos dados? [S/N]: "
+if /i not "%CONFIRM_DATA%"=="S" goto opt_uninstall
+
+echo.
+echo Parando containers e removendo volumes...
+docker compose down -v --remove-orphans >nul 2>&1
+docker volume rm registrale-dou_postgres-data registrale-dou_smtp4dev-data >nul 2>&1
+
+echo Apagando bancos locais e sessoes temporarias...
+if exist "data" rmdir /s /q "data" 2>nul
+if exist "flask_sessions" rmdir /s /q "flask_sessions" 2>nul
+if exist "mnt\airflow-logs" rmdir /s /q "mnt\airflow-logs" 2>nul
+if exist "mnt\pgdata" rmdir /s /q "mnt\pgdata" 2>nul
+
+mkdir "data" 2>nul
+mkdir "flask_sessions" 2>nul
+mkdir "mnt\airflow-logs" 2>nul
+mkdir "mnt\pgdata" 2>nul
+
+echo.
+echo   [OK] Limpeza concluida com sucesso! O ambiente esta pronto para nova instalacao.
+echo.
+pause
+goto main_menu
+
+:uninst_full
+echo.
+echo ==================================================================
+echo  ATENCAO: CONFIRMACAO DE DESINSTALACAO TOTAL
+echo ==================================================================
+echo  Esta acao ira EXCLUIR DEFINITIVAMENTE:
+echo   - Todos os containers, redes e volumes Docker
+echo   - Todos os dados, empresas, rotinas e historico
+echo   - O diretorio completo do projeto em:
+echo     "%PROJECT_DIR%"
+echo.
+set /p "CONFIRM_FULL=Tem certeza absoluta que deseja excluir tudo do sistema? [S/N]: "
+if /i not "%CONFIRM_FULL%"=="S" goto opt_uninstall
+
+echo.
+echo [1/3] Parando e removendo recursos Docker...
+docker compose down -v --rmi local --remove-orphans >nul 2>&1
+docker volume rm registrale-dou_postgres-data registrale-dou_smtp4dev-data >nul 2>&1
+docker network rm registrale-dou_default >nul 2>&1
+echo   [OK] Recursos Docker removidos.
+
+echo.
+echo [2/3] Liberando permissoes de arquivos do Windows...
+cd /d "%TEMP%"
+takeown /f "%PROJECT_DIR%" /r /d y >nul 2>&1
+icacls "%PROJECT_DIR%" /grant "%username%":F /t >nul 2>&1
+echo   [OK] Permissoes liberadas.
+
+echo.
+echo [3/3] Finalizando a exclusao do diretorio...
+set "TEMP_SCRIPT=%TEMP%\registrale_clean_exit.bat"
+
+> "%TEMP_SCRIPT%" echo @echo off
+>> "%TEMP_SCRIPT%" echo title Registrale-DOU - Concluindo Desinstalacao
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo echo Finalizando a exclusao dos arquivos...
+>> "%TEMP_SCRIPT%" echo ping 127.0.0.1 -n 3 ^>nul
+>> "%TEMP_SCRIPT%" echo powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 2; try { Remove-Item -LiteralPath '%PROJECT_DIR%' -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Seconds 2; Remove-Item -LiteralPath '%PROJECT_DIR%' -Recurse -Force -ErrorAction SilentlyContinue }"
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo echo ==================================================================
+>> "%TEMP_SCRIPT%" echo echo         Desinstalacao Total Concluida com Sucesso!
+>> "%TEMP_SCRIPT%" echo echo ==================================================================
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo echo Todos os arquivos e servicos foram removidos do seu computador.
+>> "%TEMP_SCRIPT%" echo echo.
+>> "%TEMP_SCRIPT%" echo pause
+>> "%TEMP_SCRIPT%" echo del "%TEMP_SCRIPT%"
+
+start "" "%TEMP_SCRIPT%"
+exit /b 0
+
+:opt_exit
+echo.
+echo Encerrando central de gerenciamento...
+ping 127.0.0.1 -n 2 >nul 2>&1
+exit /b 0
