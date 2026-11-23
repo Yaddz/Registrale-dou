@@ -1,153 +1,137 @@
-# Guia de agentes do Ro-DOU
+# Guia de agentes do Registrale-DOU
 
-Este arquivo orienta agentes que atuam neste repositório. Ele se aplica a todo o projeto a partir da raiz. Instruções mais específicas, caso sejam adicionadas em subdiretórios, prevalecem somente dentro do respectivo escopo.
+Este arquivo orienta qualquer agente (humano ou IA) que trabalhe neste repositório. Vale para todo o projeto a partir da raiz; instruções em subdiretórios prevalecem apenas no próprio escopo.
 
-## Visão do projeto
+**Antes de qualquer tarefa da migração, leia [`plano/PLANO.md`](plano/PLANO.md)** e trabalhe somente no sprint indicado no seu prompt (`plano/prompts/`). O plano é a fonte da verdade sobre escopo, ordem e critérios de aceite; este arquivo define como trabalhar.
 
-O Ro-DOU é uma aplicação de clipping de diários oficiais executada sobre Apache Airflow. Arquivos YAML descrevem buscas, agenda e destinos; modelos Pydantic validam essas configurações; o gerador cria DAGs dinamicamente; os buscadores consultam DOU, INLABS, Querido Diário e DOE-SP; e os resultados podem ser enviados por e-mail, Slack ou Discord. Há suporte opcional a resumos por IA e a OpenSearch para buscas do INLABS.
+## 1. O que é o projeto
 
-O ambiente local oficial usa Docker Compose com Airflow 3, PostgreSQL, OpenSearch e smtp4dev. A implantação também possui chart Helm. A documentação pública é construída com MkDocs.
+O Registrale-DOU monitora publicações do Diário Oficial da União (DOU) que citam as empresas clientes de um escritório (identificadas por CNPJ) e avisa o analista por e-mail. É um fork do [Ro-DOU](https://github.com/gestaogovbr/Ro-dou) (clipping de diários oficiais do governo federal) com um painel web próprio.
 
-## Mapa do repositório
+**Contexto de uso, que guia todas as decisões:**
 
-- `src/`: núcleo da aplicação.
-  - `dou_dag_generator.py`: montagem dinâmica das DAGs e encadeamento de buscas e notificações.
-  - `schemas.py` e `parsers.py`: contrato e validação dos YAMLs.
-  - `searchers.py` e `hooks/`: integrações e regras das fontes de dados.
-  - `notification/`: formatação e entrega dos relatórios.
-  - `ai/`: configuração, provedores e geração opcional de resumos.
-  - `utils/`: regras auxiliares compartilhadas.
-- `dag_confs/`: configurações de uso; exemplos e casos de teste ficam em `dag_confs/examples_and_tests/`. Mudanças no contrato YAML devem manter esses exemplos válidos.
-- `dag_load_inlabs/`: DAGs, utilitários e SQL da carga de publicações do INLABS.
-- `tests/`: testes unitários, de integração, carregamento de DAG e execução ponta a ponta.
-- `tools/gerador_cli.py`: assistente interativo para gerar YAML.
-- `docs/docs/`: fontes Markdown do site; a navegação fica em `docs/mkdocs.yml`.
-- `helm/ro-dou/`: chart e manifestos Kubernetes.
-- `Dockerfile`, `docker-compose.yml` e `Makefile`: imagem e ambiente local/CI.
+- Um único analista, numa máquina **Windows** com permissão de administrador. Hospedar em servidor foi descartado.
+- Hoje roda via Docker (Airflow 3 + PostgreSQL + painel Flask). **Destino: aplicativo Windows instalável (.exe), sem Docker e sem Airflow**, conforme `plano/PLANO.md`.
+- O analista guarda o PDF integral do DOU numa pasta local como registro.
+- O projeto **precisa continuar recebendo atualizações do Ro-DOU oficial** (remote `upstream`). Isso restringe o quanto se pode alterar em `src/` (seção 4).
 
-Não trate artefatos locais como fonte do produto. Em particular, ignore caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`), dados e logs em `mnt/`, builds de documentação e relatórios locais de linters.
+## 2. Mapa do repositório
 
-## Fluxo de trabalho comum
+| Caminho | Papel | Origem |
+|---|---|---|
+| `src/` | Núcleo de busca: `schemas.py`/`parsers.py` (contrato YAML), `searchers.py` e `hooks/` (DOU, INLABS, QD, DOE-SP), `notification/`, `ai/`, `utils/` | **Upstream** (Ro-DOU), com patches locais mínimos |
+| `src/utils/cnpj.py` | Regra de identificação de empresa pela **raiz do CNPJ** (matriz, filiais, raiz isolada) | Local |
+| `src/dou_dag_generator.py` | Gera DAGs do Airflow a partir dos YAML | Upstream; sai no Sprint 8 |
+| `dag_load_inlabs/` | DAG de carga do INLABS (XML → PostgreSQL) | Upstream + patches; portado no Sprint 4 |
+| `dag_confs/` | Rotinas de busca em YAML. `Pesquisa_cnpj.yaml` é a rotina principal, **gerada pelo painel** | Local (exemplos em `examples_and_tests/` são do upstream) |
+| `rodou_dashboard/` | Painel Flask (`app/routes`, `app/services`, `templates/index.html` com Alpine.js), SQLite em `data/database.db` | Local |
+| `rodou_dashboard/app/services/airflow_service.py` | Única porta de saída para o Airflow (há chamadas diretas remanescentes em `routes/dags.py`, `routes/admin.py`, `services/dag_config_service.py`) | Local |
+| `tests/` | Testes do núcleo (pytest) | Upstream + local |
+| `rodou_dashboard/tests/` | Testes do painel | Local |
+| `plano/` | Plano de migração e prompts por sprint | Local |
+| `Dockerfile`, `docker-compose*.yml`, `Makefile`, `helm/`, `docs/` | Infra e documentação do Ro-DOU | Upstream; Docker/Airflow/Helm saem no Sprint 8 |
 
-1. Leia o código, testes e documentação diretamente relacionados à solicitação antes de editar.
-2. Verifique `git status --short`. A árvore pode conter trabalho não relacionado de outros agentes ou do usuário; não o reverta, formate nem inclua por acidente.
-3. Delimite os arquivos sob sua responsabilidade e coordene sobreposição com os demais agentes.
-4. Faça a menor mudança coesa. Preserve compatibilidade dos YAMLs e dos IDs/contratos do Airflow, salvo quando uma quebra tiver sido explicitamente aprovada.
-5. Adicione ou ajuste testes de regressão próximos ao comportamento alterado.
-6. Execute primeiro os testes focados e depois a suíte aplicável. Registre comandos, resultado e qualquer teste não executado.
-7. Atualize documentação e exemplos quando mudar configuração, comportamento observável, instalação ou operação.
-8. Revise o diff final e confirme que ele contém apenas mudanças intencionais.
+Artefatos locais nunca são fonte do produto: `mnt/`, `data/`, `flask_sessions/`, `schemas/`, `__pycache__`, `.pytest_cache`, logs e builds.
 
-Não crie commits, branches, tags, releases nem publique imagens ou documentação sem solicitação explícita. Quando commits forem pedidos, use os prefixos adotados pelo projeto: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:` ou `test:`.
+### Fluxos principais
 
-## Comandos do projeto
+- **Empresas:** Google Sheets (e/ou GestãoClick) → `sheets_service`/`sync_cnpj` → tabela `companies` → `dag_config_service.rebuild_yaml_from_db()` → `dag_confs/Pesquisa_cnpj.yaml` (blocos de até 1.500 CNPJs).
+- **Busca:** YAML → `parsers.py` → `schemas.py` → buscador (`DOUSearcher` via API in.gov.br ou `INLABSSearcher` via PostgreSQL) → resultado no formato `grupo → termo → departamento → itens`.
+- **Menções:** o painel lê o resultado da execução (hoje via XCom do Airflow em `fetch_mentions_from_dag_run`), grava em `mentions` e envia e-mail com `email_service`.
+- **Busca mensal:** `routes/dags.py::api_trigger_monthly`. Se o portal INLABS estiver em manutenção, cai para a API do DOU.
 
-O caminho validado pela CI é o ambiente Docker:
+## 3. Regras de negócio que não podem regredir
+
+1. **CNPJ por raiz.** A empresa é identificada pelos 8 primeiros caracteres do CNPJ. Conta como menção: CNPJ completo de qualquer estabelecimento da raiz, raiz pontuada isolada (`24.684.423`, padrão das Resoluções-RE da ANVISA) e raiz destacada pela própria busca do DOU (o trecho da API pode vir truncado). **Não** conta: raiz sem pontos, número maior que contenha a raiz, valor monetário (`R$ 24.684.423,00`). A implementação única fica em `src/utils/cnpj.py` e o painel a espelha em `mention_service._cnpj_branch_regex`; mantenha as duas em sincronia, com testes (`tests/cnpj_utils_test.py`).
+2. **A API do DOU só acha CNPJ formatado.** Consulte sempre pela raiz no formato `"XX.XXX.XXX"`: uma consulta cobre matriz e filiais.
+3. **Seções da rotina principal:** Seções 1, 2, 3 e Edições Extras.
+4. **CNPJ alfanumérico** (12 alfanuméricos + 2 dígitos) deve continuar aceito.
+5. **Menções são gravadas antes do envio de e-mail.** Falha de SMTP nunca pode descartar menções.
+6. **INLABS indisponível** (o portal responde HTTP 200 com página de "Manutenção Programada") → busca pela API do DOU, sem acumular retries.
+7. **Datas:** o painel aceita `DD/MM/AAAA`, `DD/MM/AA` e ISO, e converte tudo para `AAAA-MM-DD` (`airflow_service.normalize_date_str`) antes de executar.
+8. **Baseline de paridade:** novembro/2026 (01–23/11), rotina principal → **26 menções de 16 empresas** (25 pares empresa/dia: 22 com CNPJ completo e 3 só pela raiz). Qualquer executor novo precisa reproduzir isso (Sprint 2 e Sprint 7).
+
+## 4. Compatibilidade com o Ro-DOU oficial (upstream)
+
+O `remote upstream` é `https://github.com/gestaogovbr/Ro-dou`. As atualizações entram por merge (o procedimento final está em `plano/UPSTREAM.md`, criado no Sprint 1).
+
+- **Não reescreva arquivos de `src/`** para eliminar o Airflow. O núcleo roda fora do Airflow por meio do pacote de compatibilidade `compat/airflow_shim/` (Sprint 1), que fornece os símbolos `airflow.*` usados por `src/`. Se o upstream passar a importar um símbolo novo, amplie o shim, não o arquivo do upstream.
+- Todo patch local em arquivo do upstream deve ser **pequeno, comentado em português e registrado** em `plano/UPSTREAM.md` (arquivo, motivo, como reaplicar). Prefira colocar a lógica nova em módulos novos (como `src/utils/cnpj.py`) e chamá-la com uma linha.
+- Código do modo local (executor, agendador, carga INLABS, launcher Windows) fica **fora de `src/`**, em `rodou_dashboard/app/runtime/` e `windows/`.
+- Arquivos do upstream removidos por decisão do projeto (Docker, Airflow, Helm, gerador de DAGs) ficam listados em `plano/UPSTREAM.md`, para que o merge os remova de novo automaticamente.
+- `AGENTS.md` e `README.md` são **nossos**; em conflito de merge, mantenha a nossa versão e incorpore manualmente só o que for útil.
+
+## 5. Fluxo de trabalho
+
+1. Leia o sprint correspondente em `plano/PLANO.md` e o código e os testes diretamente envolvidos.
+2. Rode `git status --short`. Pode haver trabalho de outros agentes; não reverta, não formate e não inclua alterações alheias.
+3. Faça a menor mudança coesa que cumpra o critério de aceite. Não antecipe sprints futuros.
+4. Enquanto o Sprint 7 não for aprovado, **os dois modos convivem**: `REGISTRALE_EXECUTOR=airflow` (Docker, atual) e `REGISTRALE_EXECUTOR=local` (novo). Nada pode quebrar o modo Docker antes do Sprint 8.
+5. Adicione ou ajuste testes junto do comportamento alterado; rode os testes focados e depois a suíte.
+6. Atualize a documentação do sprint (seção "Registro" do sprint em `plano/PLANO.md`) com o que foi feito, as decisões, os comandos de validação e os resultados.
+7. Revise o diff final: só mudanças intencionais, sem segredos, dados ou caches.
+
+**Git:** não crie commits, branches, tags nem push sem pedido explícito do usuário. Quando pedido, use os prefixos `feat:`, `fix:`, `docs:`, `chore:`, `refactor:` e `test:`, em português. Trabalhe em `feature/modo-local` (criada no Sprint 0), não em `main`.
+
+## 6. Ambiente e comandos
+
+### Modo Docker (atual, até o Sprint 8)
+
+Em Linux/Fedora com Podman, `docker-compose.override.yml` ajusta o SELinux (`:z`) e as portas do smtp4dev (2525/1143).
 
 ```bash
-make run
-make tests
-make down
+docker compose up -d postgres airflow-api-server      # primeiro: migra o banco do Airflow
+docker compose up -d --no-deps airflow-scheduler airflow-dag-processor smtp4dev dashboard
+docker exec -w /opt/airflow airflow-scheduler python -m pytest -q tests -m "not live" --ignore=tests/test_e2e_dag_execution.py
 ```
 
-- `make run` constrói e sobe o ambiente, cria conexões/variáveis locais e ativa a DAG de carga do INLABS. Pode baixar imagens, alterar contêineres e levar vários minutos; use-o somente quando esse nível de integração for necessário.
-- `make tests` executa `pytest -vvv` dentro do contêiner `airflow-api-server`; o ambiente precisa estar ativo.
-- Para um teste focado, use, com o ambiente ativo:
+- Painel: `http://localhost:5000`; Airflow: `http://localhost:8080` (API v2 com token JWT em `POST /auth/token`).
+- Testes do painel: copie `rodou_dashboard/tests` para o container `rodou-dashboard` e rode `pytest` em `/app`. As 2 falhas `user_manual` são preexistentes (falta `MANUAL.md` na imagem).
+- O painel em gunicorn usa código montado por volume: depois de editar `rodou_dashboard/`, **reinicie** o container `rodou-dashboard`. O Airflow recarrega `src/` sozinho em cerca de 30 s.
 
-```bash
-docker exec airflow-api-server sh -c "cd /opt/airflow/tests && pytest -q caminho_do_teste.py::nome_do_teste"
-```
+### Modo local (a partir do Sprint 1)
 
-- `make gerar-yml` executa o gerador interativo e também requer o contêiner ativo.
-- `make create-opensearch-variable` e `make create-azure-openai-variables` alteram a configuração do Airflow local; não os rode como simples validação.
-- Para conferir a documentação sem publicá-la:
+Python 3.11 + `uv`. Os comandos exatos são definidos no Sprint 1 e registrados aqui por ele (`uv sync`, `uv run pytest ...`, `uv run registrale`).
 
-```bash
-docker compose -f docs/docker-compose.yml run --rm mkdocs mkdocs build
-```
+### Rede
 
-- Para alterações no chart, valide quando as ferramentas estiverem disponíveis:
+Testes unitários **nunca** dependem de rede: use mocks. Testes que acessam o DOU ou o INLABS reais levam `@pytest.mark.live` e ficam fora da suíte padrão. O portal in.gov.br costuma travar requisições por até 35 s; não trate lentidão como bug sem medir.
 
-```bash
-helm lint helm/ro-dou
-helm template ro-dou helm/ro-dou
-```
+## 7. Papéis
 
-Não execute `mkdocs gh-deploy`, push de imagens ou comandos de implantação como parte de uma validação local.
+### Implementação
 
-## Regras por papel
+- Trace o fluxo completo antes de mudar: `YAML → parsers → schemas → searcher/hook → resultado → painel (menções, e-mail)`.
+- Preserve o formato de resultado `grupo → termo → departamento → itens` e as chaves já consumidas pelo painel (`abstract`, `date`, `section`, `href`, `title`, `matched_cnpj`, `is_branch`, `root_only`).
+- Integrações externas sempre com timeout, retries limitados e mensagens de erro úteis.
+- No Windows: nada de gunicorn, `fork`, caminhos fixos com `/` ou dependência de WSL. Use `pathlib` e o diretório de dados do usuário (`%LOCALAPPDATA%\Registrale`).
 
-### Agente de novas funcionalidades
+### Revisão (independente, somente leitura)
 
-- Trace o fluxo completo `YAML -> parsers.py -> schemas.py -> dou_dag_generator.py -> hook/searcher/sender`. Um novo campo YAML normalmente exige validação, propagação, teste e documentação em todas as etapas aplicáveis.
-- Reutilize as abstrações existentes: `BaseSearcher` para fontes, `ISender`/`Notifier` para canais e a camada `ai/` para provedores de IA.
-- Preserve o formato de resultados `grupo -> termo -> departamento -> itens`; templates, merge e notificadores dependem desse contrato. Valide explicitamente os valores de `sources` e não amplie as ramificações especiais de `merge_results` sem casos de teste que demonstrem a necessidade.
-- Para um novo canal de notificação, prefira a integração via Apprise; crie uma implementação dedicada somente quando o canal exigir comportamento que a biblioteca não suporte.
-- Preserve os imports e caminhos usados dentro do Airflow (`/opt/airflow/dags/ro_dou_src`) e considere a serialização de argumentos entre tasks.
-- Para integrações externas, defina timeout, tratamento de erro, retries compatíveis com Airflow e testes com mocks; não dependa de rede real nos testes unitários.
-- Mantenha exemplos em `dag_confs/examples_and_tests/` sincronizados com o contrato e confirme o carregamento das DAGs.
+- Revise o diff do sprint contra o critério de aceite: regressões, casos-limite, concorrência (agendador e threads), idempotência (buscas repetidas não duplicam menções), uso de rede e memória, e compatibilidade com o upstream (patches em `src/` registrados?).
+- Liste os achados por severidade, com arquivo:linha, impacto e correção sugerida. Não corrija durante a revisão.
 
-### Agente de segurança
+### Segurança
 
-- Faça revisão orientada a risco e reporte achados com arquivo/linha, cenário de exploração, impacto, evidência e correção proposta. Diferencie vulnerabilidade confirmada de melhoria defensiva.
-- Priorize fronteiras externas: URLs e payloads das buscas, webhooks de notificação, conteúdo HTML/Markdown, credenciais do INLABS, consultas configuráveis, prompts/respostas de IA, arquivos YAML e APIs do Airflow.
-- Verifique SSRF, injeção SQL/comandos/templates, XSS em relatórios, traversal, desserialização insegura, vazamento em logs, ausência de timeout/TLS e permissões excessivas.
-- Nunca use `shell=True` com caminhos ou valores oriundos de `Variable`, YAML, XCom ou outra entrada. Prefira APIs Python ou argumentos de subprocesso sem shell e valide caminhos contra uma raiz permitida.
-- Toda extração ZIP deve impedir Zip Slip (caminhos absolutos, `..`, links e escape do diretório de destino) e impor limites de quantidade e tamanho descompactado para evitar bombas ZIP.
-- Mantenha o pickling de XCom desabilitado em produção; a opção presente no Compose só pode ser tratada como compatibilidade legada/local e não deve ser propagada ao Helm ou a novos ambientes.
-- Não use `|safe` em conteúdo externo sem sanitização prévia com `nh3`: em templates de e-mail use os filtros `sanitize_html` e `safe_url` de `notification/templateManager.py`; `|safe` fica restrito a textos do próprio órgão (`header_text`, `footer`, `no_results_message`). Valide também esquema, host e finalidade de URLs antes de buscar conteúdo ou montar links/webhooks.
-- Considere `docker-compose.yml` uma configuração local de desenvolvimento: credenciais e chaves padrão nunca devem ser promovidas a produção. Em Helm, use Secrets/referências externas e evite valores reais em `values.yaml` ou manifests.
-- Não teste exploração contra serviços externos ou ambientes compartilhados. Use fixtures, mocks e o ambiente local autorizado.
-- Nunca exponha o valor de `.env`, tokens, senhas, chaves, conexões do Airflow ou segredos Kubernetes em saída, patch, exemplo ou relatório. Se encontrar segredo real, informe apenas o local e o tipo e recomende revogação/rotação.
+- Fronteiras: YAML, nomes de arquivo de rotina (já protegidos contra path traversal em `routes/dags.py`), ZIPs do INLABS (Zip Slip e bomba de ZIP), HTML vindo do DOU (escapar e sanitizar), credenciais (SMTP, INLABS, GestãoClick, Google) e o instalador/atualizador (só baixar de origem confiável e verificar hash).
+- **Nunca** exiba, registre em log ou versione segredos. As configurações salvas no SQLite contêm senhas e a chave privada do Google: não as envie ao navegador nem as copie para fixtures. Se encontrar um segredo real, informe só o local e o tipo.
 
-### Agente de revisão de código novo
+### Testes
 
-- Acione este agente depois que uma implementação alterar código Python, DAGs, schemas, templates, dependências, Docker ou Helm e antes de considerar a tarefa concluída. A revisão deve ser independente da implementação.
-- Trabalhe em modo somente leitura por padrão. Não corrija o código durante a revisão, salvo quando o usuário pedir explicitamente; entregue achados para o agente implementador tratar.
-- Comece pelo pedido original, `git status --short` e diff da mudança. Revise apenas o código novo ou afetado e o contexto mínimo necessário, sem atribuir ao autor alterações preexistentes do worktree.
-- Procure defeitos funcionais, regressões, casos-limite, contratos quebrados, erros de tipagem, concorrência, idempotência de tasks, retries que duplicam efeitos, uso excessivo de memória/rede e falhas de observabilidade.
-- Confirme que schemas, exemplos YAML, geração/carregamento de DAGs e canais de notificação permanecem compatíveis quando essas áreas forem tocadas.
-- Avalie se os testes realmente exercitam o comportamento novo, inclusive caminhos de erro e limites. Não considere a simples existência de testes como prova de correção.
-- Reporte primeiro os achados, ordenados por severidade, com arquivo e linha, impacto e correção recomendada. Separe bloqueadores de sugestões e evite comentários puramente estilísticos sem efeito prático.
-- Se não houver defeitos, declare isso explicitamente e registre riscos residuais ou validações que não puderam ser executadas. Não aprove uma mudança enquanto houver achado bloqueador sem tratamento.
+- Cubra sucesso, erro e limites, de forma determinística (sem data corrente, rede ou credenciais reais).
+- A paridade entre os modos é testada com fixtures gravadas a partir do modo Docker (Sprint 0) e com a comparação de menções da baseline de novembro/2026.
 
-### Agente de testes
+## 8. Segredos, dados e operações destrutivas
 
-- Valide comportamento, regressões, compatibilidade de configuração e tratamento de falhas; não faça refatorações alheias ao escopo.
-- Considere `make tests` a execução oficial da suíte no contêiner. A CI reproduz o fluxo `make run` seguido de `make tests`.
-- Não use uma execução direta no host como resultado definitivo: sem `RO_DOU__DAG_CONF_DIR`, timezone do Airflow e metadatabase migrada, ela pode produzir falsos negativos.
-- Cubra sucesso, erro e limites. Use mocks para HTTP, SMTP, Slack, Discord, bancos e provedores de IA. Testes devem ser determinísticos e independentes de data corrente, ordem, internet e credenciais reais.
-- Para mudanças em YAML/modelos, execute `test_validate_yaml_schemas.py`, `parsers_test.py` e `test_dag_loading.py`; para geração/orquestração, inclua `dag_generator_test.py` e, quando pertinente, `test_e2e_dag_execution.py`.
-- Para buscadores, hooks, notificadores ou IA, execute primeiro o arquivo correspondente e depois `make tests` se o ambiente permitir.
-- Não há `pytest-cov` nem limite mínimo de cobertura configurado; não alegue percentual de cobertura sem medição própria verificável. Áreas atualmente sem cobertura direta identificada incluem `inlabs_hook_sql_mode`, cliente/indexador/pipeline do OpenSearch, `templateManager`, `executive_summary` e o pipeline real da DAG de carga do INLABS; priorize-as quando forem tocadas.
-- Falha causada por ambiente ou serviço ausente não deve ser ocultada: registre o comando, a mensagem essencial e o que falta para reproduzir.
+- Não leia nem exiba `.env`, `data/database.db` (tabela `settings`) ou credenciais sem necessidade estrita.
+- Não apague volumes, bancos, containers, branches, worktrees, stashes ou arquivos sem autorização explícita. O Sprint 8 só começa depois da aprovação escrita do usuário ao final do Sprint 7.
+- Antes de qualquer migração de dados, faça backup de `data/database.db` (e do Postgres, se houver).
+- Use dados sintéticos em fixtures; publicações reais só quando indispensável e sem dados pessoais.
 
-Baseline verificada em 15/09/2026: 358 testes passaram em 10,02 s, sem warnings, em contêiner efêmero configurado como o ambiente Airflow. Esse número é uma referência histórica, não substitui a execução após cada mudança e pode crescer conforme a suíte evoluir.
+## 9. Critério de conclusão de qualquer tarefa
 
-### Agente de documentação
-
-- Atualize `README.md` apenas para visão geral; detalhes de uso pertencem a `docs/docs/`.
-- Ao adicionar página, inclua-a na navegação de `docs/mkdocs.yml`. Preserve links relativos, idioma português e terminologia usada na interface/Airflow.
-- Mantenha parâmetros documentados alinhados aos defaults e validadores de `src/schemas.py`, e exemplos alinhados aos YAMLs válidos.
-- Não edite `docs/docs/changelog/changelog.md` diretamente para uma mudança comum; o workflow o deriva de `CHANGELOG.md` durante a publicação.
-- Construa a documentação localmente e confira avisos, links e blocos de código. Não publique no GitHub Pages.
-
-## Segredos, dados e operações destrutivas
-
-- Não leia nem exiba arquivos de segredo sem necessidade estrita. Nunca versionar `.env`, `.airflow_token`, `values-local.yaml`, credenciais, tokens, dumps ou dados de produção.
-- Use placeholders inequívocos em exemplos. Não copie as credenciais locais de desenvolvimento para configurações reais.
-- Não apague volumes, bancos, logs, contêineres, branches ou arquivos existentes sem autorização explícita. `make down` desliga serviços; qualquer remoção de volumes exige confirmação separada.
-- Não sobrescreva alterações concorrentes. Se outro agente tocar o mesmo trecho, coordene a integração em vez de restaurar o arquivo inteiro.
-- Não use dados pessoais de publicações reais como fixture quando dados sintéticos forem suficientes.
-
-## Critérios de conclusão
-
-Uma mudança está pronta quando:
-
-- o comportamento solicitado foi implementado sem ampliar indevidamente o escopo;
-- contratos de YAML, DAGs, integrações e compatibilidade foram considerados;
-- testes novos ou ajustados cobrem a mudança e os testes aplicáveis passam;
-- exemplos e documentação pública refletem qualquer alteração observável;
-- nenhum segredo, cache, dado local ou arquivo alheio entrou no diff;
-- riscos de segurança e limitações remanescentes foram registrados;
-- o relatório final lista arquivos alterados, validações executadas e resultados, além de qualquer validação não executada e seu motivo.
+- O critério de aceite do sprint foi cumprido e demonstrado (comandos e resultados no Registro do sprint).
+- Os testes aplicáveis passam nos dois modos enquanto ambos existirem.
+- Os patches em arquivos do upstream estão registrados em `plano/UPSTREAM.md`.
+- Nenhum segredo, cache, dado local ou arquivo alheio entrou no diff.
+- O relatório final lista os arquivos alterados, as validações feitas, o que não pôde ser validado e por quê.
