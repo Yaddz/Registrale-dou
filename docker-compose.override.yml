@@ -12,7 +12,9 @@ services:
     volumes:
       - ./mnt/pgdata:/var/lib/postgresql/data:Z
       - ./dag_load_inlabs/sql/:/sql:z
-  airflow-webserver:
+  airflow-api-server:
+    <<: *vols
+  airflow-dag-processor:
     <<: *vols
   airflow-scheduler:
     <<: *vols

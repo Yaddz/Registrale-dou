@@ -5,12 +5,16 @@
 [![CI Tests](https://github.com/gestaogovbr/Ro-dou/actions/workflows/ci-tests.yml/badge.svg)](https://github.com/gestaogovbr/Ro-dou/actions/workflows/ci-tests.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Flask](https://img.shields.io/badge/flask-2.2+-black.svg)](https://flask.palletsprojects.com/)
-[![Airflow 2.10](https://img.shields.io/badge/airflow-2.10-red.svg)](https://airflow.apache.org/)
+[![Airflow 3](https://img.shields.io/badge/airflow-3.3-red.svg)](https://airflow.apache.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 O **Registrale-DOU** é uma solução corporativa de alta performance para monitoramento automatizado, auditoria e *clipping* contínuo de publicações no **Diário Oficial da União (DOU - Seções 1, 2 e 3)** e em Diários Oficiais Municipais (via Querido Diário).
 
 O projeto é um **fork customizado do [Ro-DOU](https://gestaogovbr.github.io/Ro-dou/)** (Ministério da Gestão e da Inovação - MGI), especialmente adaptado para as operações da **Registrale**, integrando a base de clientes do ERP comercial, planilhas colaborativas do Google Drive, relatórios corporativos executivos e disparo de notificações inteligentes.
+
+> **Atenção ao atualizar (upstream):** buscas com termos vindos de banco de dados
+> (`from_db_select`) agora só aceitam uma única instrução `SELECT`. Revise o `sql`
+> dos YAMLs existentes. O stack agora roda em **Airflow 3** (serviço `airflow-api-server`).
 
 ---
 

@@ -118,3 +118,17 @@ backups/
 *.bak
 dag_confs/teste.yaml
 
+# specifics
+**/.vscode/settings.json
+test_notrack/
+**/.DS_Store
+**/mnt/pgdata/
+**/mnt/airflow-logs
+
+# Airflow token 
+.airflow_token
+
+#helm local values
+values-local.yaml
+
+docs/CODEBASE_MAP.md

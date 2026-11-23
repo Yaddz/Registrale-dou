@@ -68,6 +68,151 @@
 ---
 
 ## [0.11.1] - 2026-07-23
+# Changelog
+
+## What's Changed
+## [0.13.5] - 2026-10-23
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* Fix/371 querido diario endpoint retry by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/373
+* chore: instala dependências da imagem com uv em vez de pip by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/374
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.13.4...0.13.5
+
+## [0.13.4] - 2026-10-20
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* fix: usa pullPolicy Always na imagem do Ro-DOU no chart Helm by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/369
+* feat: adiciona envio de notificações para o Microsoft Teams by @marcelogwolff in https://github.com/gestaogovbr/Ro-dou/pull/370
+
+## New Contributors
+* @marcelogwolff made their first contribution in https://github.com/gestaogovbr/Ro-dou/pull/370
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.13.3...0.13.4
+
+## [0.13.3] - 2026-10-13
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* test: adiciona testes E2E live do INLABS e DOU (make tests-live) by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/361
+* fix: corrige check_first_run_of_day para triggers retroativas by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/366
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.13.2...0.13.3
+
+## [0.13.2] - 2026-09-28
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* Adicionar instruções específicas para agentes de IA que atuem no repositório Ro-DOU. by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/350
+* fix: corrige UniqueViolation em article_raw ao carregar dados do INLABS by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/349
+* fix: replace shell commands with Python filesystem APIs by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/351
+* Removes `AIRFLOW__CORE__ENABLE_XCOM_PICKLING` by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/352
+* docs: add security and privacy guidance for AI features by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/354
+* fix: escape apostrophes in INLABS SQL search terms by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/357
+* docs: adiciona política de segurança e canal privado de reporte by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/355
+* docs: avisos de credenciais padrão e de segurança do OpenSearch no chart Helm by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/353
+* fix: sanitiza e-mails e restringe conexões/SQL em from_db_select by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/358
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.13.1...0.13.2
+
+## [0.13.1] - 2026-09-10
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* fix: corrige conexão smtp_default quebrada no docker-compose e Helm by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/342
+* fix: Corrigir identificação da primeira execução do dia considerando o timezone by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/346
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.13.0...0.13.1
+
+## [0.13.0] - 2026-09-03
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+* Adiciona a possibilidade de gerar um resumo executivo consolidado das publicações (INLABS) by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/343
+
+### 🚀 Outros
+* chore: formatação ruff e type hints em schemas.py by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/329
+* docs: documenta configuração de alerta por e-mail em falha de DAG by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/332
+* test: adiciona teste de integração ponta a ponta da DAG by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/335
+* feat(helm): support repository subdirectory sync and proxy configuration by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/341
+* docs: enxuga guia de instalação k8s para usar só o Helm chart by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/340
+* feat: Permitir que a DAG seja ativada ou desativada via parametro by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/339
+
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.12.4...0.13.0
+
+## [0.12.4] - 2026-08-19
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* Add gitrysnc chart on Helm by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/330
+* Create optional ingress service for airflow by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/331
+* Remove k8s folder (replaced by Helm Charts)
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.12.3...0.12.4
+
+## [0.12.3] - 2026-08-17
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+* Create Helm Chart by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/325
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.12.2...0.12.3
+
+## [0.12.2] - 2026-08-14
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* Update kubernetes manifets to airflow 3 by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/324
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.12.1...0.12.2
+
+## [0.12.1] - 2026-08-12
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
+* docs: reorganiza e revisa a documentação by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/319
+* Fix Makefile - step test inlabs_db_test_connection by @edulauer in https://github.com/gestaogovbr/Ro-dou/pull/320
+* fix: substitui execution_date por logical_date no callback de falha by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/322
+
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.12.0...0.12.1
+
+- Migração do Airflow 2 para Airflow 3
+
+### 🚀 Outros
+* Update CHANGELOG.md for 0.11.1 by @github-actions[bot] in https://github.com/gestaogovbr/Ro-dou/pull/316
+* feat: notify on failure in INLABS load DAG by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/315
+* docs: adiciona vídeo tutorial do gerador YAML/CLI by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/317
+* airflow3: migrate Airflow 2 changes to Airflow 3 by @luisssguilherme in https://github.com/gestaogovbr/Ro-dou/pull/290
+
+## New Contributors
+* @luisssguilherme made their first contribution in https://github.com/gestaogovbr/Ro-dou/pull/290
+
+**Full Changelog**: https://github.com/gestaogovbr/Ro-dou/compare/0.11.1...0.12.0
+
+## [0.11.1] - 2026-07-23
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🚀 Outros
 * feat: gerador web interativo de configuração YAML na documentação by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/311
 * POC: gerador de YAML de configuração de DAGs via CLI by @HenriqueLopes741 in https://github.com/gestaogovbr/Ro-dou/pull/314
 * refactor: split notification into per-channel tasks and remove Slack … by @Heitorh3 in https://github.com/gestaogovbr/Ro-dou/pull/297

@@ -1,0 +1,162 @@
+# Default values for ro-dou chart
+# ATENÇÃO: os valores de secrets deste arquivo (Airflow, PostgreSQL, OpenSearch,
+# SMTP, INLABS) são apenas para desenvolvimento e são públicos. Em produção,
+# sobrescreva TODOS em um arquivo de valores próprio (nunca versionado) ou use
+# --set/Secrets externos. Veja o README do chart.
+
+# Airflow configuration
+airflow:
+  image:
+    repository: ghcr.io/gestaogovbr/ro-dou
+    tag: latest
+    pullPolicy: Always
+  apiServer:
+    replicas: 1
+    port: 8080
+    service:
+      type: ClusterIP
+    ingress:
+      enabled: false
+      className: ""
+      annotations: {}
+      hosts:
+        - host: airflow.local
+          paths:
+            - path: /
+              pathType: Prefix
+      tls: []
+  scheduler:
+    replicas: 1
+  dagProcessor:
+    replicas: 1
+  config:
+    AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: "America/Sao_Paulo"
+    AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_FAILURE: "false"
+    AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_RETRY: "false"
+    AIRFLOW__API__BASE_URL: "http://localhost:8080"
+    _AIRFLOW_DB_MIGRATE: "true"
+    RO_DOU__DAG_CONF_DIR: "/opt/airflow/dags/ro_dou/dag_confs"
+    AIRFLOW_VAR_PATH_TMP: "/tmp"
+
+  # ATENÇÃO: todos os valores abaixo são de desenvolvimento e públicos.
+  # Em produção, sobrescreva no mínimo: FERNET_KEY, JWT_SECRET, API__SECRET_KEY,
+  # usuário/senha do admin, SMTP_USER/SMTP_PASSWORD, INLABS_PORTAL_LOGIN/PASSWORD
+  # e OPENSEARCH_USER/OPENSEARCH_PASS. Não versione os valores reais.
+  secrets:
+    AIRFLOW__CORE__FERNET_KEY: "Uqv6pwYWJn7xifR3QAkifMTkupos8mkxaQL2Q7Ydsqw="
+    AIRFLOW__API_AUTH__JWT_SECRET: "42"
+    AIRFLOW__API__SECRET_KEY: "42"
+    # Credenciais padrão do administrador: troque antes de expor o Airflow.
+    _AIRFLOW_WWW_USER_USERNAME: "admin"
+    _AIRFLOW_WWW_USER_PASSWORD: "admin"
+    # Leave empty to use the smtp4dev Service deployed by this chart.
+    AIRFLOW__SMTP__SMTP_HOST: ""
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@email.gov.br"
+    AIRFLOW__SMTP__SMTP_PORT: "25"
+    AIRFLOW__SMTP__SMTP_STARTTLS: "false"
+    AIRFLOW__SMTP__SMTP_USER: ""
+    AIRFLOW__SMTP__SMTP_PASSWORD: ""
+    INLABS_PORTAL_LOGIN: ""
+    INLABS_PORTAL_PASSWORD: ""
+    # Credenciais de exemplo. Se habilitar o OpenSearch, troque-as (veja a seção
+    # "Configuração do OpenSearch" do README do chart).
+    OPENSEARCH_USER: "OPENSEARCH_USER"
+    OPENSEARCH_PASS: "OPENSEARCH_PASS"
+  pvc:
+    storage: 1Gi
+    storageClassName: ""
+
+# Synchronize DAG configuration files from Git (optional)
+gitRsync:
+  enabled: false
+  schedule: "*/5 * * * *"
+  env:
+    HTTP_PROXY: ""
+    HTTPS_PROXY: ""
+    NO_PROXY: ""
+  image:
+    repository: alpine
+    tag: "3.24"
+    pullPolicy: IfNotPresent
+  repository: ""
+  branch: main
+  # Relative folder inside the repository to synchronize. Leave empty to
+  # synchronize the repository root.
+  sourceDir: ""
+  targetDir: /opt/airflow/dags/ro_dou/dag_confs
+  targetOwner:
+    # The official Airflow image runs as UID 50000 in the root group.
+    uid: 50000
+    gid: 0
+  secret:
+    # Name of an existing Secret containing a Git HTTPS token. Leave empty for
+    # public repositories.
+    name: ""
+    key: token
+  persistence:
+    # Use an existing claim instead of creating one when this value is set.
+    existingClaim: ""
+    storage: 1Gi
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+
+# PostgreSQL configuration
+postgres:
+  image:
+    repository: postgres
+    tag: "15"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5432
+  # ATENÇÃO: usuário e senha de desenvolvimento e públicos. Em produção, troque
+  # ambos: eles também compõem as connection strings do Airflow.
+  secrets:
+    postgres-user: "postgres"
+    postgres-password: "postgres"
+    postgres-db: "airflow"
+  storage: 1Gi
+  # Diretório dos dados dentro do volume. Um subdiretório evita que o initdb
+  # falhe quando a raiz do volume recém-formatado já contém entradas como
+  # lost+found. Instalações que já têm dados na raiz do volume devem definir
+  # "" (padrão da imagem, /var/lib/postgresql/data) para continuar usando-os.
+  pgdata: /var/lib/postgresql/data/pgdata
+
+# SMTP4Dev configuration (optional)
+smtp4dev:
+  enabled: true
+  image:
+    repository: rnwood/smtp4dev
+    tag: v3
+    pullPolicy: IfNotPresent
+  service:
+    webPort: 5001
+    smtpPort: 25
+    imapPort: 143
+
+# OpenSearch configuration (optional)
+opensearch:
+  enabled: false
+  image:
+    repository: opensearchproject/opensearch
+    tag: "2"
+    pullPolicy: IfNotPresent
+  service:
+    port: 9200
+  connection:
+    enabled: false
+    # Leave empty to use the OpenSearch Service deployed by this chart.
+    host: ""
+  # ATENÇÃO: o padrão (disablePlugin: true) desliga autenticação e TLS do
+  # OpenSearch. Use a instância deste chart apenas em desenvolvimento/testes e
+  # não a exponha fora do cluster. Em produção, use um OpenSearch externo com o
+  # plugin de segurança e TLS habilitados (veja "OpenSearch em produção" no
+  # README do chart). Mudar apenas este valor para false não é suficiente.
+  security:
+    disablePlugin: true
+  persistence:
+    storage: 1Gi
+    storageClassName: ""

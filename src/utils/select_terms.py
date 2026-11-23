@@ -1,16 +1,25 @@
 """Module for selecting terms."""
 
 import ast
+from contextlib import closing
+
 import pandas as pd
 
-from airflow.models import Variable
-from airflow.hooks.base import BaseHook
+from airflow.sdk import Variable
+from airflow.sdk.bases.hook import BaseHook
 
 try:
     from airflow.providers.microsoft.mssql.hooks.mssql import MsSqlHook
 except ImportError:
     MsSqlHook = None
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+from utils.sql_guard import validate_select_only
+
+# Tempo máximo da consulta (PostgreSQL), em milissegundos.
+STATEMENT_TIMEOUT_MS = 60_000
+# Número máximo de linhas aceitas como termos.
+MAX_TERM_ROWS = 10_000
 
 
 class TermSelector:
@@ -93,10 +102,14 @@ class TermSelector:
             str: JSON string (``orient="columns"``) with the query results.
 
         Raises:
+            ValueError: If ``sql`` is not a single SELECT statement or if the
+                query returns more than ``MAX_TERM_ROWS`` rows.
             RuntimeError: If MSSQL is requested but the provider package is not
                 installed.
             Exception: If the connection type is not supported.
         """
+        validate_select_only(sql)
+
         conn_type = BaseHook.get_connection(conn_id).conn_type
         if conn_type == "mssql":
             if MsSqlHook is None:
@@ -104,13 +117,45 @@ class TermSelector:
                     "MsSqlHook indisponível: instale 'apache-airflow-providers-microsoft-mssql' para usar recursos MSSQL."
                 )
             db_hook = MsSqlHook(conn_id)
+            session_statements = []
         elif conn_type in ("postgresql", "postgres"):
             db_hook = PostgresHook(conn_id)
+            # Bloqueia escrita e limita o tempo mesmo que o usuário do banco
+            # tenha mais permissões do que o necessário.
+            session_statements = [
+                "SET TRANSACTION READ ONLY",
+                f"SET LOCAL statement_timeout = {STATEMENT_TIMEOUT_MS}",
+            ]
         else:
             raise Exception("Tipo de banco de dados não suportado: ", conn_type)
 
-        terms_df = db_hook.get_pandas_df(sql)
+        terms_df = _fetch_dataframe(db_hook, sql, session_statements)
         # Remove unnecessary spaces and change null for ''
         terms_df = terms_df.map(lambda x: str.strip(x) if pd.notnull(x) else "")
 
         return terms_df.to_json(orient="columns")
+
+
+def _fetch_dataframe(db_hook, sql: str, session_statements: list[str]) -> pd.DataFrame:
+    """Executa a consulta numa transação descartada ao final (rollback)."""
+    with closing(db_hook.get_conn()) as conn:
+        try:
+            cursor = conn.cursor()
+            try:
+                for statement in session_statements:
+                    cursor.execute(statement)
+                cursor.execute(sql)
+                columns = [column[0] for column in cursor.description or []]
+                rows = cursor.fetchmany(MAX_TERM_ROWS + 1)
+            finally:
+                cursor.close()
+        finally:
+            conn.rollback()
+
+    if len(rows) > MAX_TERM_ROWS:
+        raise ValueError(
+            f"A consulta de `from_db_select` retornou mais de {MAX_TERM_ROWS} "
+            "linhas. Refine o SELECT."
+        )
+
+    return pd.DataFrame.from_records(rows, columns=columns)

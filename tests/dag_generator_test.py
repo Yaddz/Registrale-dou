@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 from dags.ro_dou_src.dou_dag_generator import _channel_name_from_url, merge_results
 from dags.ro_dou_src.notification.email_sender import EmailSender, repack_match
-from airflow import Dataset
-from airflow.timetables.datasets import DatasetOrTimeSchedule
+from airflow.sdk.definitions.asset import Dataset
+from airflow.timetables.assets import AssetOrTimeSchedule
 
 
 def test_repack_match(report_example):
@@ -117,6 +117,19 @@ def test_merge_results(merge_results_samples):
         ("slack://TokenA/TokenB/TokenC", "slack"),
         ("discord://WebhookID/WebhookToken", "discord"),
         ("https://hooks.slack.com/services/TokenA/TokenB/TokenC", "slack"),
+        ("workflows://prod-00.westus.logic.azure.com:443/WorkflowID/Signature", "teams"),
+        ("msteams://TokenA/TokenB/TokenC", "teams"),
+        (
+            "https://prod-00.westus.logic.azure.com:443/workflows/WorkflowID"
+            "/triggers/manual/paths/invoke?api-version=2016-06-01&sig=Signature",
+            "teams",
+        ),
+        (
+            "https://default00.environment.api.powerplatform.com:443/powerautomate"
+            "/automations/direct/workflows/WorkflowID/triggers/manual/paths/invoke"
+            "?api-version=1&sig=Signature",
+            "teams",
+        ),
         ("invalid-url", "unknown_channel"),
     ],
 )
@@ -154,4 +167,4 @@ def test_update_schedule_with_dataset(dag_gen, dataset, schedule, is_default_sch
     if is_default_schedule is True:
         assert isinstance(schedule[0], Dataset)
     else:
-        assert isinstance(schedule, DatasetOrTimeSchedule)
+        assert isinstance(schedule, AssetOrTimeSchedule)
