@@ -69,7 +69,28 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 
 **Fora de escopo:** qualquer mudança de comportamento.
 
-**Registro:** _(preencher)_
+**Registro:**
+- **O que foi feito:**
+  - Commitado trabalho pendente em `main` em 3 commits separados (`229adb8` correções pós-merge/Docker/Sheets, `e1d6ca0` regra de CNPJ por raiz e seções, `5415bfc` `AGENTS.md` e `plano/`), criada a tag `baseline-docker` em `5415bfc` e criada a branch `feature/modo-local`.
+  - Gravadas as fixtures de paridade em `tests/fixtures/baseline/`:
+    - `nov2026_mentions.json` (26 menções, 16 empresas, filtradas pelos 122 CNPJs de `dag_confs/Pesquisa_cnpj.yaml` a partir do SQLite do painel).
+    - `dou_api/`: 6 respostas brutas da API do DOU (`cnpj_completo.json`, `filial.json`, `raiz_isolada.json`, `trecho_truncado.json`, `sem_resultado.json`, `paginacao.json`).
+    - `run_result_2026-11-23.json` (4 itens) e `run_result_2026-11-19.json` (0 itens), executando `DOUSearcher.exec_search` no container `airflow-scheduler`.
+  - Criado `plano/INVENTARIO.md` cobrindo 100% dos 20 arquivos (168 ocorrências) de `src/` e `rodou_dashboard/app/` encontrados pelo `grep`, além das variáveis e conexões do Airflow.
+  - Criado `pyproject.toml` na raiz (Python `>=3.11,<3.12`, grupos `core`, `dashboard` e `dev`, sem Airflow).
+- **Decisões tomadas:**
+  - `nov2026_mentions.json` foi filtrado pelos 122 CNPJs de `Pesquisa_cnpj.yaml` porque o SQLite local continha 3 menções extras de `26461699013754` (fora da rotina principal).
+  - `run_result_*.json` foi gerado executando `DOUSearcher.exec_search` diretamente no `airflow-scheduler` porque a tabela `xcom` do Postgres estava vazia.
+  - `pyproject.toml` usa `[dependency-groups]` (padrão `uv`) e mantém `SQLAlchemy<2.0.0` / `Flask<2.3.0` compatíveis com o painel atual.
+- **Arquivos criados/alterados:** `plano/INVENTARIO.md`, `pyproject.toml`, `tests/fixtures/baseline/nov2026_mentions.json`, `tests/fixtures/baseline/run_result_2026-11-19.json`, `tests/fixtures/baseline/run_result_2026-11-23.json`, `tests/fixtures/baseline/dou_api/*.json`, `plano/PLANO.md`.
+- **Validações:**
+  - `docker exec -w /opt/airflow airflow-scheduler python -m pytest -q tests -m "not live" --ignore=tests/test_e2e_dag_execution.py` → `456 passed` (0 falhas).
+  - `docker exec -w /app rodou-dashboard pytest -q tests` → `83 passed, 2 failed` (apenas as 2 falhas preexistentes de `user_manual` por ausência de `MANUAL.md` na imagem).
+  - Checagem de cobertura do `INVENTARIO.md` contra o `grep` → 20/20 arquivos (0 faltando).
+  - Checagem das fixtures → `nov2026_mentions.json` com 26 menções e 16 empresas.
+- **Pendências:**
+  - `uv` e `python3.11` não estão instalados no host Linux atual; `uv sync` não pôde ser executado aqui (ficando para o início do Sprint 1 ou após instalação do `uv`).
+  - Os artefatos do Sprint 0 (`plano/INVENTARIO.md`, `pyproject.toml`, `tests/fixtures/baseline/`, atualização do `plano/PLANO.md`) estão pendentes de commit em `feature/modo-local` aguardando autorização do usuário.
 
 ---
 
