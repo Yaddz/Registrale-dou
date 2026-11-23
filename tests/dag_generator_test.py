@@ -1,6 +1,8 @@
 """DouDagGenerator unit tests
 """
 
+import os
+
 import pandas as pd
 import pytest
 from dags.ro_dou_src.dou_dag_generator import _channel_name_from_url, merge_results
@@ -90,7 +92,7 @@ def test_convert_report_to_dataframe__cols_grouped_report(email_sender, report_e
 
 def test_get_csv_tempfile__valid_file_name_preffix(email_sender):
     with email_sender.get_csv_tempfile() as csv_file:
-        assert csv_file.name.split("/")[-1].startswith("extracao_dou_")
+        assert os.path.basename(csv_file.name).startswith("extracao_dou_")
 
 
 def test_get_csv_tempfile__valid_file_name_suffix(email_sender):
@@ -100,7 +102,8 @@ def test_get_csv_tempfile__valid_file_name_suffix(email_sender):
 
 def test_get_csv_tempfile__valid_csv(email_sender):
     with email_sender.get_csv_tempfile() as csv_file:
-        assert pd.read_csv(csv_file.name) is not None
+        csv_file.seek(0)
+        assert pd.read_csv(csv_file) is not None
 
 
 def test_merge_results(merge_results_samples):
@@ -151,6 +154,7 @@ def test_hash_dag_id(dag_gen, dag_id, size, hashed):
     assert dag_gen._hash_dag_id(dag_id, size) == hashed
 
 
+@pytest.mark.airflow
 @pytest.mark.parametrize(
     "dataset, schedule, is_default_schedule",
     [

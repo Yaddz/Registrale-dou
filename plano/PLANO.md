@@ -123,7 +123,42 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 
 **Riscos:** o upstream pode depender de comportamento interno do Airflow (por exemplo, `Variable.get` com `deserialize_json`). Cubra o shim com testes para cada uso real.
 
-**Registro:** _(preencher)_
+**Registro:**
+- **O que foi feito:**
+  - Implementado `compat/bootstrap.py` com `install_airflow_shim()`, `is_airflow_installed()` e `uninstall_airflow_shim()`, inserindo `compat/airflow_shim/` no `sys.path` apenas quando o Apache Airflow real não está instalado.
+  - Implementado `compat/airflow_shim/airflow/` com os símbolos realmente usados por `src/`:
+    - `airflow._provider` (`Connection`, provedores em memória, callback dinâmico, leitura opcional da tabela `settings` via `REGISTRALE_DB_PATH` e fallback `AIRFLOW_VAR_*`);
+    - `airflow.sdk.Variable.get` (com `default`, `default_var`, `deserialize_json` e `KeyError`);
+    - `airflow.sdk.bases.hook.BaseHook.get_connection` (retornando `host`, `login`, `password`, `port`, `schema`, `conn_type` e `extra_dejson`);
+    - `airflow.providers.postgres.hooks.postgres.PostgresHook` sobre `psycopg` e SQLAlchemy (`get_uri`, `get_sqlalchemy_engine`, `get_conn`, `get_pandas_df`, `run`);
+    - stubs com `NotImplementedError` explicativo para o que o modo local não usa (`DAG`, `TaskGroup`, `Dataset`, `MsSqlHook`, `SlackNotifier`, `EmptyOperator`, `PythonOperator`, `BranchPythonOperator`, `AssetOrTimeSchedule`, `CronTriggerTimetable` e `send_email`).
+  - Criado `tests/local/test_shim_imports.py` cobrindo `install_airflow_shim()`, importação de todos os módulos de `src/` (exceto `dou_dag_generator.py` e `utils/open_search/indexer.py`), `Variable.get`, `BaseHook.get_connection`, `PostgresHook` e todos os stubs `NotImplementedError`.
+  - Marcados com `@pytest.mark.airflow` os testes que exigem Airflow real (`test_dag_loading.py`, `test_e2e_dag_execution.py`, `dag_generator_invalid_yaml_test.py` e `test_update_schedule_with_dataset` em `dag_generator_test.py`), mantendo compatibilidade com o modo Docker em `tests/conftest.py` (sem exigir `compat/` dentro do container).
+  - Atualizado `pyproject.toml` com dependências faltantes descobertas pelos testes (`pydantic[email]`, `opensearch-py`, `openai`, `anthropic`, `google-genai`, `pendulum`) e `tools/gerador_cli.py` para chamar `install_airflow_shim()` quando executado fora do Docker.
+  - Escrito `plano/UPSTREAM.md` com procedimento de merge, tabela dos 8 patches locais existentes em `src/` e `dag_load_inlabs/` e seção de caminhos removidos (vazia até o Sprint 8).
+  - Criado `tools/sync_upstream.py` (fetch, `merge --no-commit --no-ff`, preservação `--ours` de `AGENTS.md`/`README.md`, re-remoção de caminhos, execução dos testes locais e relatório).
+  - Registrados os comandos do modo local na seção 6 do `AGENTS.md`.
+- **Decisões tomadas:**
+  - `tests/conftest.py` cria aliases em memória para `dags.ro_dou_src` e `ro_dou_src` apontando para `src/` apenas quando `dags` não está no ambiente, evitando alterar imports dos testes existentes ou copiar `src/`.
+  - A ativação do shim em `tests/conftest.py` só roda quando `airflow` real não está instalado, evitando dependência de `compat/` dentro do container Docker.
+  - Em `tools/sync_upstream.py`, adicionada a opção `--repo-root` para permitir ensaios isolados em worktrees descartáveis sem sujar a árvore principal.
+- **Arquivos criados/alterados:**
+  - Criados: `compat/__init__.py`, `compat/bootstrap.py`, `compat/airflow_shim/airflow/__init__.py`, `compat/airflow_shim/airflow/_provider.py`, `compat/airflow_shim/airflow/sdk/__init__.py`, `compat/airflow_shim/airflow/sdk/bases/__init__.py`, `compat/airflow_shim/airflow/sdk/bases/hook.py`, `compat/airflow_shim/airflow/sdk/definitions/__init__.py`, `compat/airflow_shim/airflow/sdk/definitions/asset.py`, `compat/airflow_shim/airflow/providers/__init__.py`, `compat/airflow_shim/airflow/providers/postgres/__init__.py`, `compat/airflow_shim/airflow/providers/postgres/hooks/__init__.py`, `compat/airflow_shim/airflow/providers/postgres/hooks/postgres.py`, `compat/airflow_shim/airflow/providers/microsoft/__init__.py`, `compat/airflow_shim/airflow/providers/microsoft/mssql/__init__.py`, `compat/airflow_shim/airflow/providers/microsoft/mssql/hooks/__init__.py`, `compat/airflow_shim/airflow/providers/microsoft/mssql/hooks/mssql.py`, `compat/airflow_shim/airflow/providers/slack/__init__.py`, `compat/airflow_shim/airflow/providers/slack/notifications/__init__.py`, `compat/airflow_shim/airflow/providers/slack/notifications/slack.py`, `compat/airflow_shim/airflow/providers/standard/__init__.py`, `compat/airflow_shim/airflow/providers/standard/operators/__init__.py`, `compat/airflow_shim/airflow/providers/standard/operators/empty.py`, `compat/airflow_shim/airflow/providers/standard/operators/python.py`, `compat/airflow_shim/airflow/timetables/__init__.py`, `compat/airflow_shim/airflow/timetables/assets.py`, `compat/airflow_shim/airflow/timetables/trigger.py`, `compat/airflow_shim/airflow/utils/__init__.py`, `compat/airflow_shim/airflow/utils/email.py`, `tests/local/test_shim_imports.py`, `plano/UPSTREAM.md`, `tools/sync_upstream.py`.
+  - Alterados: `pyproject.toml`, `uv.lock`, `tests/conftest.py`, `tests/pytest.ini`, `tests/dag_generator_test.py`, `tests/dag_generator_invalid_yaml_test.py`, `tests/gerador_cli_test.py`, `tests/test_dag_loading.py`, `tests/test_e2e_dag_execution.py`, `tools/gerador_cli.py`, `AGENTS.md`, `plano/PLANO.md`.
+- **Validações:**
+  - `git diff baseline-docker -- src/` → vazio (0 alterações em `src/`).
+  - Linux (`uv run pytest tests/ -m "not live and not airflow" -q`) → `492 passed, 2 deselected`.
+  - Linux completo (`uv run pytest -m "not live and not airflow" -q`) → `577 passed, 2 deselected` (núcleo + painel).
+  - Windows 10 VM (`http://127.0.0.1:8006/`, `C:\Registrale-dou`, `uv 0.13.9`, Python 3.11.18):
+    - `uv sync --group dev` concluído sem erros (`113` pacotes instalados).
+    - `uv run pytest tests/ -m "not live and not airflow" -q` → `492 passed, 2 deselected`.
+    - `uv run pytest -m "not live and not airflow" -q` → `577 passed, 2 deselected` (núcleo + painel).
+    - Correções de portabilidade Windows descobertas e aplicadas: `os.path.basename` e leitura do objeto de arquivo aberto (`csv_file.seek(0)`) em `tests/dag_generator_test.py`; `sys.stdout/stderr.reconfigure(encoding="utf-8")` em `tools/gerador_cli.py`; `encoding="utf-8"` e `PYTHONIOENCODING=utf-8` em `tests/gerador_cli_test.py`.
+  - Docker (`docker exec -w /opt/airflow airflow-scheduler python -m pytest -q tests -m "not live" --ignore=tests/test_e2e_dag_execution.py`) → `456 passed, 1 skipped` (`test_shim_imports.py` pulado por ausência de `compat/` no container).
+  - Ensaio de `tools/sync_upstream.py` em worktree descartável (`git worktree add --detach /tmp/registrale-sync-trial HEAD` + `--no-tests`, depois `git worktree remove`) → `Merge exit code: 0`, `Conflitos pendentes (0)`, `main` inalterada (`5415bfc`).
+- **Pendências:**
+  - Os testes `rodou_dashboard/tests` no modo Docker (`rodou-dashboard`) não foram reexecutados neste sprint pois nenhum arquivo de `rodou_dashboard/` foi alterado.
+  - Alterações do Sprint 1 pendentes de commit em `feature/modo-local` aguardando autorização do usuário.
 
 ---
 

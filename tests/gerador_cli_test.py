@@ -50,7 +50,8 @@ def test_modo_interativo_gera_yaml_valido():
         input=respostas,
         capture_output=True,
         text=True,
-        env={**os.environ, "RO_DOU_SRC_PATH": src},
+        encoding="utf-8",
+        env={**os.environ, "RO_DOU_SRC_PATH": src, "PYTHONIOENCODING": "utf-8"},
         check=False,
     )
     assert resultado.returncode == 0, resultado.stderr

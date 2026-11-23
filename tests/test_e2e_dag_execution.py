@@ -22,6 +22,8 @@ from airflow.utils.state import DagRunState, TaskInstanceState
 from dags.ro_dou_src.dou_dag_generator import DouDigestDagGenerator
 from dags.ro_dou_src.parsers import YAMLParser
 
+pytestmark = pytest.mark.airflow
+
 CONFIG_FILE = "basic_example.yaml"
 MATCHED_TERM = "dados abertos"
 RECIPIENT = "destination@economia.gov.br"

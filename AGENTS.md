@@ -91,7 +91,16 @@ docker exec -w /opt/airflow airflow-scheduler python -m pytest -q tests -m "not 
 
 ### Modo local (a partir do Sprint 1)
 
-Python 3.11 + `uv`. Os comandos exatos são definidos no Sprint 1 e registrados aqui por ele (`uv sync`, `uv run pytest ...`, `uv run registrale`).
+Python 3.11 + `uv` (sem Airflow instalado; o núcleo `src/` roda sobre `compat/airflow_shim/` via `compat/bootstrap.py::install_airflow_shim()`).
+
+```bash
+uv sync --group dev                                  # instala Python 3.11 e dependências locais
+uv run pytest tests/ -m "not live and not airflow"   # suíte do núcleo sem Airflow/rede
+uv run pytest -m "not live and not airflow"          # suíte completa (núcleo + painel)
+uv run python tools/sync_upstream.py                 # sincroniza com upstream/main (ver plano/UPSTREAM.md)
+```
+
+- Ponto de entrada do servidor local (`uv run registrale`): definido no Sprint 3.
 
 ### Rede
 

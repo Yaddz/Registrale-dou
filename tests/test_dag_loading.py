@@ -18,6 +18,8 @@ from dou_dag_generator import DouDigestDagGenerator
 from airflow import DAG
 from airflow.models import DagBag
 
+pytestmark = pytest.mark.airflow
+
 
 class TestDAGLoading:
     """Test suite for DAG loading functionality."""

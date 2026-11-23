@@ -1,10 +1,48 @@
 """All unit tests
 """
 
+import importlib.util
 import os
+import sys
+import types
+from pathlib import Path
 
 import pytest
 from typing import Tuple
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+if importlib.util.find_spec("airflow") is None:
+    from compat.bootstrap import install_airflow_shim, is_airflow_installed  # noqa: E402
+
+    install_airflow_shim()
+    _AIRFLOW_INSTALLED = is_airflow_installed()
+else:
+    _AIRFLOW_INSTALLED = True
+
+if not _AIRFLOW_INSTALLED:
+    collect_ignore = [
+        "test_dag_loading.py",
+        "test_e2e_dag_execution.py",
+        "dag_generator_invalid_yaml_test.py",
+    ]
+
+if importlib.util.find_spec("dags") is None or importlib.util.find_spec("dags.ro_dou_src") is None:
+    _src_dir = _REPO_ROOT / "src"
+    if str(_src_dir) not in sys.path:
+        sys.path.insert(0, str(_src_dir))
+    _dags_pkg = types.ModuleType("dags")
+    _dags_pkg.__path__ = []
+    _ro_dou_pkg = types.ModuleType("dags.ro_dou_src")
+    _ro_dou_pkg.__path__ = [str(_src_dir)]
+    sys.modules.setdefault("dags", _dags_pkg)
+    sys.modules.setdefault("dags.ro_dou_src", _ro_dou_pkg)
+    sys.modules.setdefault("ro_dou_src", _ro_dou_pkg)
+    _dags_pkg.ro_dou_src = _ro_dou_pkg
+
+os.environ.setdefault("RO_DOU__DAG_CONF_DIR", str(_REPO_ROOT / "dag_confs"))
 
 from dags.ro_dou_src.dou_dag_generator import (DouDigestDagGenerator,
                                            SearchResult)
