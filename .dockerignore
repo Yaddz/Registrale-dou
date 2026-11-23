@@ -1,0 +1,11 @@
+# Dados de runtime montados como volume: não fazem parte da imagem e
+# podem pertencer a outro usuário (ex.: mnt/pgdata do Postgres), o que
+# quebra o envio do contexto de build.
+mnt/
+data/
+flask_sessions/
+schemas/
+.git/
+**/__pycache__/
+*.pyc
+.env

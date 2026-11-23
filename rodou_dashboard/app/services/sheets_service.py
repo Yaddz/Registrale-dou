@@ -65,7 +65,20 @@ def get_credentials_info(credentials_json_or_dict):
         try:
             creds_dict = json.loads(raw_str)
         except Exception as e:
-            raise ValueError(f"Formato JSON inválido nas credenciais: {str(e)}")
+            # Erro comum ao colar o arquivo: a chave de abertura "{" (ou a de
+            # fechamento "}") fica de fora. Tenta reconstituir o objeto.
+            repaired = raw_str
+            if not repaired.startswith('{'):
+                repaired = '{' + repaired
+            if not repaired.endswith('}'):
+                repaired = repaired + '}'
+            try:
+                creds_dict = json.loads(repaired)
+            except Exception:
+                raise ValueError(
+                    f"Formato JSON inválido nas credenciais: {str(e)}. "
+                    "Cole o arquivo completo, incluindo as chaves { e }."
+                )
     else:
         raise ValueError("Tipo inválido para credenciais. Esperado string JSON ou dict.")
 

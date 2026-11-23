@@ -4,7 +4,8 @@ x-vols: &vols
     - ./src:/opt/airflow/dags/ro_dou_src:z
     - ./mnt/airflow-logs:/opt/airflow/logs:z
     - ./dag_confs:/opt/airflow/dags/ro_dou/dag_confs:z
-    - ./dag_load_inlabs:/opt/airflow/dags/dag_load_inlabs:z
+    - ./dag_load_inlabs:/opt/airflow/dags/ro_dou/dag_load_inlabs:z
+    - ./schemas:/opt/airflow/schemas:z
     - ./tests:/opt/airflow/tests:z
     - ./tools:/opt/airflow/tools:z
 services:
