@@ -2,8 +2,37 @@ import os
 import requests
 import subprocess
 import json
+import re
 import urllib.parse
 from datetime import datetime, timezone, timedelta
+
+def normalize_date_str(value):
+    """Converte datas vindas do painel/seletor para ISO (AAAA-MM-DD), formato
+    exigido pelo parâmetro `trigger_date` das DAGs (Param format="date").
+
+    Aceita: DD/MM/AAAA, D/M/AAAA, DD/MM/AA, DD-MM-AAAA, AAAA-MM-DD, AAAA/MM/DD
+    e ISO com horário (AAAA-MM-DDTHH:MM...). Retorna None se vazio e lança
+    ValueError se a data for inválida.
+    """
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    raw = raw.split('T')[0].split(' ')[0]
+    parts = [p for p in re.split(r'[/\-.]', raw) if p]
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        raise ValueError(f"Data inválida: {value}")
+    if len(parts[0]) == 4:          # AAAA-MM-DD / AAAA/MM/DD
+        y, m, d = parts
+    else:                           # DD/MM/AAAA ou DD/MM/AA
+        d, m, y = parts
+        if len(y) == 2:
+            y = '20' + y
+    if len(y) != 4:
+        raise ValueError(f"Data inválida: {value}")
+    return datetime(int(y), int(m), int(d)).strftime('%Y-%m-%d')
+
 
 def get_airflow_url():
     """Retorna a URL base do Airflow a partir das variáveis de ambiente."""
@@ -45,10 +74,8 @@ def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
         payload = {}
         unique_suffix = int(datetime.now().timestamp() * 1000)
         if logical_date:
-            if '/' in str(logical_date):
-                parts = str(logical_date).split('/')
-                if len(parts) == 3:
-                    logical_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+            logical_date = normalize_date_str(logical_date)
+        if logical_date:
             payload["dag_run_id"] = f"manual__{dag_id}_{logical_date}_{unique_suffix}"
         else:
             payload["dag_run_id"] = f"manual__{dag_id}_{unique_suffix}"

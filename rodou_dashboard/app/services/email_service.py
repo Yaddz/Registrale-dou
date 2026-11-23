@@ -146,6 +146,40 @@ def apply_highlight_to_trecho(trecho: str, cnpj: str = '', cnpj_norm: str = '', 
         
     return t
 
+def render_email_subject(subject, mentions=None, template_name=None, date_str=None, fallback=''):
+    """Resolve o assunto do e-mail e substitui as variáveis do modelo.
+
+    Prioridade: assunto da rotina -> assunto do template -> fallback.
+    Variáveis aceitas: {empresa}, {cnpj}, {secao}, {data}, {total}
+    (valores da primeira menção; {total} = quantidade de menções).
+    """
+    chosen = (subject or '').strip()
+    if not chosen and template_name:
+        try:
+            from ..models import EmailTemplate
+            tpl = EmailTemplate.query.filter_by(name=template_name).first()
+            if tpl and (tpl.subject or '').strip():
+                chosen = tpl.subject.strip()
+        except Exception:
+            pass
+    if not chosen:
+        chosen = fallback or ''
+
+    mentions = mentions or []
+    m0 = mentions[0] if mentions else {}
+    values = {
+        '{empresa}': (m0.get('empresa') or '') if len(mentions) == 1 else (
+            f"{m0.get('empresa') or ''} e mais {len(mentions) - 1}" if mentions else ''),
+        '{cnpj}': m0.get('cnpj') or m0.get('cnpj_norm') or '',
+        '{secao}': m0.get('secao') or '',
+        '{data}': date_str or m0.get('data') or '',
+        '{total}': str(len(mentions)),
+    }
+    for k, v in values.items():
+        chosen = chosen.replace(k, str(v))
+    return ' '.join(chosen.split())
+
+
 def build_mentions_email_html(mentions, template_name='Padrão Registrale', title=None, subtitle=None):
     """Renderiza a lista de menções no template HTML com formatação responsiva e suporte a templates sem {content}."""
     from ..models import EmailTemplate

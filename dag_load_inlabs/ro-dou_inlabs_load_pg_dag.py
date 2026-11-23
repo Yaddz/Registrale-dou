@@ -144,7 +144,22 @@ def load_inlabs():
                 except Exception as e:
                     logging.warning("Erro ao testar sessão em cache: %s", e)
 
-            # 2. Realiza novo login com backoff progressivo (até 10 tentativas)
+            # 2. Falha rápida se o portal estiver em manutenção: sem isso cada dia
+            #    consumia 10 tentativas de login x 4 retries (~10-25 min), travando
+            #    a fila (max_active_runs=1) e a busca mensal no painel.
+            from airflow.exceptions import AirflowFailException  # type: ignore
+            try:
+                r_probe = requests.get(inlabs_conn.host, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+                probe_text = r_probe.content.decode("utf-8", errors="ignore").lower()[:3000]
+                if r_probe.status_code >= 500 or "manutenção" in probe_text or "manutencao" in probe_text:
+                    raise AirflowFailException(
+                        "Portal INLABS em manutenção/indisponível "
+                        f"(HTTP {r_probe.status_code}). Use a busca via API DOU."
+                    )
+            except requests.exceptions.RequestException as probe_err:
+                logging.warning("Falha ao verificar disponibilidade do INLABS: %s", probe_err)
+
+            # 3. Realiza novo login com backoff progressivo (até 10 tentativas)
             logging.info("Iniciando autenticação no portal INLABS...")
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -378,6 +393,27 @@ def load_inlabs():
     @task.branch
     def check_if_first_run_of_day():
         context = get_current_context()
+
+        # Downloads manuais de datas passadas (ex.: busca mensal do painel)
+        # não devem disparar os Datasets: cada um acionava a DAG de pesquisa
+        # diária (schedule por Dataset) para a data de HOJE, gerando buscas
+        # e e-mails duplicados.
+        dag_run = context.get("dag_run")
+        if dag_run is not None and dag_run.external_trigger:
+            loaded_date = context["ti"].xcom_pull(task_ids="get_date")
+            today_local = datetime.now().astimezone().strftime("%Y-%m-%d")
+            try:
+                import pendulum  # type: ignore
+                today_local = pendulum.now(os.getenv("AIRFLOW__CORE__DEFAULT_TIMEZONE", "America/Sao_Paulo")).strftime("%Y-%m-%d")
+            except Exception:  # pylint: disable=broad-except
+                pass
+            if loaded_date and loaded_date != today_local:
+                logging.info(
+                    "Carga manual de data passada (%s). Datasets não serão disparados.",
+                    loaded_date,
+                )
+                return None
+
         execution_date = context.get("logical_date")
         prev_execution_date = context.get("prev_execution_date")
         logging.info("Execution_date: %s", execution_date)

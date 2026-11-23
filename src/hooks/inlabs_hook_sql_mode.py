@@ -77,6 +77,12 @@ class INLABSSQLModeHook(INLABSHook):
     @staticmethod
     def _generate_sql(payload: dict) -> dict:
         """Generate legacy SQL queries for INLABS search terms."""
+
+        def esc(value) -> str:
+            # Backport do Ro-DOU upstream: escapa apóstrofos (ex.: "D'ÁVILA")
+            # que quebravam a query SQL e abortavam a busca inteira.
+            return str(value).replace("'", "''")
+
         allowed_keys = [
             "name",
             "pubname",
@@ -141,14 +147,14 @@ class INLABSSQLModeHook(INLABSHook):
                                 else:
                                     operator = "~*" if like_positive else "!~*"
                                     sub_conditions.append(
-                                        rf"dou_inlabs.unaccent({key}) {operator} dou_inlabs.unaccent('\y{sub_term}\y')",
+                                        rf"dou_inlabs.unaccent({key}) {operator} dou_inlabs.unaccent('\y{esc(sub_term)}\y')",
                                     )
 
                             key_conditions.append("(" + "".join(sub_conditions) + ")")
 
                         else:
                             key_conditions.append(
-                                rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{term_str}\y')"
+                                rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{esc(term_str)}\y')"
                             )
 
                     if key_conditions:
@@ -159,7 +165,7 @@ class INLABSSQLModeHook(INLABSHook):
                     "("
                     + " AND ".join(
                         [
-                            rf"dou_inlabs.unaccent(artcategory) !~* dou_inlabs.unaccent('{value}')"
+                            rf"dou_inlabs.unaccent(artcategory) !~* dou_inlabs.unaccent('{esc(value)}')"
                             for value in values if value
                         ]
                     )
@@ -170,7 +176,7 @@ class INLABSSQLModeHook(INLABSHook):
                     "("
                     + " AND ".join(
                         [
-                            rf"dou_inlabs.unaccent(texto) !~* dou_inlabs.unaccent('\y{value}\y')"
+                            rf"dou_inlabs.unaccent(texto) !~* dou_inlabs.unaccent('\y{esc(value)}\y')"
                             for value in values if value
                         ]
                     )
@@ -178,7 +184,7 @@ class INLABSSQLModeHook(INLABSHook):
                 )
             else:
                 sub_or = [
-                    rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('{value}')"
+                    rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('{esc(value)}')"
                     for value in values if value
                 ]
                 if sub_or:

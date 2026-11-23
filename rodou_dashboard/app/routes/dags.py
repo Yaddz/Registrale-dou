@@ -17,6 +17,37 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '
 
 dags_bp = Blueprint('dags', __name__)
 
+
+def _is_safe_routine_name(name) -> bool:
+    """Nome de arquivo de rotina seguro: relativo a dag_confs, sem '..',
+    sem caminho absoluto e com extensão YAML (evita path traversal)."""
+    if not isinstance(name, str) or not name.strip():
+        return False
+    n = name.strip().replace('\\', '/')
+    if n.startswith('/') or os.path.isabs(n):
+        return False
+    if any(part in ('..', '') for part in n.split('/')):
+        return False
+    return n.lower().endswith(('.yaml', '.yml'))
+
+
+@dags_bp.before_request
+def _validate_routine_file_names():
+    names = []
+    if request.view_args and 'file' in request.view_args:
+        names.append(request.view_args['file'])
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        if isinstance(body, dict):
+            if body.get('file'):
+                names.append(body.get('file'))
+            routines = body.get('routines')
+            if isinstance(routines, list):
+                names.extend(routines)
+    for n in names:
+        if not _is_safe_routine_name(n):
+            return jsonify({"status": "error", "message": "Nome de arquivo de rotina inválido."}), 400
+
 def add_history_event(evento, detalhes):
     from ..models import SyncHistory
     SyncHistory.log_event(evento, detalhes)
@@ -732,14 +763,9 @@ def trigger_routine(file):
     logical_date = req_data.get('logical_date')
     
     if logical_date:
-        logical_date = str(logical_date).strip()
-        if '/' in logical_date:
-            parts = logical_date.split('/')
-            if len(parts) == 3:
-                logical_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+        from ..services.airflow_service import normalize_date_str
         try:
-            d_parsed = datetime.strptime(logical_date, '%Y-%m-%d')
-            logical_date = d_parsed.strftime('%Y-%m-%d')
+            logical_date = normalize_date_str(logical_date)
         except ValueError:
             return jsonify({"status": "error", "message": "Data inválida. Use o formato DD/MM/AAAA ou AAAA-MM-DD."}), 400
 
@@ -932,7 +958,11 @@ def trigger_routine(file):
                 # 5. Envio do E-mail Formatado
                 email_sent = False
                 if emails and relevant_mentions:
-                    subject = routine_subject or f"Registrale - Alerta DOU ({routine_name}) - {target_date_str}"
+                    from ..services.email_service import render_email_subject
+                    subject = render_email_subject(
+                        routine_subject, relevant_mentions, template_name='Padrão Registrale',
+                        date_str=target_date_str,
+                        fallback=f"Registrale - Alerta DOU ({routine_name}) - {target_date_str}")
                     html = build_mentions_email_html(
                         relevant_mentions,
                         template_name='Padrão Registrale',
@@ -995,113 +1025,127 @@ def trigger_routine(file):
             ).start()
             return jsonify({"status": "success", "message": f"Dados já disponíveis no banco. Pesquisa iniciada com sucesso para {logical_date}!"})
 
-        # Se for anterior à janela de 120 dias do portal INLABS, executa diretamente via API DOU
-        if not is_within_inlabs_retention_window(logical_date, 120):
-            def run_adhoc_dou_search(app_context_obj, source_file, target_date, r_emails, r_subject, r_terms):
-                temp_yaml_path = None
-                temp_dag_id = None
-                with app_context_obj:
-                    try:
-                        routine_path = os.path.join(dag_confs_path, source_file)
-                        with open(routine_path, 'r', encoding='utf-8') as f:
-                            base_yaml = yaml.safe_load(f) or {}
+        # Busca via API Oficial do DOU (usada para datas fora da janela de 120 dias
+        # do INLABS e como fallback quando o portal INLABS está fora do ar).
+        def run_adhoc_dou_search(app_context_obj, source_file, target_date, r_emails, r_subject, r_terms):
+            temp_yaml_path = None
+            temp_dag_id = None
+            with app_context_obj:
+                try:
+                    routine_path = os.path.join(dag_confs_path, source_file)
+                    with open(routine_path, 'r', encoding='utf-8') as f:
+                        base_yaml = yaml.safe_load(f) or {}
 
-                        original_searches = base_yaml.get('dag', {}).get('search', [])
-                        if not isinstance(original_searches, list):
-                            original_searches = [original_searches] if original_searches else []
+                    original_searches = base_yaml.get('dag', {}).get('search', [])
+                    if not isinstance(original_searches, list):
+                        original_searches = [original_searches] if original_searches else []
 
-                        temp_search_blocks = []
-                        for block in original_searches:
-                            temp_block = {
-                                "header": block.get("header", f"Busca API-DOU {source_file}"),
-                                "is_exact_search": block.get("is_exact_search", True),
-                                "force_rematch": True,
-                                "terms": block.get("terms", []),
-                                "dou_sections": block.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
-                                "field": block.get("field", "TUDO"),
-                                "full_text": block.get("full_text", True),
-                                "date": "DIA",
-                                "sources": ["DOU"],
-                            }
-                            if block.get("department"): temp_block["department"] = block["department"]
-                            if block.get("organs"): temp_block["organs"] = block["organs"]
-                            if block.get("terms_ignore"): temp_block["terms_ignore"] = block["terms_ignore"]
-                            temp_search_blocks.append(temp_block)
+                    temp_search_blocks = []
+                    for block in original_searches:
+                        temp_block = {
+                            "header": block.get("header", f"Busca API-DOU {source_file}"),
+                            "is_exact_search": block.get("is_exact_search", True),
+                            "force_rematch": True,
+                            "terms": block.get("terms", []),
+                            "dou_sections": block.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
+                            "field": block.get("field", "TUDO"),
+                            "full_text": block.get("full_text", True),
+                            "date": "DIA",
+                            "sources": ["DOU"],
+                        }
+                        if block.get("department"): temp_block["department"] = block["department"]
+                        if block.get("organs"): temp_block["organs"] = block["organs"]
+                        if block.get("terms_ignore"): temp_block["terms_ignore"] = block["terms_ignore"]
+                        temp_search_blocks.append(temp_block)
 
-                        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-                        temp_dag_id = f"temp_adhoc_dou_{timestamp}"
+                    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+                    temp_dag_id = f"temp_adhoc_dou_{timestamp}"
 
-                        temp_yaml = {
-                            "dag": {
-                                "id": temp_dag_id,
-                                "description": f"Busca ad-hoc API-DOU para {target_date}",
-                                "schedule": None,
-                                "tags": ["temp", "api_dou", "adhoc"],
-                                "search": temp_search_blocks,
-                                "report": {
-                                    "page_title": f"Busca API-DOU {target_date}",
-                                    "emails": [],
-                                    "subject": f"Registrale - API-DOU {target_date}"
-                                }
+                    temp_yaml = {
+                        "dag": {
+                            "id": temp_dag_id,
+                            "description": f"Busca ad-hoc API-DOU para {target_date}",
+                            "schedule": None,
+                            "tags": ["temp", "api_dou", "adhoc"],
+                            "search": temp_search_blocks,
+                            "report": {
+                                "page_title": f"Busca API-DOU {target_date}",
+                                "emails": [],
+                                "subject": f"Registrale - API-DOU {target_date}"
                             }
                         }
+                    }
 
-                        temp_yaml_path = os.path.join(dag_confs_path, f"{temp_dag_id}.yaml")
-                        with open(temp_yaml_path, 'w', encoding='utf-8') as f:
-                            yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
+                    temp_yaml_path = os.path.join(dag_confs_path, f"{temp_dag_id}.yaml")
+                    with open(temp_yaml_path, 'w', encoding='utf-8') as f:
+                        yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
 
-                        import time
-                        time.sleep(2)
+                    import time
+                    time.sleep(2)
 
-                        wait_for_dag_discovery(temp_dag_id, max_wait=120)
+                    wait_for_dag_discovery(temp_dag_id, max_wait=120)
 
-                        ok, msg, run_info = trigger_airflow_dag(temp_dag_id, target_date)
-                        if ok:
-                            watch_dag_and_update_mentions(
-                                app_context_obj,
-                                [run_info],
-                                source_file,
-                                r_emails,
-                                r_subject,
-                                target_date,
-                                r_terms,
-                                run_info.get("trigger_time") if isinstance(run_info, dict) else None
-                            )
-                    except Exception as e:
-                        logging.error(f"Erro na busca ad-hoc API DOU para {target_date}: {e}")
-                    finally:
-                        from ..services.dag_config_service import cleanup_orphaned_temp_dags
-                        if temp_yaml_path and os.path.exists(temp_yaml_path):
-                            try:
-                                os.remove(temp_yaml_path)
-                            except Exception:
-                                pass
-                        if temp_dag_id:
-                            try:
-                                from ..services.airflow_service import get_airflow_auth, get_airflow_url
-                                auth = get_airflow_auth()
-                                airflow_url = get_airflow_url()
-                                requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=5)
-                            except Exception:
-                                pass
-                            try:
-                                import shutil
-                                log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
-                                if os.path.exists(log_dir):
-                                    shutil.rmtree(log_dir, ignore_errors=True)
-                            except Exception:
-                                pass
+                    ok, msg, run_info = trigger_airflow_dag(temp_dag_id, target_date)
+                    if ok:
+                        watch_dag_and_update_mentions(
+                            app_context_obj,
+                            [run_info],
+                            source_file,
+                            r_emails,
+                            r_subject,
+                            target_date,
+                            r_terms,
+                            run_info.get("trigger_time") if isinstance(run_info, dict) else None
+                        )
+                except Exception as e:
+                    logging.error(f"Erro na busca ad-hoc API DOU para {target_date}: {e}")
+                finally:
+                    from ..services.dag_config_service import cleanup_orphaned_temp_dags
+                    if temp_yaml_path and os.path.exists(temp_yaml_path):
                         try:
-                            generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                            if os.path.exists(generator_path):
-                                os.utime(generator_path, None)
+                            os.remove(temp_yaml_path)
+                        except Exception:
+                            pass
+                    if temp_dag_id:
+                        try:
+                            from ..services.airflow_service import get_airflow_auth, get_airflow_url
+                            auth = get_airflow_auth()
+                            airflow_url = get_airflow_url()
+                            requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=5)
                         except Exception:
                             pass
                         try:
-                            cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
+                            import shutil
+                            log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
+                            if os.path.exists(log_dir):
+                                shutil.rmtree(log_dir, ignore_errors=True)
                         except Exception:
                             pass
+                    try:
+                        generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
+                        if os.path.exists(generator_path):
+                            os.utime(generator_path, None)
+                    except Exception:
+                        pass
+                    try:
+                        cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
+                    except Exception:
+                        pass
 
+        from ..services.inlabs_service import check_inlabs_portal_status
+        portal_ok, portal_msg = check_inlabs_portal_status()
+
+        if not portal_ok:
+            add_history_event("Busca Individual (API DOU)", f"{portal_msg}. Pesquisando {logical_date} via API Oficial do DOU...")
+            threading.Thread(
+                target=run_adhoc_dou_search,
+                args=(app_ctx, file, logical_date, routine_emails, routine_subject, routine_cnpjs),
+                daemon=True
+            ).start()
+            return jsonify({"status": "success", "message": f"{portal_msg}. Busca iniciada via API Oficial do DOU!"})
+
+        # Se for anterior à janela de 120 dias do portal INLABS, executa diretamente via API DOU
+        if not is_within_inlabs_retention_window(logical_date, 120):
             add_history_event("Busca Individual (API DOU)", f"Data {logical_date} anterior a 120 dias (fora da retenção do INLABS). Disparando busca via API Oficial do DOU...")
             threading.Thread(
                 target=run_adhoc_dou_search,
@@ -1120,9 +1164,22 @@ def trigger_routine(file):
             ok_inlabs, msg_inlabs, inlabs_run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", target_date)
             inlabs_run_id = inlabs_run_info.get("dag_run_id") if isinstance(inlabs_run_info, dict) else None
             
+            load_state = None
             if inlabs_run_id:
-                wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", [inlabs_run_id], max_wait=600)
-                
+                _, states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", [inlabs_run_id], max_wait=900)
+                load_state = states.get(inlabs_run_id)
+
+            from ..services.inlabs_service import is_date_loaded
+            with app_context_obj:
+                loaded, _cnt = is_date_loaded(target_date)
+            if not loaded:
+                # Carga INLABS falhou (portal fora do ar, sem edição etc.):
+                # cai para a API Oficial do DOU em vez de pesquisar um banco vazio.
+                with app_context_obj:
+                    add_history_event("Carga INLABS Falhou", f"Sem dados INLABS para {target_date} (estado da carga: {load_state or msg_inlabs}). Pesquisando via API Oficial do DOU...")
+                run_adhoc_dou_search(app_context_obj, filename, target_date, r_emails, r_subject, r_terms)
+                return
+
             with app_context_obj:
                 record_inlabs_download_success(target_date)
                 add_history_event("Carga INLABS Concluída", f"Download concluído para {target_date}. Disparando agora a busca {filename}...")
@@ -1223,10 +1280,11 @@ def api_check_date():
     if not target_date:
         return jsonify({"status": "error", "message": "Parâmetro date é obrigatório."}), 400
         
-    if '/' in target_date:
-        parts = target_date.split('/')
-        if len(parts) == 3:
-            target_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+    from ..services.airflow_service import normalize_date_str
+    try:
+        target_date = normalize_date_str(target_date)
+    except ValueError:
+        return jsonify({"status": "error", "message": "Data inválida. Use o formato DD/MM/AAAA."}), 400
     
     already_loaded = False
     articles_count = 0
@@ -1407,7 +1465,7 @@ def api_download_missing_inlabs():
             except: pass
 
             if run_ids:
-                finished_all, run_states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", run_ids, max_wait=1800)
+                finished_all, run_states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", run_ids, max_wait=max(1800, 300 * len(run_ids)))
                 for r_id, st in run_states.items():
                     if st == 'success' and r_id in date_by_run:
                         record_inlabs_download_success(date_by_run[r_id])
@@ -1550,6 +1608,17 @@ def api_trigger_monthly():
         # ─── FASE 0: Se houver dias faltantes e modo for 'download_and_search' (ou 'full'), baixa no INLABS os dias na janela de 120 dias ───
         if mode in ('download_and_search', 'full') and missing_days:
             downloadable_missing = [d for d in missing_days if is_within_inlabs_retention_window(d, 120)]
+
+            if downloadable_missing:
+                from ..services.inlabs_service import check_inlabs_portal_status
+                portal_ok, portal_msg = check_inlabs_portal_status()
+                if not portal_ok:
+                    # Portal fora do ar: não enfileira downloads que só falhariam
+                    # (e travariam a fila); os dias faltantes seguem pela API DOU (FASE 2).
+                    with app_context:
+                        add_history_event("INLABS Indisponível",
+                            f"{portal_msg}. Os {len(missing_days)} dia(s) faltantes de {str(month).zfill(2)}/{year} serão pesquisados via API Oficial do DOU.")
+                    downloadable_missing = []
             
             if downloadable_missing:
                 with app_context:
@@ -1567,16 +1636,25 @@ def api_trigger_monthly():
                     time.sleep(0.05)
                     
                 if triggered_load_run_ids:
-                    finished_all, run_states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", triggered_load_run_ids, max_wait=1800)
+                    # max_active_runs=1 na DAG de carga: os dias rodam em fila, então o
+                    # tempo de espera precisa crescer com a quantidade de dias.
+                    finished_all, run_states = wait_for_specific_dag_runs(
+                        "ro-dou_inlabs_load_pg", triggered_load_run_ids,
+                        max_wait=max(1800, 300 * len(triggered_load_run_ids)))
                     
-                    for r_id, st in run_states.items():
-                        if st == 'success' and r_id in date_by_run:
-                            record_inlabs_download_success(date_by_run[r_id])
+                    with app_context:
+                        for r_id, st in run_states.items():
+                            if st == 'success' and r_id in date_by_run:
+                                record_inlabs_download_success(date_by_run[r_id])
+
+                    if not finished_all:
+                        logging.warning("Downloads INLABS não concluídos no tempo limite; dias pendentes seguirão pela API DOU.")
 
                     # Revalidação direta no PostgreSQL
                     first_day = weekdays[0]
                     last_day_str = weekdays[-1]
-                    actual_downloaded = get_downloaded_dates(first_day, last_day_str)
+                    with app_context:
+                        actual_downloaded = get_downloaded_dates(first_day, last_day_str)
                     inlabs_days = sorted([d for d in weekdays if d in actual_downloaded])
                     missing_days = sorted([d for d in weekdays if d not in actual_downloaded])
 
@@ -1819,7 +1897,7 @@ def api_trigger_monthly():
                 elif not relevant_monthly_mentions:
                     add_history_event("Busca Mensal Concluída", f"Nenhuma menção encontrada para o mês {month}/{year}.")
                 else:
-                    from ..services.email_service import EmailSender, build_mentions_email_html
+                    from ..services.email_service import EmailSender, build_mentions_email_html, render_email_subject
                     sender = EmailSender(None)
                     
                     html = build_mentions_email_html(
@@ -1830,7 +1908,10 @@ def api_trigger_monthly():
                     )
                     sender.send_custom_email(
                         to_emails=emails,
-                        subject=f"Registrale - Relatório Mensal {month}/{year}",
+                        subject=render_email_subject(
+                            None, relevant_monthly_mentions, template_name='Relatório Mensal Registrale',
+                            date_str=f"{str(month).zfill(2)}/{year}",
+                            fallback=f"Registrale - Relatório Mensal {month}/{year}"),
                         html_content=html
                     )
                     

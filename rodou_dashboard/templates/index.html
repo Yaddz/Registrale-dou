@@ -1400,7 +1400,13 @@
                                 </div>
                                 <div class="space-y-1">
                                     <label class="text-[10px] font-bold text-slate-400 uppercase">Assunto</label>
-                                    <input type="text" x-model="editingTemplate.subject" class="w-full p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm text-slate-900 dark:text-stone-100 focus:outline-none" placeholder="Assunto do email (ex: Alerta DOU - Publicação de {empresa})">
+                                    <input type="text" x-ref="templateSubjectInput" x-model="editingTemplate.subject" class="w-full p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm text-slate-900 dark:text-stone-100 focus:outline-none" placeholder="Assunto do email (ex: Alerta DOU - Publicação de {empresa})">
+                                <div class="flex flex-wrap items-center gap-1 pt-1">
+                                        <span class="text-[10px] text-slate-400 mr-1">Variáveis:</span>
+                                        <template x-for="v in ['{empresa}','{cnpj}','{secao}','{data}','{total}']" :key="v">
+                                            <button type="button" @mousedown.prevent @click="insertVariableInField($refs.templateSubjectInput, 'subject', v)" class="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono text-[10px] border border-blue-200 dark:border-blue-900" x-text="v"></button>
+                                        </template>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1546,6 +1552,12 @@
 
                                 <!-- 3. Código HTML Puro -->
                                 <div x-show="templateEditorMode === 'code'" class="space-y-2">
+                                    <div class="flex flex-wrap items-center gap-1 pt-1">
+                                        <span class="text-[10px] text-slate-400 mr-1">Variáveis:</span>
+                                        <template x-for="v in ['{content}','{empresa}','{cnpj}','{secao}','{data}','{trecho}','{link}']" :key="v">
+                                            <button type="button" @mousedown.prevent @click="insertVariableInField($refs.codeEditorTextarea, 'body_html', v)" class="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono text-[10px] border border-blue-200 dark:border-blue-900" x-text="v"></button>
+                                        </template>
+                                    </div>
                                     <textarea x-ref="codeEditorTextarea" x-model="editingTemplate.body_html" rows="14" class="w-full p-4 bg-slate-900 text-slate-100 border border-slate-800 rounded-2xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="<!DOCTYPE html><html>..."></textarea>
                                 </div>
 
@@ -5687,6 +5699,23 @@
                     }
                     
                     this.syncVisualEditorToModel(true);
+                },
+
+                insertVariableInField(el, field, varName) {
+                    // Insere a variável na posição do cursor de um input/textarea
+                    // (Assunto e modo Código HTML), não só no editor visual.
+                    const current = String(this.editingTemplate[field] || '');
+                    let start = current.length, end = current.length;
+                    if (el && typeof el.selectionStart === 'number') {
+                        start = el.selectionStart; end = el.selectionEnd;
+                    }
+                    this.editingTemplate[field] = current.slice(0, start) + varName + current.slice(end);
+                    this.$nextTick(() => {
+                        if (!el) return;
+                        el.focus();
+                        const pos = start + varName.length;
+                        try { el.setSelectionRange(pos, pos); } catch (e) {}
+                    });
                 },
 
                 insertVariableInEditor(varName) {

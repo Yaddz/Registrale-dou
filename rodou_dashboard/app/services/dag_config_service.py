@@ -610,6 +610,13 @@ def rebuild_yaml_from_db():
             dag['active'] = db_main_dag.get('active', True)
             dag['is_paused'] = not db_main_dag.get('active', True)
 
+    # Nunca gravar itens nulos/vazios (ex.: "emails: [null]"), que quebram a
+    # validação Pydantic do gerador de DAGs no Airflow.
+    _emails = dag['report'].get('emails') or []
+    if not isinstance(_emails, list):
+        _emails = [_emails]
+    dag['report']['emails'] = [str(e).strip() for e in _emails if e and str(e).strip()]
+
     search_template = dag.get('search', [{}])
     if isinstance(search_template, list):
         search_template = search_template[0] if len(search_template) > 0 else {}
@@ -648,6 +655,8 @@ def rebuild_yaml_from_db():
     organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', ['ANVISA', 'Agência Nacional de Vigilância Sanitária'])
     sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"])
     terms_ignore_val = db_main_dag.get('terms_ignore', search_template.get('terms_ignore', []))
+    terms_ignore_val = [t for t in (terms_ignore_val or []) if t and str(t).strip()]
+    organs_val = [o for o in (organs_val or []) if o and str(o).strip()]
 
     search_blocks = []
     for idx, chunk in enumerate(chunks, 1):

@@ -26,6 +26,41 @@ def get_inlabs_postgres_engine():
         )
     return _inlabs_engine
 
+_portal_status_cache = {'time': 0, 'data': None}
+
+def check_inlabs_portal_status(timeout=10, cache_seconds=60):
+    """Verifica se o portal INLABS está operacional.
+
+    Em manutenção, o portal responde HTTP 200 com a página "Manutenção
+    Programada" e o endpoint de login (logar.php) retorna 404. Nesses casos a
+    DAG de carga apenas acumularia tentativas/retries, então o painel deve
+    usar a API oficial do DOU diretamente.
+    Retorna (disponivel: bool, motivo: str).
+    """
+    import time as _t
+    import requests
+    now = _t.time()
+    if _portal_status_cache['data'] and now - _portal_status_cache['time'] < cache_seconds:
+        return _portal_status_cache['data']
+    base = os.getenv('INLABS_PORTAL_URL', 'https://inlabs.in.gov.br/')
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"}
+    result = (True, 'ok')
+    try:
+        r = requests.get(base, headers=headers, timeout=timeout)
+        text = r.content.decode('utf-8', errors='ignore').lower()
+        if r.status_code >= 500:
+            result = (False, f'Portal INLABS retornou HTTP {r.status_code}')
+        elif 'manutenção' in text[:3000] or 'manutencao' in text[:3000]:
+            result = (False, 'Portal INLABS em manutenção programada')
+        else:
+            r2 = requests.get(base.rstrip('/') + '/logar.php', headers=headers, timeout=timeout, allow_redirects=False)
+            if r2.status_code == 404:
+                result = (False, 'Endpoint de login do INLABS indisponível (HTTP 404)')
+    except Exception as e:
+        result = (False, f'Portal INLABS inacessível: {e}')
+    _portal_status_cache.update(time=now, data=result)
+    return result
+
 def get_downloaded_dates(start_date=None, end_date=None):
     """
     Retorna o conjunto (set) de datas (formato 'YYYY-MM-DD') com matérias salvas

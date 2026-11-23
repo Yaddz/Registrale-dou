@@ -1,0 +1,32 @@
+# Override local (Fedora + Podman rootless): SELinux relabel e portas não privilegiadas
+x-vols: &vols
+  volumes:
+    - ./src:/opt/airflow/dags/ro_dou_src:z
+    - ./mnt/airflow-logs:/opt/airflow/logs:z
+    - ./dag_confs:/opt/airflow/dags/ro_dou/dag_confs:z
+    - ./dag_load_inlabs:/opt/airflow/dags/dag_load_inlabs:z
+    - ./tests:/opt/airflow/tests:z
+    - ./tools:/opt/airflow/tools:z
+services:
+  postgres:
+    volumes:
+      - ./mnt/pgdata:/var/lib/postgresql/data:Z
+      - ./dag_load_inlabs/sql/:/sql:z
+  airflow-webserver:
+    <<: *vols
+  airflow-scheduler:
+    <<: *vols
+  smtp4dev:
+    ports: !override
+      - '5001:80'
+      - '2525:25'
+      - '1143:143'
+  dashboard:
+    volumes:
+      - ./rodou_dashboard/app:/app/app:z
+      - ./rodou_dashboard/templates:/app/templates:z
+      - ./rodou_dashboard/static:/app/static:z
+      - ./dag_confs:/dag_confs:z
+      - ./data:/data:z
+      - ./mnt/airflow-logs:/mnt/airflow-logs:z
+      - ./flask_sessions:/flask_sessions:z

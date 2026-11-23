@@ -27,38 +27,28 @@ def clean_abstract_for_dashboard(raw_text, search_term=''):
     
     text = raw_text
     
-    # Preservar highlights de CNPJ e outros spans
-    highlights = {}
-    def preserve_highlight(match):
-        key = f"__HL_{uuid.uuid4().hex[:8]}__"
-        highlights[key] = match.group(0)
-        return key
-    
-    # Limpa marcadores internos
+    # Recorte e centralização são feitos sobre o TEXTO VISÍVEL (sem tags).
+    # Antes os spans de destaque eram restaurados antes do recorte: os
+    # caracteres dos atributos (class/style) deslocavam a posição do termo e o
+    # corte caía no meio da tag, exibindo HTML cru no painel.
+    highlighted_terms = []
+
+    def unwrap_highlight(match):
+        inner = RE_ALL_TAGS.sub('', match.group(0))
+        if inner.strip():
+            highlighted_terms.append(html_module.unescape(inner).strip())
+        return inner
+
     text = RE_TAGS_INTERNAL.sub('', text)
-    
-    # Extrai os spans highlight temporariamente
-    text = RE_HIGHLIGHT.sub(preserve_highlight, text)
-    
-    # Remove placeholders de tabela
+    text = RE_HIGHLIGHT.sub(unwrap_highlight, text)
     text = RE_TABLE_PLACEHOLDER.sub('', text)
-    
-    # Remove TODAS as outras tags HTML
     text = RE_ALL_TAGS.sub(' ', text)
-    
-    # Decodifica entidades HTML
     text = html_module.unescape(text)
-    
-    # Colapsa espaços múltiplos e quebras de linha
     text = RE_WHITESPACE.sub(' ', text).strip()
-    
-    # Restaura highlights
-    for key, val in highlights.items():
-        text = text.replace(key, val)
-    
-    # Centralizar no termo buscado (CNPJ ou nome)
-    if search_term:
-        term_clean = RE_ALPHANUMERIC.sub('', search_term).upper()
+
+    excerpt = None
+    term_clean = RE_ALPHANUMERIC.sub('', search_term or '').upper()
+    if term_clean:
         text_upper = RE_ALPHANUMERIC.sub('', text).upper()
         pos = text_upper.find(term_clean)
         if pos >= 0:
@@ -71,20 +61,30 @@ def clean_abstract_for_dashboard(raw_text, search_term=''):
                         original_pos = i
                         break
                     char_count += 1
-            
             start = max(0, original_pos - 250)
             end = min(len(text), original_pos + 250)
-            excerpt = text[start:end]
+            excerpt = text[start:end].strip()
             if start > 0:
                 excerpt = '...' + excerpt
             if end < len(text):
                 excerpt = excerpt + '...'
-            return excerpt.strip()
-    
-    # Se não encontrou o termo, retorna os primeiros 500 chars
-    if len(text) > 500:
-        return text[:500] + '...'
-    return text
+    if excerpt is None:
+        excerpt = text[:500] + '...' if len(text) > 500 else text
+
+    # Escapa o texto e reaplica o destaque (termo buscado, tolerando a
+    # pontuação da máscara de CNPJ, e trechos já destacados pela fonte).
+    safe = html_module.escape(excerpt, quote=False)
+    patterns = []
+    if term_clean:
+        patterns.append(r'[^A-Za-z0-9]{0,3}'.join(re.escape(c) for c in term_clean))
+    for t in highlighted_terms:
+        if len(RE_ALPHANUMERIC.sub('', t)) >= 3:
+            patterns.append(re.escape(html_module.escape(t, quote=False)))
+    if patterns:
+        patterns.sort(key=len, reverse=True)
+        rx = re.compile('(' + '|'.join(patterns) + ')', re.IGNORECASE)
+        safe = rx.sub(lambda m: f"<span class='highlight' style='background:#FFA;'>{m.group(0)}</span>", safe)
+    return safe
 
 def get_real_mentions():
     """Retorna as menções salvas no banco de dados com altíssima performance e integridade."""

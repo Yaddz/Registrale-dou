@@ -25,6 +25,15 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from ai.provider import AIProvider
 from ai.config import prompt
 
+
+def _drop_empty_items(value):
+    """Remove itens nulos/vazios de listas vindas do YAML (ex.: `- ` sem valor),
+    que o painel pode gerar quando um campo é salvo em branco."""
+    if isinstance(value, list):
+        cleaned = [v for v in value if v is not None and str(v).strip() != ""]
+        return cleaned
+    return value
+
 class DBSelect(BaseModel):
     """Represents the structure of the 'from_db_select' field in the YAML file."""
 
@@ -241,6 +250,14 @@ class SearchConfig(BaseModel):
     )
 
 
+    @field_validator(
+        "terms", "terms_ignore", "department", "department_ignore",
+        "pubtype", mode="before"
+    )
+    @classmethod
+    def drop_empty_list_items(cls, value):
+        return _drop_empty_items(value)
+
     @model_validator(mode='after')
     def validate_search_criteria(self):
         """Validate that at least one search criterion is provided."""
@@ -309,6 +326,11 @@ class ReportConfig(BaseModel):
         default="Nenhum dos termos pesquisados foi encontrado nesta consulta",
         description="Texto a ser exibido quando não há resultados",
     )
+
+    @field_validator("emails", "notification", mode="before")
+    @classmethod
+    def drop_empty_list_items(cls, value):
+        return _drop_empty_items(value)
 
 class AIConfig(BaseModel):
     """Represents the AI configuration in the YAML file."""

@@ -251,6 +251,12 @@ class DouDigestDagGenerator:
         """
         schedule = specs.schedule
 
+        # DAGs temporárias do painel (busca mensal/ad-hoc via API DOU) só podem
+        # rodar quando disparadas: com o schedule padrão o Airflow criava uma
+        # execução agendada extra (sem trigger_date) ao despausar a DAG.
+        if schedule is None and specs.tags and "temp" in specs.tags:
+            return None
+
         if schedule is None:
             schedule = self._get_safe_schedule(
                 specs=specs, default_schedule=self.DEFAULT_SCHEDULE
@@ -279,10 +285,23 @@ class DouDigestDagGenerator:
                     if any(ext in filename for ext in [".yaml", ".yml"]):
                         files_list.extend([os.path.join(dirpath, filename)])
 
+        # Um YAML inválido não pode derrubar a geração de todas as outras DAGs
+        # (antes, um único arquivo quebrado impedia o carregamento de todas as
+        # rotinas, inclusive das DAGs temporárias da busca via API DOU).
+        errors = []
         for filepath in files_list:
-            dag_specs = self.parser(filepath).parse()
-            dag_id = dag_specs.id
-            globals()[dag_id] = self.create_dag(dag_specs, filepath)
+            try:
+                dag_specs = self.parser(filepath).parse()
+                dag_id = dag_specs.id
+                globals()[dag_id] = self.create_dag(dag_specs, filepath)
+            except Exception as exc:  # pylint: disable=broad-except
+                logging.error("Falha ao gerar DAG a partir de %s: %s", filepath, exc)
+                errors.append(f"{filepath}: {exc}")
+
+        if errors:
+            # Mantém o erro visível no Airflow (Import Errors) sem impedir as demais DAGs
+            import warnings
+            warnings.warn("YAML(s) inválido(s) ignorado(s):\n" + "\n\n".join(errors))
 
     def _parse_term_list(self, term_list):
         """Converte term_list para lista, tratando aspas duplas extras."""

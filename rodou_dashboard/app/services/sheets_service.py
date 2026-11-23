@@ -177,6 +177,8 @@ def parse_sheet_grid(values: list, orientation: str = 'rows', mapping: dict = No
         for row in values[1:]:
             record = {}
             for i, val in enumerate(row):
+                # Chave posicional (#1, #2...) permite mapear pelo número da coluna
+                record[f"#{i + 1}"] = str(val).strip()
                 if i < len(headers):
                     header_name = headers[i]
                     if header_name:
@@ -195,6 +197,8 @@ def parse_sheet_grid(values: list, orientation: str = 'rows', mapping: dict = No
         for col_idx in range(1, max_cols):
             record = {}
             for row_idx, row in enumerate(values):
+                if len(row) > col_idx:
+                    record[f"#{row_idx + 1}"] = str(row[col_idx]).strip()
                 if row_idx < len(headers):
                     header_name = headers[row_idx]
                     if header_name and len(row) > col_idx:
@@ -211,6 +215,10 @@ def parse_sheet_grid(values: list, orientation: str = 'rows', mapping: dict = No
     def _get_val(record, target_name, fallbacks=None):
         if not fallbacks:
             fallbacks = []
+        target_name = str(target_name).strip()
+        # Mapeamento pelo número da coluna/linha (ex.: "1" = primeira coluna)
+        if target_name.isdigit():
+            return record.get(f"#{int(target_name)}", "")
         if target_name in record and record[target_name]:
             return record[target_name]
         for k, v in record.items():

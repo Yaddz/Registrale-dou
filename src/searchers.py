@@ -155,9 +155,34 @@ class BaseSearcher(ABC):
         return text
 
 
+CNPJ_RAW_RE = re.compile(r"^[0-9A-Z]{12}[0-9]{2}$")
+
+
+def format_cnpj_for_dou(term: str) -> Optional[str]:
+    """Se `term` for um CNPJ sem máscara (14 caracteres, numérico ou no novo
+    formato alfanumérico), retorna-o no formato publicado no DOU
+    (XX.XXX.XXX/XXXX-XX). Caso contrário retorna None.
+
+    A busca da API do DOU (in.gov.br) não encontra CNPJs pesquisados só com
+    dígitos, pois o texto indexado contém a máscara com pontuação.
+    """
+    if not isinstance(term, str):
+        return None
+    raw = re.sub(r"[.\-/\s]", "", term.strip().strip('"')).upper()
+    if not CNPJ_RAW_RE.match(raw) or not any(c.isdigit() for c in raw[:12]):
+        return None
+    return f"{raw[0:2]}.{raw[2:5]}.{raw[5:8]}/{raw[8:12]}-{raw[12:14]}"
+
+
 class DOUSearcher(BaseSearcher):
     SPLIT_MATCH_RE = re.compile(r"(.*?)<.*?>(.*?)<.*?>")
     dou_hook = DOUHook()
+
+    def _cnpj_matched(self, cnpj_formatted: str, abstract: str) -> bool:
+        """Confere o CNPJ no trecho ignorando a pontuação da máscara."""
+        raw_cnpj = re.sub(r"[^0-9A-Z]", "", cnpj_formatted.upper())
+        text = re.sub(r"[^0-9A-Z]", "", self._clean_html(abstract or "").upper())
+        return raw_cnpj in text
 
     def exec_search(
         self,
@@ -220,17 +245,28 @@ class DOUSearcher(BaseSearcher):
             # To perform a search without specifying terms, use the broad search function
             search_term = "" if search_term == "*" else search_term
 
+            # CNPJs sem máscara não são encontrados pela API do DOU: pesquisa
+            # pelo formato publicado e com busca exata.
+            cnpj_query = format_cnpj_for_dou(search_term) if search_term else None
+            query_term = cnpj_query or search_term
+
             results = self._search_text_with_retry(
-                search_term=search_term,
+                search_term=query_term,
                 sections=[Section[s] for s in dou_sections],
                 reference_date=trigger_date,
                 search_date=SearchDate[search_date],
                 field=Field[field],
-                is_exact_search=is_exact_search,
+                is_exact_search=True if cnpj_query else is_exact_search,
             )
 
+            if cnpj_query:
+                if force_rematch:
+                    results = [
+                        r for r in results
+                        if self._cnpj_matched(cnpj_query, r.get("abstract"))
+                    ]
             # In cases where no terms are specified, skip the matching checks
-            if search_term != "":
+            elif search_term != "":
                 if ignore_signature_match:
                     results = [
                         r
