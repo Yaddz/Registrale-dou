@@ -140,6 +140,9 @@ dag:
     organs: []
     dou_sections:
     - SECAO_1
+    - SECAO_2
+    - SECAO_3
+    - EDICAO_EXTRA
     field: TUDO
     terms_ignore: []
     date: DIA

@@ -16,6 +16,7 @@ from airflow.sdk import Variable  # type: ignore
 
 # from typing import Optional
 from schemas import AIConfig, AISearchConfig  # type: ignore
+from utils.cnpj import cnpj_root, company_regex  # type: ignore
 from ai.runner import AIRunner
 
 from ro_dou_src.utils.open_search.client_open_search import OpenSearchClient  # type: ignore
@@ -577,8 +578,8 @@ class INLABSHook(BaseHook):
                 elif re.escape(norm_key) in normalized_text:
                     matches.append(key)
                 else:
-                    digits_key = re.sub(r'\D', '', norm_key)
-                    if len(digits_key) == 14 and digits_key in digits_text:
+                    root = cnpj_root(key)
+                    if root and company_regex(root).search(normalized_text):
                         matches.append(key)
 
             return ", ".join(sorted(set(matches), key=str.lower))
@@ -681,10 +682,9 @@ class INLABSHook(BaseHook):
                 if not term:
                     continue
                 norm_t = self._normalize(term)
-                digits_t = re.sub(r'\D', '', norm_t)
-                if len(digits_t) == 14:
-                    fmt_pattern = rf"{digits_t[:2]}\.?\s*{digits_t[2:5]}\.?\s*{digits_t[5:8]}/?\s*{digits_t[8:12]}-?\s*{digits_t[12:]}"
-                    patterns.append(fmt_pattern)
+                root = cnpj_root(term)
+                if root:
+                    patterns.append(company_regex(root).pattern)
                 else:
                     patterns.append(rf"\b{re.escape(norm_t)}\b")
 

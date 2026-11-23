@@ -16,6 +16,24 @@ RE_WHITESPACE = re.compile(r'\s+')
 RE_ALPHANUMERIC = re.compile(r'[^A-Za-z0-9]')
 RE_IS_ALPHANUMERIC = re.compile(r'[A-Za-z0-9]')
 
+def _cnpj_branch_regex(term_clean):
+    """Para um CNPJ (14 caracteres), regex que casa qualquer estabelecimento
+    da mesma raiz (matriz/filial), com ou sem pontuação. Espelha
+    src/utils/cnpj.py (o painel não importa o código das DAGs)."""
+    if not term_clean or not re.match(r'^[0-9A-Z]{12}[0-9]{2}$', term_clean):
+        return None
+    r = [re.escape(c) for c in term_clean[:8]]
+    core = rf"{''.join(r[0:2])}\.?\s*{''.join(r[2:5])}\.?\s*{''.join(r[5:8])}"
+    dotted = rf"{''.join(r[0:2])}\.{''.join(r[2:5])}\.{''.join(r[5:8])}"
+    # CNPJ completo de qualquer estabelecimento OU raiz pontuada isolada
+    # (ANVISA publica só a raiz; ",dd" excluído para não casar valores em R$)
+    return re.compile(
+        rf"(?<![0-9A-Za-z]){core}\s*/?\s*[0-9A-Za-z]{{4}}\s*-?\s*[0-9]{{2}}(?![0-9])"
+        rf"|(?<![0-9A-Za-z.]){dotted}(?![0-9A-Za-z]|\s*/\s*[0-9A-Za-z]|,\d)",
+        re.IGNORECASE,
+    )
+
+
 def normalize_cnpj(cnpj):
     if not cnpj: return ""
     return RE_ALPHANUMERIC.sub('', str(cnpj)).upper()
@@ -48,7 +66,19 @@ def clean_abstract_for_dashboard(raw_text, search_term=''):
 
     excerpt = None
     term_clean = RE_ALPHANUMERIC.sub('', search_term or '').upper()
-    if term_clean:
+    branch_rx = _cnpj_branch_regex(term_clean)
+    branch_match = branch_rx.search(text) if branch_rx else None
+    if branch_match:
+        # CNPJ: centraliza no estabelecimento citado (matriz ou filial da raiz)
+        original_pos = branch_match.start()
+        start = max(0, original_pos - 250)
+        end = min(len(text), original_pos + 250)
+        excerpt = text[start:end].strip()
+        if start > 0:
+            excerpt = '...' + excerpt
+        if end < len(text):
+            excerpt = excerpt + '...'
+    elif term_clean:
         text_upper = RE_ALPHANUMERIC.sub('', text).upper()
         pos = text_upper.find(term_clean)
         if pos >= 0:
@@ -75,7 +105,9 @@ def clean_abstract_for_dashboard(raw_text, search_term=''):
     # pontuação da máscara de CNPJ, e trechos já destacados pela fonte).
     safe = html_module.escape(excerpt, quote=False)
     patterns = []
-    if term_clean:
+    if branch_rx:
+        patterns.append(branch_rx.pattern)
+    elif term_clean:
         patterns.append(r'[^A-Za-z0-9]{0,3}'.join(re.escape(c) for c in term_clean))
     for t in highlighted_terms:
         if len(RE_ALPHANUMERIC.sub('', t)) >= 3:

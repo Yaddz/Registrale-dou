@@ -24,6 +24,9 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from hooks.dou_hook import DOUHook
 from hooks.inlabs_hook import INLABSHook
 from hooks.doesp_hook import DOESPHook
+from utils.cnpj import (
+    cnpj_root, format_root, format_cnpj, normalize_cnpj, find_company_mentions,
+)
 from utils.search_domains import (
     Field,
     SearchDate,
@@ -246,9 +249,12 @@ class DOUSearcher(BaseSearcher):
             # To perform a search without specifying terms, use the broad search function
             search_term = "" if search_term == "*" else search_term
 
-            # CNPJs sem máscara não são encontrados pela API do DOU: pesquisa
-            # pelo formato publicado e com busca exata.
-            cnpj_query = format_cnpj_for_dou(search_term) if search_term else None
+            # CNPJ: pesquisa pela RAIZ no formato publicado ("XX.XXX.XXX"), o que
+            # traz matriz e filiais numa única consulta (a API do DOU não acha
+            # CNPJs digitados só com números). Cada resultado é conferido no
+            # trecho e recebe o CNPJ do estabelecimento citado.
+            root = cnpj_root(search_term) if search_term else None
+            cnpj_query = format_root(root) if root else None
             query_term = cnpj_query or search_term
 
             results = self._search_text_with_retry(
@@ -261,11 +267,19 @@ class DOUSearcher(BaseSearcher):
             )
 
             if cnpj_query:
-                if force_rematch:
-                    results = [
-                        r for r in results
-                        if self._cnpj_matched(cnpj_query, r.get("abstract"))
-                    ]
+                own = format_cnpj(normalize_cnpj(search_term))
+                checked = []
+                for r in results:
+                    found = find_company_mentions(r.get("abstract") or "", root)
+                    if not found and force_rematch:
+                        continue
+                    # Estabelecimento citado: o próprio CNPJ, se aparecer;
+                    # senão a filial/matriz encontrada no trecho.
+                    r["matched_cnpj"] = own if (own in found or not found) else found[0]
+                    r["root_only"] = found == [format_root(root)]
+                    r["is_branch"] = bool(found) and own not in found and not r["root_only"]
+                    checked.append(r)
+                results = checked
             # In cases where no terms are specified, skip the matching checks
             elif search_term != "":
                 if ignore_signature_match:

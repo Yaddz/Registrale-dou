@@ -6,8 +6,13 @@ This module keeps the pre-OpenSearch implementation isolated while the main
 
 import copy
 import logging
+import os
 import re
+import sys
 from datetime import date
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from utils.cnpj import cnpj_root, company_sql_pattern  # noqa: E402
 
 import pandas as pd
 from airflow.providers.postgres.hooks.postgres import PostgresHook  # type: ignore
@@ -117,9 +122,10 @@ class INLABSSQLModeHook(INLABSHook):
                         term_str = str(term).strip()
                         if not term_str:
                             continue
-                        clean_digits = re.sub(r'\D', '', term_str)
-                        if len(clean_digits) == 14:
-                            fmt_pattern = rf"{clean_digits[:2]}\.?\s*{clean_digits[2:5]}\.?\s*{clean_digits[5:8]}/?\s*{clean_digits[8:12]}-?\s*{clean_digits[12:]}"
+                        root = cnpj_root(term_str)
+                        if root:
+                            # Qualquer estabelecimento (matriz/filial) da raiz
+                            fmt_pattern = company_sql_pattern(root)
                             key_conditions.append(
                                 rf"dou_inlabs.unaccent(texto) ~* dou_inlabs.unaccent('{fmt_pattern}')"
                             )
