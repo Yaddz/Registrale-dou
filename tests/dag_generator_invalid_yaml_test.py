@@ -26,10 +26,11 @@ INVALID_SCHEMA_YAML = """\
 dag:
   id: dag_com_schema_invalido
   description: DAG de teste
-  search:
-    terms:
-      - dados abertos
+  report:
+    emails:
+      - destination@economia.gov.br
 """
+# (fork: `report` é opcional; o schema inválido agora é a ausência de `search`)
 
 INVALID_SYNTAX_YAML = """\
 dag:

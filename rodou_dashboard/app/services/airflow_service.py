@@ -1,4 +1,6 @@
 import os
+import threading
+import time
 import requests
 import subprocess
 import json
@@ -38,11 +40,46 @@ def get_airflow_url():
     """Retorna a URL base do Airflow a partir das variáveis de ambiente."""
     return os.getenv('AIRFLOW_URL', 'http://localhost:8080')
 
+class AirflowTokenAuth(requests.auth.AuthBase):
+    """Autenticação por token JWT da API v2 do Airflow 3 (POST /auth/token).
+
+    O token é obtido sob demanda, mantido em cache e renovado ao expirar.
+    Pode ser usado como `auth=` em qualquer chamada `requests`.
+    """
+
+    _lock = threading.Lock()
+    _token = None
+    _expires_at = 0.0
+    TTL_SECONDS = 600
+
+    @classmethod
+    def _fetch_token(cls):
+        user = os.getenv('AIRFLOW_USER', 'airflow')
+        password = os.getenv('AIRFLOW_PASSWORD', 'airflow')
+        res = requests.post(
+            f"{get_airflow_url()}/auth/token",
+            json={"username": user, "password": password},
+            timeout=10,
+        )
+        res.raise_for_status()
+        return res.json()["access_token"]
+
+    @classmethod
+    def get_token(cls, force=False):
+        with cls._lock:
+            if force or not cls._token or time.time() >= cls._expires_at:
+                cls._token = cls._fetch_token()
+                cls._expires_at = time.time() + cls.TTL_SECONDS
+            return cls._token
+
+    def __call__(self, r):
+        r.headers['Authorization'] = f"Bearer {self.get_token()}"
+        return r
+
+
 def get_airflow_auth():
-    """Retorna a tupla de autenticação básica para a API do Airflow."""
-    user = os.getenv('AIRFLOW_USER', 'airflow')
-    password = os.getenv('AIRFLOW_PASSWORD', 'airflow')
-    return (user, password)
+    """Retorna o objeto de autenticação (token JWT) para a API v2 do Airflow."""
+    return AirflowTokenAuth()
 
 def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
     """Tenta disparar uma DAG no Airflow via API REST ou Docker CLI.
@@ -66,11 +103,11 @@ def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
         dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
         
         # 1. Unpause the DAG
-        patch_url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}"
+        patch_url = f"{airflow_url}/api/v2/dags/{dag_id_quoted}"
         requests.patch(patch_url, json={"is_paused": False}, auth=auth, timeout=5)
         
         # 2. Trigger the DAG
-        trigger_url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}/dagRuns"
+        trigger_url = f"{airflow_url}/api/v2/dags/{dag_id_quoted}/dagRuns"
         payload = {}
         unique_suffix = int(datetime.now().timestamp() * 1000)
         if logical_date:
@@ -80,6 +117,12 @@ def trigger_airflow_dag(dag_id, logical_date=None, **kwargs):
         else:
             payload["dag_run_id"] = f"manual__{dag_id}_{unique_suffix}"
             
+        # Airflow 3: as DAGs usam o logical_date como data de referência em
+        # execuções manuais (a data escolhida vai às 12:00, horário de Brasília).
+        if logical_date:
+            payload["logical_date"] = f"{logical_date}T12:00:00-03:00"
+        else:
+            payload["logical_date"] = trigger_time_iso
         payload["conf"] = {}
         if logical_date:
             payload["conf"]["trigger_date"] = logical_date
@@ -124,7 +167,7 @@ def toggle_airflow_dag(dag_id, is_paused=True):
         airflow_url = get_airflow_url()
         auth = get_airflow_auth()
         dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
-        patch_url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}"
+        patch_url = f"{airflow_url}/api/v2/dags/{dag_id_quoted}"
         res = requests.patch(patch_url, json={"is_paused": bool(is_paused)}, auth=auth, timeout=5)
         if res.status_code in (200, 201):
             action = "pausada" if is_paused else "ativada"
@@ -170,7 +213,7 @@ def wait_for_specific_dag_runs(dag_id, run_ids, max_wait=1800, poll_interval=4):
         for run_id in list(pending_runs):
             try:
                 run_id_quoted = urllib.parse.quote(str(run_id), safe='')
-                url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}/dagRuns/{run_id_quoted}"
+                url = f"{airflow_url}/api/v2/dags/{dag_id_quoted}/dagRuns/{run_id_quoted}"
                 r = requests.get(url, auth=auth, timeout=8)
                 if r.status_code == 200:
                     state = r.json().get('state')
@@ -199,7 +242,7 @@ def wait_for_dag_discovery(dag_id, max_wait=120, poll_interval=3):
     start = time.time()
     while (time.time() - start) < max_wait:
         try:
-            url = f"{airflow_url}/api/v1/dags/{dag_id_quoted}"
+            url = f"{airflow_url}/api/v2/dags/{dag_id_quoted}"
             r = requests.get(url, auth=auth, timeout=5)
             r = requests.get(url, auth=auth, timeout=5)
             if r.status_code == 200:
@@ -221,7 +264,7 @@ def wait_for_dags(dags_list, max_wait=1800, poll_interval=4):
         all_done = True
         for did in set(dags_list):
             try:
-                url = f"{airflow_url}/api/v1/dags/{did}/dagRuns?order_by=-execution_date&limit=30"
+                url = f"{airflow_url}/api/v2/dags/{did}/dagRuns?order_by=-run_after&limit=30"
                 r = requests.get(url, auth=auth, timeout=5)
                 if r.status_code == 200:
                     consecutive_errors = 0

@@ -143,16 +143,16 @@ def save_settings():
                         "extra": json.dumps({"from_email": smtp_from, "disable_tls": False})
                     }
                     
-                    res = requests.get(f"{airflow_url}/api/v1/connections/smtp_default", auth=auth, timeout=5)
+                    res = requests.get(f"{airflow_url}/api/v2/connections/smtp_default", auth=auth, timeout=5)
                     if res.status_code == 200:
                         requests.patch(
-                            f"{airflow_url}/api/v1/connections/smtp_default?update_mask=host,login,password,port,extra",
+                            f"{airflow_url}/api/v2/connections/smtp_default?update_mask=host,login,password,port,extra",
                             json=conn_payload,
                             auth=auth,
                             timeout=5
                         )
                     else:
-                        requests.post(f"{airflow_url}/api/v1/connections", json=conn_payload, auth=auth, timeout=5)
+                        requests.post(f"{airflow_url}/api/v2/connections", json=conn_payload, auth=auth, timeout=5)
                 except Exception as e:
                     import logging
                     logging.error(f"Falha ao atualizar conexão smtp_default no Airflow: {e}")
@@ -179,10 +179,10 @@ def save_settings():
                 auth = get_airflow_auth()
                 
                 try:
-                    res = requests.get(f"{airflow_url}/api/v1/connections/inlabs_portal", auth=auth, timeout=5)
+                    res = requests.get(f"{airflow_url}/api/v2/connections/inlabs_portal", auth=auth, timeout=5)
                     if res.status_code == 200:
                         requests.patch(
-                            f"{airflow_url}/api/v1/connections/inlabs_portal?update_mask=login,password", 
+                            f"{airflow_url}/api/v2/connections/inlabs_portal?update_mask=login,password", 
                             json={"login": inlabs_user, "password": inlabs_pass}, 
                             auth=auth,
                             timeout=5
@@ -195,7 +195,7 @@ def save_settings():
                             "login": inlabs_user,
                             "password": inlabs_pass
                         }
-                        requests.post(f"{airflow_url}/api/v1/connections", json=payload, auth=auth, timeout=5)
+                        requests.post(f"{airflow_url}/api/v2/connections", json=payload, auth=auth, timeout=5)
                 except Exception as e:
                     import logging
                     logging.error(f"Failed to update Airflow connection inlabs_portal: {e}")

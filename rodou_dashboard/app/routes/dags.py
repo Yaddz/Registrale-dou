@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from .auth import login_required
 from ..models import db, Mention, Company, SyncHistory
 from ..services.dag_config_service import get_routines, get_dag_confs_path
-from ..services.airflow_service import trigger_airflow_dag
+from ..services.airflow_service import trigger_airflow_dag, get_airflow_auth
 
 # Assumindo a mesma estrutura
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -79,7 +79,7 @@ def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=
     # 1. Tentar obter via Airflow REST API XCom
     if dag_run_id:
         try:
-            ti_url = f"{airflow_url}/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances"
+            ti_url = f"{airflow_url}/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances"
             res_ti = requests.get(ti_url, auth=auth, timeout=10)
             if res_ti.status_code == 200:
                 task_instances = res_ti.json().get('task_instances', [])
@@ -88,7 +88,7 @@ def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=
                     if 'exec_search' in ti.get('task_id', '') and ti.get('state') == 'success'
                 ]
                 for tid in search_tasks:
-                    xcom_url = f"{airflow_url}/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{tid}/xcomEntries/return_value"
+                    xcom_url = f"{airflow_url}/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{tid}/xcomEntries/return_value"
                     res_xc = requests.get(xcom_url, auth=auth, timeout=10)
                     if res_xc.status_code == 200:
                         xc_val = res_xc.json().get('value')
@@ -565,8 +565,8 @@ def api_configure_main_dag():
             try:
                 import requests
                 import json
-                airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-webserver:8080')
-                auth = ("airflow", "airflow")
+                airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-api-server:8080')
+                auth = get_airflow_auth()
                 
                 conn_payload = {
                     "connection_id": "smtp_default",
@@ -578,16 +578,16 @@ def api_configure_main_dag():
                     "extra": json.dumps({"from_email": from_email, "disable_tls": False})
                 }
                 
-                res = requests.get(f"{airflow_url}/api/v1/connections/smtp_default", auth=auth, timeout=5)
+                res = requests.get(f"{airflow_url}/api/v2/connections/smtp_default", auth=auth, timeout=5)
                 if res.status_code == 200:
                     requests.patch(
-                        f"{airflow_url}/api/v1/connections/smtp_default?update_mask=host,login,password,port,extra",
+                        f"{airflow_url}/api/v2/connections/smtp_default?update_mask=host,login,password,port,extra",
                         json=conn_payload,
                         auth=auth,
                         timeout=5
                     )
                 else:
-                    requests.post(f"{airflow_url}/api/v1/connections", json=conn_payload, auth=auth, timeout=5)
+                    requests.post(f"{airflow_url}/api/v2/connections", json=conn_payload, auth=auth, timeout=5)
             except Exception as e:
                 import logging
                 logging.error(f"Falha ao atualizar conexão smtp_default no Airflow via assistente: {e}")
@@ -721,7 +721,7 @@ def delete_routine(file):
                 from ..services.airflow_service import get_airflow_auth, get_airflow_url
                 auth = get_airflow_auth()
                 airflow_url = get_airflow_url()
-                requests.delete(f"{airflow_url}/api/v1/dags/{dag_id}", auth=auth, timeout=5)
+                requests.delete(f"{airflow_url}/api/v2/dags/{dag_id}", auth=auth, timeout=5)
             except Exception:
                 pass
 
@@ -856,7 +856,7 @@ def trigger_routine(file):
                     did_quoted = urllib.parse.quote(str(did), safe='')
                     if run_id:
                         run_id_quoted = urllib.parse.quote(str(run_id), safe='')
-                        url = f"{airflow_url}/api/v1/dags/{did_quoted}/dagRuns/{run_id_quoted}"
+                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns/{run_id_quoted}"
                         res = requests.get(url, auth=auth, timeout=5)
                         if res.status_code == 200:
                             st = res.json().get('state')
@@ -867,7 +867,7 @@ def trigger_routine(file):
                             all_done = False
                             break
                     else:
-                        url = f"{airflow_url}/api/v1/dags/{did_quoted}/dagRuns?order_by=-execution_date&limit=10"
+                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns?order_by=-run_after&limit=10"
                         res = requests.get(url, auth=auth, timeout=5)
                         if res.status_code == 200:
                             runs = res.json().get('dag_runs', [])
@@ -1111,7 +1111,7 @@ def trigger_routine(file):
                             from ..services.airflow_service import get_airflow_auth, get_airflow_url
                             auth = get_airflow_auth()
                             airflow_url = get_airflow_url()
-                            requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=5)
+                            requests.delete(f"{airflow_url}/api/v2/dags/{temp_dag_id}", auth=auth, timeout=5)
                         except Exception:
                             pass
                         try:
@@ -1543,7 +1543,7 @@ def api_trigger_monthly():
                 for did in set(dags_list):
                     try:
                         did_quoted = urllib.parse.quote(str(did), safe='')
-                        url = f"{airflow_url}/api/v1/dags/{did_quoted}/dagRuns?order_by=-execution_date&limit=30"
+                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns?order_by=-run_after&limit=30"
                         r = requests.get(url, auth=auth, timeout=5)
                         if r.status_code == 200:
                             consecutive_errors = 0
@@ -1572,7 +1572,7 @@ def api_trigger_monthly():
             interval = 5
             while elapsed < max_wait:
                 try:
-                    url = f"{airflow_url}/api/v1/dags/{dag_id}"
+                    url = f"{airflow_url}/api/v2/dags/{dag_id}"
                     r = requests.get(url, auth=auth, timeout=5)
                     if r.status_code == 200:
                         return True
@@ -1933,7 +1933,7 @@ def api_trigger_monthly():
                         from ..services.airflow_service import get_airflow_auth, get_airflow_url
                         auth = get_airflow_auth()
                         airflow_url = get_airflow_url()
-                        requests.delete(f"{airflow_url}/api/v1/dags/{temp_dag_id}", auth=auth, timeout=5)
+                        requests.delete(f"{airflow_url}/api/v2/dags/{temp_dag_id}", auth=auth, timeout=5)
                     except Exception:
                         pass
                     try:

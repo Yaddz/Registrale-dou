@@ -237,7 +237,7 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
                             import urllib.parse
                             dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
                             r_check = requests.get(
-                                f"{airflow_url}/api/v1/dags/{dag_id_quoted}/dagRuns?order_by=-execution_date&limit=15",
+                                f"{airflow_url}/api/v2/dags/{dag_id_quoted}/dagRuns?order_by=-run_after&limit=15",
                                 auth=auth,
                                 timeout=5
                             )
@@ -263,7 +263,7 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
                     try:
                         auth = get_airflow_auth()
                         airflow_url = get_airflow_url()
-                        requests.delete(f"{airflow_url}/api/v1/dags/{dag_id}", auth=auth, timeout=5)
+                        requests.delete(f"{airflow_url}/api/v2/dags/{dag_id}", auth=auth, timeout=5)
                     except Exception:
                         pass
                         
