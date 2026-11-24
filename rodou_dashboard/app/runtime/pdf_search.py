@@ -120,24 +120,54 @@ def _pdf_folder() -> Path:
     return folder
 
 
-def ensure_day_pdfs(date_iso: str, section_keys: List[str]) -> Tuple[List[Tuple[str, int, Path]], List[str]]:
+def ensure_day_pdfs(
+    date_iso: str,
+    section_keys: List[str],
+    *,
+    layout: Optional[str] = None,
+) -> Tuple[List[Tuple[str, int, Path]], List[str]]:
     """Baixa (se preciso) os PDFs do dia e devolve ``[(seção, jornal, caminho)]`` e erros."""
-    from .pdf_archiver import archive_date_pdfs
+    from .pdf_archiver import (
+        DEFAULT_LAYOUT,
+        archive_date_pdfs,
+        build_pdf_target_path,
+        get_pdf_archive_config,
+        normalize_pdf_layout,
+    )
 
+    cfg = get_pdf_archive_config()
+    enabled = cfg.get("enabled", True)
     folder = _pdf_folder()
-    res = archive_date_pdfs(date_iso, folder=folder, sections=section_keys)
+    active_layout = (
+        normalize_pdf_layout(layout if layout is not None else cfg.get("layout"))
+        if enabled
+        else DEFAULT_LAYOUT
+    )
+
+    res = archive_date_pdfs(date_iso, folder=folder, sections=section_keys, layout=active_layout)
     errors = list(res.get("errors") or [])
 
-    day_dir = folder / date_iso[:4] / date_iso[5:7]
+    candidate_dirs: List[Path] = []
+    for sec in section_keys:
+        parent_dir = build_pdf_target_path(folder, date_iso, sec, layout=active_layout).parent
+        if parent_dir not in candidate_dirs:
+            candidate_dirs.append(parent_dir)
+
+    seen_paths: set[Path] = set()
     files: List[Tuple[str, int, Path]] = []
-    if day_dir.is_dir():
+    for day_dir in candidate_dirs:
+        if not day_dir.is_dir():
+            continue
         for path in sorted(day_dir.iterdir()):
+            if path in seen_paths:
+                continue
             m = _FILE_RE.match(path.name)
             if not m or m.group(1) != date_iso:
                 continue
             sec = "extra" if m.group(2) == "Extra" else m.group(2)
             if sec not in section_keys:
                 continue
+            seen_paths.add(path)
             jornal = _BASE_JORNAL[sec]
             if sec == "extra" and m.group(3):
                 jornal += ord(m.group(3)) - ord("A")

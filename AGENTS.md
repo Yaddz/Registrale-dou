@@ -12,7 +12,8 @@ O Registrale-DOU monitora publicações do Diário Oficial da União (DOU) que c
 
 - Um único analista, numa máquina **Windows** com permissão de administrador. Hospedar em servidor foi descartado.
 - Aplicativo Windows instalável (`.exe` via Inno Setup + Python 3.11 *embeddable*), sem Docker e sem Airflow, conforme `plano/PLANO.md`.
-- O analista guarda o PDF integral do DOU numa pasta local (`Documentos\Registrale\DOU` por padrão) como registro.
+- O analista guarda o PDF integral do DOU numa pasta local (`Documentos\Registrale\DOU` por padrão, configurável no primeiro uso e em Configurações nos layouts `ano_mes`, `ano` ou `nenhum`) como registro.
+- O painel abre em janela própria (`pywebview`/WebView2) controlada pelo `windows/launcher.pyw` na bandeja do sistema, com fallback automático para o navegador padrão.
 - O projeto **precisa continuar recebendo atualizações do Ro-DOU oficial** (remote `upstream`). Isso restringe o quanto se pode alterar em `src/` (seção 4).
 
 ## 2. Mapa do repositório

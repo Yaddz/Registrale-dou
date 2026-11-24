@@ -145,8 +145,103 @@ def _open_path(path: Path) -> None:
         webbrowser.open(path.as_uri())
 
 
+class RegistraleJsApi:
+    """Ponte JS exposta ao painel dentro da janela pywebview."""
+
+    def __init__(self) -> None:
+        self._window: Any = None
+
+    def attach_window(self, window: Any) -> None:
+        self._window = window
+
+    def pick_folder(self, initial_dir: str = "") -> str | None:
+        if self._window is None:
+            return None
+        try:
+            import webview  # type: ignore
+
+            dialog_type = getattr(getattr(webview, "FileDialog", None), "FOLDER", None)
+            if dialog_type is None:
+                dialog_type = getattr(webview, "FOLDER_DIALOG", 20)
+            kwargs: dict[str, Any] = {}
+            if initial_dir and Path(initial_dir).is_dir():
+                kwargs["directory"] = initial_dir
+            result = self._window.create_file_dialog(dialog_type, **kwargs)
+            if result and len(result) > 0:
+                return str(result[0])
+        except Exception as exc:
+            logger.warning("Falha ao abrir seletor nativo de pastas: %s", exc)
+        return None
+
+    def open_external(self, url: str) -> bool:
+        s = str(url or "").strip()
+        if s.startswith(("http://", "https://")):
+            webbrowser.open(s)
+            return True
+        return False
+
+
+def get_icon_path() -> Path | None:
+    """Retorna o caminho de ``windows/registrale.ico`` se existir."""
+    ico = Path(__file__).resolve().with_name("registrale.ico")
+    return ico if ico.is_file() else None
+
+
+_WM_SETICON = 0x0080
+_ICON_SMALL = 0
+_ICON_BIG = 1
+_IMAGE_ICON = 1
+_LR_LOADFROMFILE = 0x0010
+
+
+def _native_window_handle(window: Any, title: str) -> int:
+    """Handle (HWND) da janela do pywebview: via ``window.native`` ou pelo título."""
+    native = getattr(window, "native", None)
+    handle = getattr(native, "Handle", None)
+    if handle is not None:
+        try:
+            return int(handle.ToInt64()) if hasattr(handle, "ToInt64") else int(handle)
+        except Exception:
+            pass
+    try:
+        return int(ctypes.windll.user32.FindWindowW(None, title) or 0)  # type: ignore[attr-defined]
+    except Exception:
+        return 0
+
+
+def apply_window_icon(window: Any, ico_path: Path | None = None, title: str = "Registrale-DOU") -> bool:
+    """Aplica ``registrale.ico`` à barra de título e ao Alt+Tab da janela própria.
+
+    No Windows o pywebview (WinForms/WebView2) ignora ``webview.start(icon=...)`` e
+    herda o ícone do ``pythonw.exe``; por isso o ícone é enviado direto à janela
+    com ``WM_SETICON`` (tamanhos pequeno e grande).
+    """
+    if os.name != "nt":
+        return False
+    ico = ico_path or get_icon_path()
+    if ico is None:
+        return False
+    hwnd = _native_window_handle(window, title)
+    if not hwnd:
+        logger.warning("Janela '%s' não encontrada para aplicar o ícone.", title)
+        return False
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        ok = False
+        for kind, metric in ((_ICON_SMALL, 49), (_ICON_BIG, 11)):  # SM_CXSMICON, SM_CXICON
+            size = int(user32.GetSystemMetrics(metric) or 0)
+            hicon = user32.LoadImageW(None, str(ico), _IMAGE_ICON, size, size, _LR_LOADFROMFILE)
+            if hicon:
+                user32.SendMessageW(hwnd, _WM_SETICON, kind, hicon)
+                ok = True
+        return ok
+    except Exception as exc:
+        logger.warning("Falha ao aplicar o ícone na janela (%s).", exc)
+        return False
+
+
 class RegistraleTrayController:
-    """Controla o ciclo de vida do servidor local e as ações da bandeja."""
+    """Controla o ciclo de vida do servidor local, janela própria e bandeja."""
 
     def __init__(
         self,
@@ -162,6 +257,9 @@ class RegistraleTrayController:
         self._lock = threading.Lock()
         self._stopping = False
         self.icon: Any = None
+        self._window: Any = None
+        self._use_webview = False
+        self._js_api = RegistraleJsApi()
 
     def is_server_running(self) -> bool:
         with self._lock:
@@ -192,7 +290,7 @@ class RegistraleTrayController:
             timeout_seconds=25.0,
             is_alive=self.is_server_running,
         )
-        if ready and self.open_browser_on_start:
+        if ready and self.open_browser_on_start and not self._use_webview:
             self.open_panel()
         return ready
 
@@ -214,6 +312,14 @@ class RegistraleTrayController:
                 pass
 
     def open_panel(self, *_args) -> None:
+        if self._window is not None and self._use_webview:
+            try:
+                self._window.show()
+                self._window.restore()
+                apply_window_icon(self._window)
+                return
+            except Exception as exc:
+                logger.warning("Não foi possível reabrir janela pywebview (%s); abrindo navegador.", exc)
         webbrowser.open(self.panel_url)
 
     def show_status(self, *_args) -> None:
@@ -242,12 +348,80 @@ class RegistraleTrayController:
 
     def quit_app(self, *_args) -> None:
         self._stopping = True
+        if self._window is not None:
+            try:
+                self._window.destroy()
+            except Exception:
+                pass
         self.stop_server()
         if self.icon is not None:
             try:
                 self.icon.stop()
             except Exception:
                 pass
+
+    def _on_window_closing(self) -> bool:
+        """Ao clicar no X, esconde a janela em vez de encerrar o app (retorna False para cancelar fechamento)."""
+        if self._stopping:
+            return True
+        if self._window is not None:
+            try:
+                self._window.hide()
+            except Exception:
+                pass
+        return False
+
+    def _run_webview(self) -> bool:
+        """Tenta abrir a janela própria via pywebview/WebView2. Retorna False se precisar de fallback."""
+        try:
+            import webview  # type: ignore
+        except Exception as exc:
+            logger.warning("pywebview indisponível (%s); usando navegador padrão.", exc)
+            return False
+
+        try:
+            if hasattr(webview, "settings"):
+                webview.settings["ALLOW_DOWNLOADS"] = True
+
+            storage_dir = get_data_dir(create=True) / "webview"
+            storage_dir.mkdir(parents=True, exist_ok=True)
+
+            window = webview.create_window(
+                "Registrale-DOU",
+                url=self.panel_url,
+                width=1280,
+                height=820,
+                min_size=(960, 640),
+                hidden=True,
+                js_api=self._js_api,
+            )
+            self._window = window
+            self._js_api.attach_window(window)
+            self._use_webview = True
+            window.events.closing += self._on_window_closing
+            window.events.shown += lambda: apply_window_icon(window)
+
+            ico_path = get_icon_path()
+            start_kwargs: dict[str, Any] = {
+                "private_mode": False,
+                "storage_path": str(storage_dir),
+            }
+            if os.name == "nt":
+                start_kwargs["gui"] = "edgechromium"
+            if ico_path is not None:
+                start_kwargs["icon"] = str(ico_path)
+
+            try:
+                webview.start(**start_kwargs)
+            except TypeError:
+                start_kwargs.pop("icon", None)
+                webview.start(**start_kwargs)
+            return True
+        except Exception as exc:
+            logger.warning("Falha ao iniciar janela WebView2 (%s); abrindo no navegador padrão.", exc)
+            self._use_webview = False
+            self._window = None
+            return False
 
     def run(self) -> int:
         import pystray
@@ -260,8 +434,16 @@ class RegistraleTrayController:
                     "Não foi possível iniciar o servidor local.\n"
                     "Clique com o botão direito no ícone da bandeja e selecione 'Ver logs' para detalhes.",
                 )
-
-        threading.Thread(target=_boot, daemon=True).start()
+            elif ok and self._use_webview and self._window is not None:
+                try:
+                    self._window.load_url(self.panel_url)
+                    if self.open_browser_on_start:
+                        self._window.show()
+                        apply_window_icon(self._window)
+                except Exception as exc:
+                    logger.warning("Falha ao carregar URL na janela (%s); abrindo navegador.", exc)
+                    if self.open_browser_on_start:
+                        webbrowser.open(self.panel_url)
 
         menu = pystray.Menu(
             pystray.MenuItem("Abrir painel", self.open_panel, default=True),
@@ -277,7 +459,21 @@ class RegistraleTrayController:
             "Registrale-DOU",
             menu,
         )
-        self.icon.run()
+
+        threading.Thread(target=_boot, daemon=True).start()
+
+        # Bandeja em background para liberar a thread principal para o WebView2 (pywebview).
+        if hasattr(self.icon, "run_detached"):
+            self.icon.run_detached()
+            webview_ok = self._run_webview()
+            if not webview_ok:
+                if self.open_browser_on_start and check_server_health(host=self.host, port=self.port):
+                    webbrowser.open(self.panel_url)
+                while not self._stopping:
+                    time.sleep(0.5)
+        else:
+            self.icon.run()
+
         self.stop_server()
         return 0
 

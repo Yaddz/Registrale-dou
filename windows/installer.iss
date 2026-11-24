@@ -2,7 +2,7 @@
 ; Compilado por windows/build.ps1 via ISCC.exe /DAppVersion=x.y.z
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 
 #ifndef StageDir
@@ -18,6 +18,8 @@
 #define AppURL "https://github.com/Yaddz/Registrale-dou"
 
 [Setup]
+; Avisa o Explorer (SHChangeNotify) ao terminar, para atualizar ícones de atalhos já existentes.
+ChangesAssociations=yes
 AppId={{8F6D54A2-7B9E-4C13-9A41-2C6E7B5D1F08}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -76,6 +78,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Paramete
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\windows\launcher.pyw"" --no-browser"; WorkingDir: "{app}\app"; IconFilename: "{app}\app\windows\registrale.ico"; Tasks: startupicon
 
 [Run]
+; Renova o cache de ícones do Windows para o atalho mostrar o ícone novo depois de atualizar.
+Filename: "{sys}\ie4uinit.exe"; Parameters: "-show"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\windows\launcher.pyw"""; WorkingDir: "{app}\app"; Description: "Iniciar o {#AppName} agora"; Flags: nowait postinstall skipifsilent
 
 [Code]

@@ -55,7 +55,7 @@ def index():
     is_master = session['user']['role'] == 'master'
     
     from ..runtime.paths import get_default_pdf_dir
-    from ..runtime.pdf_archiver import DEFAULT_SECTIONS
+    from ..runtime.pdf_archiver import DEFAULT_LAYOUT, DEFAULT_SECTIONS
 
     settings = {
         "smtp": {},
@@ -66,6 +66,7 @@ def index():
         "pdf_archive": {
             "enabled": True,
             "folder": str(get_default_pdf_dir(create=False)),
+            "layout": DEFAULT_LAYOUT,
             "sections": list(DEFAULT_SECTIONS),
         },
     }

@@ -21,6 +21,8 @@ import logging
 import os
 from pathlib import Path
 import re
+import shutil
+import sys
 import threading
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -28,7 +30,7 @@ from urllib.parse import urljoin
 
 import requests
 
-from .paths import get_default_pdf_dir
+from .paths import get_base_dir, get_default_pdf_dir
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,16 @@ _SECTION_FILE_LABELS: Dict[str, str] = {
 }
 
 DEFAULT_SECTIONS: List[str] = ["1", "2", "3", "extra"]
+LAYOUT_ANO_MES = "ano_mes"
+LAYOUT_ANO = "ano"
+LAYOUT_NENHUM = "nenhum"
+DEFAULT_LAYOUT = LAYOUT_ANO_MES
+VALID_LAYOUTS: Tuple[str, ...] = (LAYOUT_ANO_MES, LAYOUT_ANO, LAYOUT_NENHUM)
+
+_PDF_FILENAME_RE = re.compile(
+    r"^DOU_(\d{4}-\d{2}-\d{2})_Secao(1|2|3|Extra)(?:_([A-Za-z0-9_-]+))?\.pdf$"
+)
+
 _ARCHIVE_LOCK = threading.Lock()
 _ARCHIVE_RUNNING = False
 
@@ -117,13 +129,96 @@ def normalize_sections(sections: Optional[Iterable[Any]]) -> List[str]:
     return seen or list(DEFAULT_SECTIONS)
 
 
+def normalize_pdf_layout(raw_layout: Any) -> str:
+    """Normaliza o layout de pastas dos PDFs (``ano_mes``, ``ano`` ou ``nenhum``)."""
+    s = str(raw_layout or "").strip().lower()
+    if s in VALID_LAYOUTS:
+        return s
+    return DEFAULT_LAYOUT
+
+
+def _is_unc_path(raw: str) -> bool:
+    return raw.startswith("\\\\") or raw.startswith("//")
+
+
+def _program_dirs() -> List[Path]:
+    """Retorna os diretórios da instalação do programa que não podem ser usados para PDFs."""
+    dirs: List[Path] = []
+    try:
+        base_dir = get_base_dir().resolve()
+        dirs.append(base_dir)
+        parent = base_dir.parent
+        if (parent / "python").is_dir() and (parent / "app").is_dir():
+            dirs.append(parent)
+    except Exception:
+        pass
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        if exe_dir.name.lower() == "python" and (exe_dir.parent / "app").is_dir():
+            dirs.append(exe_dir.parent)
+    except Exception:
+        pass
+    return dirs
+
+
+def validate_pdf_folder(raw_folder: Any) -> Dict[str, Any]:
+    """Valida a pasta de destino dos PDFs: caminho absoluto, gravável, sem traversal e fora do programa."""
+    folder_str = str(raw_folder or "").strip()
+    if not folder_str:
+        raise ValueError("Informe uma pasta de destino para os PDFs.")
+
+    raw_parts = [p for p in re.split(r"[\\/]+", folder_str) if p]
+    if ".." in raw_parts:
+        raise ValueError("Caminho inválido: '..' não é permitido na pasta dos PDFs.")
+
+    is_unc = _is_unc_path(folder_str)
+    p = Path(folder_str).expanduser()
+    if not p.is_absolute():
+        raise ValueError("A pasta de PDFs deve ser um caminho absoluto.")
+
+    try:
+        resolved = p.resolve(strict=False)
+    except OSError as exc:
+        if is_unc:
+            raise ValueError(f"Caminho de rede inacessível: {folder_str} ({exc})") from exc
+        raise ValueError(f"Caminho inválido para a pasta dos PDFs: {exc}") from exc
+
+    for prog_dir in _program_dirs():
+        if resolved == prog_dir or resolved.is_relative_to(prog_dir):
+            raise ValueError("A pasta de PDFs não pode ser a pasta de instalação do programa.")
+
+    try:
+        resolved.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        if is_unc:
+            raise ValueError(f"Caminho de rede inacessível ou sem permissão de escrita: {folder_str} ({exc})") from exc
+        raise ValueError(f"Não foi possível acessar ou criar a pasta dos PDFs: {exc}") from exc
+
+    probe = resolved / f".registrale_write_test_{os.getpid()}_{threading.get_ident()}"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+    except OSError as exc:
+        if is_unc:
+            raise ValueError(f"Caminho de rede sem permissão de escrita: {folder_str} ({exc})") from exc
+        raise ValueError(f"Sem permissão de escrita na pasta escolhida ({resolved}): {exc}") from exc
+    finally:
+        if probe.exists():
+            try:
+                probe.unlink()
+            except OSError:
+                pass
+
+    return {"valid": True, "path": str(resolved), "is_unc": is_unc}
+
+
 def build_pdf_target_path(
     base_folder: Path,
     date_iso: str,
     section_key: str,
     extra_suffix: Optional[str] = None,
+    layout: Optional[str] = None,
 ) -> Path:
-    """Retorna ``<base_folder>/<AAAA>/<MM>/DOU_<AAAA-MM-DD>_SecaoN.pdf``."""
+    """Retorna o caminho do PDF conforme o layout (``ano_mes``, ``ano`` ou ``nenhum``)."""
     dt = datetime.strptime(date_iso, "%Y-%m-%d")
     label = _SECTION_FILE_LABELS.get(section_key, f"Secao{section_key}")
     if extra_suffix:
@@ -131,7 +226,13 @@ def build_pdf_target_path(
         if safe_suffix:
             label = f"{label}_{safe_suffix}"
     filename = f"DOU_{date_iso}_{label}.pdf"
-    return Path(base_folder) / dt.strftime("%Y") / dt.strftime("%m") / filename
+    active_layout = normalize_pdf_layout(layout)
+    base = Path(base_folder)
+    if active_layout == LAYOUT_NENHUM:
+        return base / filename
+    if active_layout == LAYOUT_ANO:
+        return base / dt.strftime("%Y") / filename
+    return base / dt.strftime("%Y") / dt.strftime("%m") / filename
 
 
 def is_valid_pdf_bytes(payload: bytes, min_bytes: int = 128) -> bool:
@@ -188,6 +289,7 @@ def get_pdf_archive_config() -> Dict[str, Any]:
     cfg: Dict[str, Any] = {
         "enabled": True,
         "folder": default_folder,
+        "layout": DEFAULT_LAYOUT,
         "sections": list(DEFAULT_SECTIONS),
     }
     try:
@@ -203,6 +305,8 @@ def get_pdf_archive_config() -> Dict[str, Any]:
                 folder_raw = str(raw.get("folder") or "").strip()
                 if folder_raw:
                     cfg["folder"] = str(Path(folder_raw).expanduser())
+                if "layout" in raw:
+                    cfg["layout"] = normalize_pdf_layout(raw.get("layout"))
                 if "sections" in raw and isinstance(raw["sections"], list):
                     cfg["sections"] = normalize_sections(raw["sections"])
     except Exception:
@@ -319,6 +423,7 @@ def _try_archive_via_inlabs(
     sections: List[str],
     base_folder: Path,
     *,
+    layout: Optional[str] = None,
     session_factory: Callable[[], requests.Session] = requests.Session,
     sleep_fn: Callable[[float], None] = time.sleep,
 ) -> Optional[Dict[str, Any]]:
@@ -372,7 +477,7 @@ def _try_archive_via_inlabs(
         any_found = True
         for idx, href in enumerate(links):
             suffix = None if (sec != "extra" or idx == 0) else chr(ord("A") + idx)
-            target = build_pdf_target_path(base_folder, date_iso, sec, extra_suffix=suffix)
+            target = build_pdf_target_path(base_folder, date_iso, sec, extra_suffix=suffix, layout=layout)
             if is_valid_pdf_file(target):
                 continue
             dl_url = urljoin(base_url, f"index.php{href}" if href.startswith("?") else href)
@@ -539,6 +644,7 @@ def archive_date_pdfs(
     *,
     folder: Optional[Path | str] = None,
     sections: Optional[Iterable[Any]] = None,
+    layout: Optional[str] = None,
     prefer_inlabs: bool = True,
     session_factory: Callable[[], requests.Session] = requests.Session,
     max_workers: int = 4,
@@ -554,6 +660,7 @@ def archive_date_pdfs(
     base_folder = Path(folder) if folder is not None else Path(cfg["folder"])
     base_folder.mkdir(parents=True, exist_ok=True)
     target_sections = normalize_sections(sections if sections is not None else cfg["sections"])
+    active_layout = normalize_pdf_layout(layout if layout is not None else cfg.get("layout"))
 
     saved_files: List[str] = []
     skipped_files: List[str] = []
@@ -566,13 +673,13 @@ def archive_date_pdfs(
             # 1. Verifica idempotência: o que já existe e é válido é pulado
             for sec in target_sections:
                 if sec != "extra":
-                    target = build_pdf_target_path(base_folder, date_iso, sec)
+                    target = build_pdf_target_path(base_folder, date_iso, sec, layout=active_layout)
                     if is_valid_pdf_file(target):
                         skipped_files.append(str(target))
                     else:
                         missing_sections.append(sec)
                 else:
-                    target_extra = build_pdf_target_path(base_folder, date_iso, "extra")
+                    target_extra = build_pdf_target_path(base_folder, date_iso, "extra", layout=active_layout)
                     if is_valid_pdf_file(target_extra):
                         skipped_files.append(str(target_extra))
                     else:
@@ -586,6 +693,7 @@ def archive_date_pdfs(
                     date_iso,
                     missing_sections,
                     base_folder,
+                    layout=active_layout,
                     session_factory=session_factory,
                     sleep_fn=sleep_fn,
                 )
@@ -595,7 +703,7 @@ def archive_date_pdfs(
                     errors.extend(inlabs_res["errors"])
                     still_missing: List[str] = []
                     for sec in missing_sections:
-                        target = build_pdf_target_path(base_folder, date_iso, sec)
+                        target = build_pdf_target_path(base_folder, date_iso, sec, layout=active_layout)
                         if not is_valid_pdf_file(target):
                             still_missing.append(sec)
                     missing_sections = still_missing
@@ -608,7 +716,7 @@ def archive_date_pdfs(
                     for idx, j_code in enumerate(jornal_codes):
                         suffix = None if (sec != "extra" or idx == 0) else chr(ord("A") + idx)
                         target = build_pdf_target_path(
-                            base_folder, date_iso, sec, extra_suffix=suffix
+                            base_folder, date_iso, sec, extra_suffix=suffix, layout=active_layout
                         )
                         if is_valid_pdf_file(target):
                             skipped_files.append(str(target))
@@ -655,6 +763,7 @@ def archive_date_pdfs(
                 "date_br": date_br,
                 "source": used_source,
                 "folder": str(base_folder),
+                "layout": active_layout,
                 "saved_files": saved_files,
                 "skipped_files": skipped_files,
                 "errors": errors,
@@ -675,7 +784,7 @@ def archive_date_pdfs(
                         "errors": errors,
                     }
                 )
-                link_mentions_to_pdfs(date_iso=date_iso, folder=base_folder)
+                link_mentions_to_pdfs(date_iso=date_iso, folder=base_folder, layout=active_layout)
 
             return result
         finally:
@@ -688,6 +797,7 @@ def archive_month_pdfs(
     *,
     folder: Optional[Path | str] = None,
     sections: Optional[Iterable[Any]] = None,
+    layout: Optional[str] = None,
     prefer_inlabs: bool = True,
     session_factory: Callable[[], requests.Session] = requests.Session,
     max_workers: int = 4,
@@ -726,6 +836,7 @@ def archive_month_pdfs(
             d_iso,
             folder=folder,
             sections=sections,
+            layout=layout,
             prefer_inlabs=prefer_inlabs,
             session_factory=session_factory,
             max_workers=max_workers,
@@ -740,7 +851,7 @@ def archive_month_pdfs(
             sources_used.append(res["source"])
 
     base_folder = Path(folder) if folder is not None else Path(get_pdf_archive_config()["folder"])
-    link_mentions_to_pdfs(folder=base_folder)
+    link_mentions_to_pdfs(folder=base_folder, layout=layout)
 
     month_label = f"{str(month).zfill(2)}/{year}"
     msg = (
@@ -778,8 +889,13 @@ def resolve_pdf_for_mention(
     raw_section: Optional[str],
     *,
     folder: Optional[Path | str] = None,
+    layout: Optional[str] = None,
 ) -> Optional[str]:
-    """Localiza no disco o PDF do dia correspondente à menção (se existir e for válido)."""
+    """Localiza no disco o PDF do dia correspondente à menção.
+
+    Procura primeiro no layout atual e, em seguida, nos demais layouts suportados
+    para manter acesso a PDFs antigos após troca de organização.
+    """
     if not raw_date or str(raw_date).strip() in ("", "N/A"):
         return None
     try:
@@ -788,10 +904,15 @@ def resolve_pdf_for_mention(
         return None
 
     sec_key = normalize_section_key(raw_section) or "1"
-    base_folder = Path(folder) if folder is not None else Path(get_pdf_archive_config()["folder"])
-    candidate = build_pdf_target_path(base_folder, date_iso, sec_key)
-    if candidate.is_file() and candidate.stat().st_size >= 128:
-        return str(candidate)
+    cfg = get_pdf_archive_config()
+    base_folder = Path(folder) if folder is not None else Path(cfg["folder"])
+    active_layout = normalize_pdf_layout(layout if layout is not None else cfg.get("layout"))
+    layouts_to_try = [active_layout] + [lay for lay in VALID_LAYOUTS if lay != active_layout]
+
+    for lay in layouts_to_try:
+        candidate = build_pdf_target_path(base_folder, date_iso, sec_key, layout=lay)
+        if candidate.is_file() and candidate.stat().st_size >= 128:
+            return str(candidate)
     return None
 
 
@@ -799,6 +920,7 @@ def link_mentions_to_pdfs(
     *,
     date_iso: Optional[str] = None,
     folder: Optional[Path | str] = None,
+    layout: Optional[str] = None,
 ) -> int:
     """Atualiza ``Mention.pdf_path`` no SQLite para menções cujo PDF do dia exista no disco."""
     updated = 0
@@ -813,7 +935,7 @@ def link_mentions_to_pdfs(
 
         mentions = query.all()
         for m in mentions:
-            resolved = resolve_pdf_for_mention(m.data, m.secao, folder=folder)
+            resolved = resolve_pdf_for_mention(m.data, m.secao, folder=folder, layout=layout)
             if resolved and m.pdf_path != resolved:
                 m.pdf_path = resolved
                 updated += 1
@@ -823,3 +945,101 @@ def link_mentions_to_pdfs(
     except Exception as exc:
         logger.debug("Falha ao vincular menções a PDFs: %s", exc)
     return updated
+
+
+def _iter_existing_dou_pdfs(base_folder: Path) -> Iterable[Tuple[Path, str, str, Optional[str]]]:
+    """Percorre PDFs do DOU existentes em ``base_folder`` (raiz, ``AAAA/`` e ``AAAA/MM/``)."""
+    if not base_folder.is_dir():
+        return
+    candidates: List[Path] = []
+    # Nível 0: <pasta>/DOU_*.pdf
+    candidates.extend(sorted(base_folder.glob("DOU_*.pdf")))
+    # Nível 1 e 2: <pasta>/AAAA/DOU_*.pdf e <pasta>/AAAA/MM/DOU_*.pdf
+    for year_dir in sorted(base_folder.iterdir()):
+        if not year_dir.is_dir() or not re.fullmatch(r"\d{4}", year_dir.name):
+            continue
+        candidates.extend(sorted(year_dir.glob("DOU_*.pdf")))
+        for month_dir in sorted(year_dir.iterdir()):
+            if not month_dir.is_dir() or not re.fullmatch(r"\d{2}", month_dir.name):
+                continue
+            candidates.extend(sorted(month_dir.glob("DOU_*.pdf")))
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        m = _PDF_FILENAME_RE.match(path.name)
+        if not m:
+            continue
+        date_iso = m.group(1)
+        sec_key = "extra" if m.group(2) == "Extra" else m.group(2)
+        extra_suffix = m.group(3)
+        yield path, date_iso, sec_key, extra_suffix
+
+
+def reorganize_pdfs(
+    folder: Optional[Path | str],
+    target_layout: str,
+    *,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Reorganiza PDFs do DOU existentes para ``target_layout`` sem nunca sobrescrever."""
+    cfg = get_pdf_archive_config()
+    base_folder = Path(folder) if folder is not None else Path(cfg["folder"])
+    layout = normalize_pdf_layout(target_layout)
+
+    moved = 0
+    skipped = 0
+    already_in_place = 0
+    errors: List[str] = []
+
+    if not base_folder.is_dir():
+        return {
+            "status": "success",
+            "layout": layout,
+            "folder": str(base_folder),
+            "moved": 0,
+            "skipped": 0,
+            "already_in_place": 0,
+            "errors": [],
+            "message": "Pasta de PDFs ainda não existe; nenhum arquivo para reorganizar.",
+        }
+
+    for src, date_iso, sec_key, extra_suffix in list(_iter_existing_dou_pdfs(base_folder)):
+        dest = build_pdf_target_path(
+            base_folder, date_iso, sec_key, extra_suffix=extra_suffix, layout=layout
+        )
+        try:
+            if src.resolve() == dest.resolve():
+                already_in_place += 1
+                continue
+            if dest.exists():
+                skipped += 1
+                continue
+            if not dry_run:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dest))
+            moved += 1
+        except Exception as exc:
+            errors.append(f"{src.name}: {exc}")
+
+    if moved > 0 and not dry_run:
+        link_mentions_to_pdfs(folder=base_folder, layout=layout)
+
+    msg = (
+        f"Reorganização ({layout}): {moved} arquivo(s) movido(s), "
+        f"{skipped} ignorado(s) por já existir no destino, "
+        f"{already_in_place} já no formato."
+    )
+    if errors:
+        msg += f" {len(errors)} erro(s)."
+
+    return {
+        "status": "error" if errors and moved == 0 else "success",
+        "layout": layout,
+        "folder": str(base_folder),
+        "moved": moved,
+        "skipped": skipped,
+        "already_in_place": already_in_place,
+        "errors": errors,
+        "message": msg,
+    }

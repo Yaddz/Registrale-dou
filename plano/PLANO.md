@@ -673,7 +673,57 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 - O `.exe`, os atalhos, a bandeja e a janela mostram o ícone do site.
 - Novembro/2026 continua com 26 menções de 16 empresas pela contingência PDF em cada layout (pode ser com os PDFs já baixados).
 
-**Registro:** _(preencher)_
+**Registro:**
+- **Data:** 24/11/2026.
+- **O que foi feito:**
+  1. **Organização das pastas configurável (`pdf_archive.layout`):**
+     - `rodou_dashboard/app/runtime/pdf_archiver.py`: adicionado `layout` (`ano_mes` padrão, `ano`, `nenhum`), `normalize_pdf_layout()`, `validate_pdf_folder()` (rejeita caminho relativo, `..`, pasta do programa e sem permissão de escrita; aceita UNC no Windows e reporta inacessibilidade), `reorganize_pdfs()` (move entre layouts sem sobrescrever existentes e atualiza `Mention.pdf_path`) e fallback automático em `resolve_pdf_for_mention()` (procura primeiro no layout atual e depois nos outros dois).
+     - `rodou_dashboard/app/runtime/pdf_search.py`: `ensure_day_pdfs()` passou a usar `build_pdf_target_path()` como ponto único de cálculo de caminho (respeitando o layout configurado, mantendo `pdf_cache` separado quando o arquivamento está desligado).
+     - `rodou_dashboard/app/routes/admin.py`, `auth.py`, `dags.py`: suporte a `layout` em `get_settings`/`save_settings`/`index`, validação de pasta no `save_settings`, e endpoint `POST /api/pdf_archive/reorganize` exigindo `confirm: true`.
+  2. **Onboarding de PDFs no primeiro uso:**
+     - `admin.py`: `GET /api/admin/first_run_status` agora retorna `pdf_onboarding_done`, `needs_pdf_onboarding` (True mesmo em instalações que já tinham dados, uma única vez) e `pdf_archive`; novo endpoint `POST /api/admin/pdf_onboarding` valida a pasta, grava `global_settings.pdf_archive` e marca `pdf_onboarding_done=True`.
+     - `rodou_dashboard/templates/index.html`: modal de onboarding *"Onde guardar os PDFs do DOU"* (pasta padrão, botão *Procurar...* visível apenas na janela própria via `pywebview`, organização com prévia em tempo real e seções), além dos mesmos controles e do botão *Reorganizar PDFs existentes* (com `confirm`) em *Configurações → Arquivo PDF DOU*.
+  3. **Janela própria (`pywebview` / WebView2):**
+     - `pyproject.toml`: adicionado `pywebview>=5.0,<6.0` ao grupo `windows`.
+     - `windows/launcher.pyw`: `RegistraleTrayController` roda a bandeja com `pystray.Icon.run_detached()` e abre a janela WebView2 na thread principal com `storage_path=<dados>/webview` e `ALLOW_DOWNLOADS=True`; fechar a janela pelo `X` apenas a esconde (`_on_window_closing`), *Abrir painel* a reabre, *Sair* destrói a janela e encerra servidor/bandeja, e falhas no `pywebview`/WebView2 fazem fallback automático para o navegador padrão registrando o motivo no log. `RegistraleJsApi` expõe `pick_folder` (diálogo nativo) e `open_external` (links externos no navegador padrão via `index.html`).
+  4. **Ícone unificado:**
+     - Criado `windows/make_icon.py` para gerar `windows/registrale.ico` (16, 24, 32, 48, 64, 128 e 256 px) a partir de `rodou_dashboard/static/icon.svg` (usando `cairosvg`/`rsvg-convert` se presentes ou renderização vetorial via Pillow 4x).
+     - `windows/registrale.ico` regerado (`18.830 bytes`, 7 tamanhos) e usado no `installer.iss`, bandeja (`pystray`) e janela (`pywebview`).
+     - `windows/build.ps1`: agora falha se `windows/registrale.ico` não existir ou estiver mais antigo que `rodou_dashboard/static/icon.svg`.
+  5. **Documentação:** atualizados `README.md`, `rodou_dashboard/docs/MANUAL.md` e `AGENTS.md`.
+- **Arquivos alterados/criados:** `pyproject.toml`, `rodou_dashboard/app/runtime/pdf_archiver.py`, `rodou_dashboard/app/runtime/pdf_search.py`, `rodou_dashboard/app/routes/admin.py`, `rodou_dashboard/app/routes/auth.py`, `rodou_dashboard/app/routes/dags.py`, `rodou_dashboard/templates/index.html`, `windows/launcher.pyw`, `windows/make_icon.py`, `windows/registrale.ico`, `windows/build.ps1`, `tests/local/test_pdf_archiver.py`, `tests/local/test_windows_packaging.py`, `README.md`, `rodou_dashboard/docs/MANUAL.md`, `AGENTS.md`, `plano/PLANO.md`. (`src/` não foi alterado.)
+- **Validações executadas:**
+  - `uv run pytest tests/local/test_pdf_archiver.py -m "not live" -v` → **9 passed, 1 deselected** (cobre os 3 layouts, `ensure_day_pdfs`, fallback de localização, reorganização sem sobrescrever + `confirm`, validação da pasta e onboarding).
+  - `uv run pytest tests/local/test_windows_packaging.py -m "not live" -v` → **14 passed** (cobre `_on_window_closing`, `open_panel`, `quit_app`, fallback sem `pywebview`, `RegistraleJsApi.open_external`, `make_icon.py` com 7 tamanhos e checagem de idade no `build.ps1`).
+  - `uv run pytest -m "not live" -q` → **620 passed, 3 deselected** em `12.38s` (ponto de partida antes do sprint: `615 passed, 3 deselected`).
+  - Contingência PDF com PDFs reais locais de `23/11/2026` (`~/Documentos/Registrale/DOU/2026/11/`) nos 3 layouts (`ano_mes`, `ano`, `nenhum`): **4 menções** em cada layout com as mesmas 4 raízes da baseline (`05785287`, `07021336`, `09217325`, `24684423`).
+- **Pendências / não validado neste ambiente:**
+  - **VM Windows (`windows-registrale`):** não pôde ser validada a partir deste host Linux (`virsh` e shell remoto no guest não disponíveis). Pendente validar na VM: build com `windows/build.ps1`, instalação limpa com onboarding e botão *Procurar...*, atualização por cima de instalação com PDFs em `AAAA/MM/`, janela própria WebView2 (fechar/reabrir/fallback sem WebView2) e ícones visuais no `.exe`/atalhos/bandeja/janela.
+  - **Contingência PDF completa de novembro/2026 (03–23/11, 26 menções, 16 empresas) nos 3 layouts:** apenas `2026-11-23` estava pré-baixado localmente; os demais 13 dias úteis (03–20/11) não estavam no disco local para execução offline completa.
+- **Revisão independente e validação na VM (24/11/2026), veredito: Sprint 9 reprovado (correções pequenas):**
+  - Validações executadas:
+    - Linux: `uv run pytest -m "not live" -q` → `620 passed, 3 deselected`; `_build_default_searchers()` fora do pytest OK.
+    - Contingência PDF de novembro/2026 (14 dias úteis, `Pesquisa_cnpj.yaml`, `REGISTRALE_INLABS_FALLBACK=pdf`) nos 3 layouts: `ano_mes` (baixou os PDFs, 931,5 s), `ano` (566,1 s) e `nenhum` (488,2 s), estes dois com os mesmos PDFs por link físico → **26 menções, 16 empresas, `missing=[]`, `extra=[]` em todos**, sem novo download nos layouts `ano`/`nenhum` (71 → 71 PDFs).
+    - VM Windows 10 (`windows-registrale`): `620 passed`; build `Registrale-Setup-1.0.0.exe` (63.199.978 bytes); atualização por cima da 1.0.0 com PDFs em `2026\11\` → PDFs intactos (mesmos nomes e tamanhos) e `resolve_pdf_for_mention` acha o PDF antigo com `ano_mes`, `ano` e `nenhum`; e2e no Python instalado → `WIN_E2E_OK=True`, 4 menções.
+    - Janela própria (WebView2): abre com o login; onboarding "Onde guardar os PDFs do DOU" aparece na instalação existente e na limpa; botão **Procurar...** abre o seletor nativo e preenche o campo; prévia acompanha o layout; ao salvar, Configurações → Arquivo PDF DOU mostra pasta e layout gravados.
+    - Primeiro arquivamento no lugar escolhido: instalação existente com `Desktop` + `ano` → 6 PDFs de 23/11 em `Desktop\2026\`; instalação limpa (dados renomeados e depois restaurados) com `nenhum` → 6 PDFs direto em `Documentos\Registrale\DOU\`.
+    - Fechar no X esconde a janela (sai da barra de tarefas, servidor segue na bandeja); **Abrir painel** reabre no mesmo estado; **Sair** encerra. Sem `pywebview` (módulo bloqueado) o painel abre no navegador padrão em `127.0.0.1:5000`.
+  - **Bloqueador (critério de ícones):** a barra de título da janela mostra o ícone do Python, não o do site (`webview.start(icon=...)` não vale no backend WinForms/EdgeChromium). Correção: aplicar `registrale.ico` na janela via `WM_SETICON` (ctypes) depois de criada.
+  - **Importantes:**
+    - Depois de atualizar, o atalho da Área de Trabalho continua com o ícone antigo ("R") por causa do cache de ícones do Windows (mesmo caminho `app\windows\registrale.ico`). Correção: renovar o cache no fim da instalação (`ie4uinit.exe -show` em `[Run]`, ou `ChangesAssociations=yes`) ou versionar o nome do `.ico`.
+    - Versão continua `1.0.0`: com funções novas, o verificador de atualização não oferece este build a quem já tem a 1.0.0. Subir para `1.1.0`.
+  - **Sugestões:**
+    - O quadro "Status e Disparo Manual" não mudou depois de **Baixar Dia** e **Atualizar Status** (~40 s depois), embora os PDFs tenham sido gravados; conferir se o status é persistido no disparo manual.
+    - Campo de data com máscara: `Ctrl+A` + `Backspace` não limpa e digitar por cima embaralha (ex.: `31/12/3022`).
+    - Seletor de mês em "Arquivar Mês Completo" aparece sem rótulo.
+    - Fora do escopo: "Última sync" mostrou horário à frente do relógio da VM; e a rotina `Pesquisa_cnpj.yaml` com os 122 CNPJs vai embutida no instalador público (aparece "CNPJs monitorados: 122" numa instalação limpa).
+- **Correções da revisão (24/11/2026), veredito após correções: Sprint 9 aprovado:**
+  - `windows/launcher.pyw`: `apply_window_icon()` envia `registrale.ico` à janela com `WM_SETICON` (pequeno e grande), usando `window.native.Handle` ou `FindWindowW`; chamado no evento `shown`, ao exibir a janela e ao reabrir pela bandeja.
+  - `windows/installer.iss`: `ChangesAssociations=yes` e `ie4uinit.exe -show` em `[Run]` (também no modo silencioso) para renovar o cache de ícones dos atalhos após atualizar.
+  - Versão `1.1.0` (`pyproject.toml`, `uv.lock`, padrão de `runtime/version.py` e do `installer.iss`).
+  - Testes novos: `test_apply_window_icon_sends_wm_seticon` e `test_installer_refreshes_icon_cache`. `uv run pytest -m "not live" -q` → `622 passed, 3 deselected`.
+  - VM Windows 10: `Registrale-Setup-1.1.0.exe` (SHA-256 `0ac19ec5...0f24e`) instalado por cima da 1.0.0 → versão `1.1.0`; barra de título da janela, atalho da Área de Trabalho, barra de tarefas e bandeja com o ícone do site.
+  - Sugestões da revisão que continuam abertas (não bloqueiam): status do disparo manual que não atualiza na tela, máscara do campo de data, rótulo do seletor de mês, horário de "Última sync" e a rotina com os 122 CNPJs embutida no instalador público.
 ---
 
 ## Backlog

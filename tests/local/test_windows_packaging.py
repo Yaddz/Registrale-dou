@@ -363,3 +363,134 @@ class TestWindowsLauncherAndArtifacts:
         yml_text = yml.read_text(encoding="utf-8")
         assert "windows-latest" in yml_text
         assert "windows\\build.ps1" in yml_text or "windows/build.ps1" in yml_text
+
+    def test_launcher_webview_hide_reopen_and_fallback(self, monkeypatch, caplog):
+        """Launcher esconde janela ao fechar, reabre pela bandeja e cai para navegador sem pywebview."""
+        import importlib.machinery
+        import importlib.util
+        import types
+        import webbrowser
+
+        root = Path(__file__).resolve().parents[2]
+        launcher_path = root / "windows" / "launcher.pyw"
+        loader = importlib.machinery.SourceFileLoader("registrale_launcher_test", str(launcher_path))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+
+        ctrl = mod.RegistraleTrayController(host="127.0.0.1", port=5099)
+
+        fake_win_calls = []
+
+        class FakeWindow:
+            def show(self):
+                fake_win_calls.append("show")
+
+            def restore(self):
+                fake_win_calls.append("restore")
+
+            def hide(self):
+                fake_win_calls.append("hide")
+
+            def destroy(self):
+                fake_win_calls.append("destroy")
+
+        ctrl._window = FakeWindow()
+        ctrl._use_webview = True
+
+        # Fechar a janela só a esconde
+        assert ctrl._on_window_closing() is False
+        assert "hide" in fake_win_calls
+
+        # Abrir painel reabre a janela
+        ctrl.open_panel()
+        assert fake_win_calls[-2:] == ["show", "restore"]
+
+        # Sair destrói a janela e permite fechamento
+        ctrl.quit_app()
+        assert ctrl._stopping is True
+        assert "destroy" in fake_win_calls
+        assert ctrl._on_window_closing() is True
+
+        # Sem pywebview -> _run_webview retorna False e registra no log
+        monkeypatch.setitem(sys.modules, "webview", None)
+        assert ctrl._run_webview() is False
+
+        # JsApi open_external só aceita http/https
+        opened = []
+        monkeypatch.setattr(webbrowser, "open", lambda u: opened.append(u) or True)
+        api = mod.RegistraleJsApi()
+        assert api.open_external("https://www.in.gov.br/web/dou") is True
+        assert api.open_external("file:///etc/passwd") is False
+        assert opened == ["https://www.in.gov.br/web/dou"]
+
+    def test_make_icon_and_build_ps1_freshness_check(self, tmp_path):
+        """make_icon.py gera .ico com os 7 tamanhos a partir do SVG e build.ps1 valida idade."""
+        from PIL import Image
+
+        root = Path(__file__).resolve().parents[2]
+        sys.path.insert(0, str(root / "windows"))
+        try:
+            import make_icon
+        finally:
+            sys.path.pop(0)
+
+        svg = root / "rodou_dashboard" / "static" / "icon.svg"
+        out_ico = tmp_path / "test_registrale.ico"
+        make_icon.generate_ico(svg, out_ico)
+
+        im = Image.open(out_ico)
+        assert sorted(im.info.get("sizes", [])) == [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+
+        repo_ico = root / "windows" / "registrale.ico"
+        assert repo_ico.is_file()
+        repo_im = Image.open(repo_ico)
+        assert sorted(repo_im.info.get("sizes", [])) == [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+
+        ps1_text = (root / "windows" / "build.ps1").read_text(encoding="utf-8")
+        assert "icon.svg" in ps1_text
+        assert "LastWriteTimeUtc" in ps1_text
+
+    def test_apply_window_icon_sends_wm_seticon(self, tmp_path, monkeypatch):
+        """No Windows, o ícone do site vai para a janela via WM_SETICON (pequeno e grande)."""
+        launcher = _load_launcher_module()
+        ico = tmp_path / "registrale.ico"
+        ico.write_bytes(b"\x00\x00\x01\x00")
+
+        calls = []
+        user32 = MagicMock()
+        user32.GetSystemMetrics.side_effect = lambda m: 16 if m == 49 else 32
+        user32.LoadImageW.side_effect = lambda _h, path, kind, w, h, flags: 1000 + w
+        user32.SendMessageW.side_effect = lambda hwnd, msg, kind, hicon: calls.append((hwnd, msg, kind, hicon))
+        fake_ctypes = MagicMock()
+        fake_ctypes.windll.user32 = user32
+
+        monkeypatch.setattr(launcher.os, "name", "nt")
+        monkeypatch.setattr(launcher, "ctypes", fake_ctypes)
+
+        class _Handle:
+            def ToInt64(self):
+                return 4242
+
+        window = MagicMock()
+        window.native.Handle = _Handle()
+        assert launcher.apply_window_icon(window, ico_path=ico) is True
+        assert calls == [(4242, 0x0080, 0, 1016), (4242, 0x0080, 1, 1032)]
+
+        # Sem handle nativo: procura a janela pelo título; sem janela, não envia nada.
+        calls.clear()
+        user32.FindWindowW.return_value = 0
+        assert launcher.apply_window_icon(object(), ico_path=ico) is False
+        assert calls == []
+
+        # Fora do Windows não faz nada.
+        monkeypatch.setattr(launcher.os, "name", "posix")
+        assert launcher.apply_window_icon(window, ico_path=ico) is False
+
+    def test_installer_refreshes_icon_cache(self):
+        """O atalho mostra o ícone novo depois de atualizar (cache de ícones renovado)."""
+        iss = (Path(__file__).resolve().parents[2] / "windows" / "installer.iss").read_text(encoding="utf-8-sig")
+        assert "ChangesAssociations=yes" in iss
+        run = iss.split("[Run]", 1)[1].split("[Code]", 1)[0]
+        line = next(l for l in run.splitlines() if "ie4uinit.exe" in l)
+        assert '"-show"' in line and "runhidden" in line and "postinstall" not in line

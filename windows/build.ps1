@@ -44,6 +44,16 @@ if (-not $Version) {
 
 Write-Host "==> Registrale-DOU Build v$Version" -ForegroundColor Cyan
 
+# Verifica se windows/registrale.ico existe e está atualizado em relação a rodou_dashboard/static/icon.svg
+$IconSvg = Join-Path $RepoRoot "rodou_dashboard\static\icon.svg"
+$IconIco = Join-Path $PSScriptRoot "registrale.ico"
+if (-not (Test-Path $IconIco)) {
+    throw "Ícone '$IconIco' não encontrado. Execute 'uv run python windows/make_icon.py' antes do build."
+}
+if ((Test-Path $IconSvg) -and ((Get-Item $IconSvg).LastWriteTimeUtc -gt (Get-Item $IconIco).LastWriteTimeUtc)) {
+    throw "O ícone '$IconIco' está mais antigo que '$IconSvg'. Execute 'uv run python windows/make_icon.py' para atualizá-lo."
+}
+
 New-Item -ItemType Directory -Force -Path $CacheDir, $DistDir | Out-Null
 if (Test-Path $StageDir) {
     Remove-Item -Recurse -Force $StageDir

@@ -299,6 +299,180 @@ def test_mention_link_and_api_routes(app_ctx):
     assert r_non_master.status_code == 403
 
 
+def test_layouts_target_path_resolve_and_ensure_day_pdfs(app_ctx, monkeypatch):
+    """Testa os 3 layouts (ano_mes, ano, nenhum), fallback de localização e ensure_day_pdfs."""
+    from rodou_dashboard.app.models import Settings
+    from rodou_dashboard.app.runtime.pdf_search import ensure_day_pdfs
+
+    _, tmp_path = app_ctx
+    base = tmp_path / "pdfs"
+
+    assert build_pdf_target_path(base, "2026-11-23", "1", layout="ano_mes") == (
+        base / "2026" / "11" / "DOU_2026-11-23_Secao1.pdf"
+    )
+    assert build_pdf_target_path(base, "2026-11-23", "1", layout="ano") == (
+        base / "2026" / "DOU_2026-11-23_Secao1.pdf"
+    )
+    assert build_pdf_target_path(base, "2026-11-23", "1", layout="nenhum") == (
+        base / "DOU_2026-11-23_Secao1.pdf"
+    )
+
+    sample_pdf = _make_sample_pdf_bytes(1)
+    for lay in ("ano_mes", "ano", "nenhum"):
+        lay_dir = tmp_path / f"dir_{lay}"
+        p = build_pdf_target_path(lay_dir, "2026-11-23", "1", layout=lay)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(sample_pdf)
+
+        # ensure_day_pdfs encontra no layout configurado sem baixar da rede
+        monkeypatch.setenv("REGISTRALE_PDF_DIR", str(lay_dir))
+        rec = Settings.query.filter_by(key="global_settings").first()
+        if not rec:
+            rec = Settings(key="global_settings")
+            db.session.add(rec)
+        rec.set_value({"pdf_archive": {"enabled": True, "folder": str(lay_dir), "layout": lay, "sections": ["1"]}})
+        db.session.commit()
+
+        files, errors = ensure_day_pdfs("2026-11-23", ["1"])
+        assert errors == []
+        assert len(files) == 1
+        assert files[0][0] == "1"
+        assert files[0][2] == p
+
+    # Troca de layout sem mover arquivos antigos: resolve_pdf_for_mention ainda acha em ano_mes
+    old_dir = tmp_path / "dir_ano_mes"
+    assert resolve_pdf_for_mention("23/11/2026", "DO1", folder=old_dir, layout="nenhum") == str(
+        old_dir / "2026" / "11" / "DOU_2026-11-23_Secao1.pdf"
+    )
+
+
+def test_reorganize_pdfs_without_overwrite_and_api_confirm(app_ctx, monkeypatch):
+    """Reorganização move para o novo layout, não sobrescreve existentes e exige confirmação na API."""
+    from rodou_dashboard.app.models import Settings
+    from rodou_dashboard.app.runtime.pdf_archiver import reorganize_pdfs
+
+    app, tmp_path = app_ctx
+    pdf_dir = tmp_path / "pdfs_reorg"
+    monkeypatch.setenv("REGISTRALE_PDF_DIR", str(pdf_dir))
+    sample_a = _make_sample_pdf_bytes(1)
+    sample_b = _make_sample_pdf_bytes(2)
+
+    # Arquivo em ano_mes que será movido para nenhum
+    src1 = build_pdf_target_path(pdf_dir, "2026-11-23", "1", layout="ano_mes")
+    src1.parent.mkdir(parents=True, exist_ok=True)
+    src1.write_bytes(sample_a)
+
+    # Arquivo duplicado (existe em ano_mes E no destino nenhum): destino NÃO deve ser sobrescrito
+    src2 = build_pdf_target_path(pdf_dir, "2026-11-23", "2", layout="ano_mes")
+    src2.write_bytes(sample_a)
+    dest2 = build_pdf_target_path(pdf_dir, "2026-11-23", "2", layout="nenhum")
+    dest2.write_bytes(sample_b)
+
+    m = Mention(id="m-reorg-1", empresa="EMP", cnpj="111", cnpj_norm="111", secao="DO1", data="23/11/2026", pdf_path=str(src1))
+    db.session.add(m)
+    rec = Settings.query.filter_by(key="global_settings").first()
+    if not rec:
+        rec = Settings(key="global_settings")
+        db.session.add(rec)
+    rec.set_value({"pdf_archive": {"enabled": True, "folder": str(pdf_dir), "layout": "nenhum", "sections": ["1", "2"]}})
+    db.session.commit()
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user"] = {"username": "admin", "role": "master"}
+
+    # Sem confirm=True -> 400 e nada movido
+    r_no_confirm = client.post("/api/pdf_archive/reorganize", json={"layout": "nenhum"})
+    assert r_no_confirm.status_code == 400
+    assert src1.is_file()
+
+    # Com confirm=True -> move src1, pula src2 sem sobrescrever dest2, atualiza Mention.pdf_path e persiste layout
+    r_ok = client.post("/api/pdf_archive/reorganize", json={"layout": "nenhum", "confirm": True})
+    assert r_ok.status_code == 200
+    data = r_ok.get_json()
+    assert data["moved"] == 1
+    assert data["skipped"] == 1
+    assert not src1.exists()
+    assert (pdf_dir / "DOU_2026-11-23_Secao1.pdf").is_file()
+    assert src2.is_file()
+    assert dest2.read_bytes() == sample_b
+
+    from rodou_dashboard.app.runtime.pdf_archiver import get_pdf_archive_config
+    assert get_pdf_archive_config()["layout"] == "nenhum"
+
+    db.session.refresh(m)
+    assert m.pdf_path == str(pdf_dir / "DOU_2026-11-23_Secao1.pdf")
+
+    # Idempotente se rodar de novo
+    res2 = reorganize_pdfs(pdf_dir, "nenhum")
+    assert res2["moved"] == 0
+    assert res2["skipped"] == 1
+    assert res2["already_in_place"] == 2
+
+
+def test_validate_pdf_folder_and_onboarding_flow(app_ctx, monkeypatch):
+    """Validação rejeita relativo, traversal, pasta do programa e sem escrita; onboarding grava e marca feito."""
+    from pathlib import Path as RealPath
+    from rodou_dashboard.app.models import Company
+    from rodou_dashboard.app.runtime.paths import get_base_dir
+    from rodou_dashboard.app.runtime.pdf_archiver import validate_pdf_folder
+
+    app, tmp_path = app_ctx
+
+    with pytest.raises(ValueError, match="absoluto"):
+        validate_pdf_folder("pasta/relativa")
+
+    with pytest.raises(ValueError, match=r"\.\."):
+        validate_pdf_folder(str(tmp_path / "a" / ".." / "b"))
+
+    with pytest.raises(ValueError, match="instalação"):
+        validate_pdf_folder(str(get_base_dir()))
+
+    # Simula falta de permissão de escrita
+    readonly_dir = tmp_path / "sem_permissao"
+    readonly_dir.mkdir()
+    orig_write_text = RealPath.write_text
+
+    def _deny_write(self, *args, **kwargs):
+        if self.parent == readonly_dir:
+            raise PermissionError("Permissão negada")
+        return orig_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(RealPath, "write_text", _deny_write)
+    with pytest.raises(ValueError, match="permissão de escrita"):
+        validate_pdf_folder(str(readonly_dir))
+    monkeypatch.undo()
+
+    # Mesmo com dados existentes, needs_pdf_onboarding é True para quem nunca escolheu
+    db.session.add(Company(nome="Emp Existente", cnpj="24.684.423/0001-36", cnpj_norm="24684423000136", status=True))
+    db.session.commit()
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user"] = {"username": "admin", "role": "master"}
+
+    r_status1 = client.get("/api/admin/first_run_status")
+    assert r_status1.status_code == 200
+    assert r_status1.get_json()["needs_pdf_onboarding"] is True
+
+    # Onboarding rejeita pasta inválida
+    r_bad = client.post("/api/admin/pdf_onboarding", json={"folder": "relativo", "layout": "ano"})
+    assert r_bad.status_code == 400
+
+    # Onboarding válido grava pdf_archive e marca pdf_onboarding_done
+    target_dir = tmp_path / "meus_pdfs"
+    r_good = client.post(
+        "/api/admin/pdf_onboarding",
+        json={"enabled": True, "folder": str(target_dir), "layout": "ano", "sections": ["1", "3"]},
+    )
+    assert r_good.status_code == 200
+    assert r_good.get_json()["pdf_onboarding_done"] is True
+    assert r_good.get_json()["pdf_archive"]["layout"] == "ano"
+
+    r_status2 = client.get("/api/admin/first_run_status")
+    assert r_status2.get_json()["needs_pdf_onboarding"] is False
+
+
 @pytest.mark.live
 def test_live_archive_extra_edition_nov2026(tmp_path):
     """Teste ao vivo real: baixa a Edição Extra A (2 páginas) de 23/11/2026 via pesquisa.in.gov.br."""

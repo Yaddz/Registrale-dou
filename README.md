@@ -25,7 +25,8 @@ O **Registrale-DOU** é um aplicativo desktop para Windows para monitoramento au
 1. Baixe o instalador `Registrale-Setup-x.y.z.exe` (e confira o hash `.sha256` publicado na release).
 2. Execute o instalador. Não é necessário Docker, WSL, terminal ou instalação prévia de Python.
 3. O instalador grava o aplicativo em `%LOCALAPPDATA%\Programs\Registrale`, cria o atalho na Área de Trabalho e registra a inicialização automática com o Windows (`Startup\Registrale-DOU.lnk`).
-4. Ao iniciar, o ícone do Registrale aparece na **bandeja do sistema** (ao lado do relógio) e abre o painel em `http://localhost:5000`.
+4. Ao iniciar, o ícone do Registrale aparece na **bandeja do sistema** (ao lado do relógio) e abre o painel em uma **janela própria** (ou no navegador padrão em `http://localhost:5000`, caso o WebView2 não esteja disponível).
+5. No primeiro acesso como administrador (`master`), o assistente pergunta **onde guardar os PDFs do DOU** e qual organização de pastas usar (`Por ano e mês`, `Só por ano` ou `Tudo na mesma pasta`).
 
 ---
 
@@ -44,7 +45,7 @@ Na primeira abertura do painel:
 
 ## Uso diário
 
-- **Bandeja do sistema:** clique com o botão direito no ícone do Registrale para abrir o painel no navegador, pausar/retomar, consultar o status ou encerrar o aplicativo.
+- **Bandeja do sistema e janela própria:** o painel roda em janela dedicada (WebView2); fechar a janela apenas a minimiza para a bandeja, mantendo o agendador ativo. Clique com o botão direito no ícone da bandeja para abrir o painel, consultar o status, ver logs, reiniciar ou encerrar o aplicativo.
 - **Execução automática:** o agendador interno (`APScheduler`) executa as rotinas ativas nos horários configurados (com recuperação de *misfire* caso o PC estivesse desligado no horário) e sincroniza as empresas da planilha.
 - **Buscas manuais e mensais:** pelo painel é possível disparar uma rotina para uma data específica (`DD/MM/AAAA`) ou rodar a consolidação de um mês inteiro.
 - **Menções e relatórios:** as menções ficam salvas no histórico local antes do envio de e-mail e podem ser exportadas em Excel (`.xlsx`) ou PDF corporativo.
@@ -57,7 +58,7 @@ Na primeira abertura do painel:
 |---|---|---|
 | Programa instalado | `%LOCALAPPDATA%\Programs\Registrale` | Substituído a cada atualização |
 | Banco SQLite (`database.db`), agendador, rotinas YAML e logs | `%LOCALAPPDATA%\Registrale` | Preservado ao atualizar ou desinstalar |
-| PDFs integrais do DOU | `Documentos\Registrale\DOU` | Configurável em **Configurações** |
+| PDFs integrais do DOU | `Documentos\Registrale\DOU` | Configurável no primeiro uso e em **Configurações → Arquivo PDF DOU** (layouts: `AAAA/MM/`, `AAAA/` ou pasta única) |
 
 ---
 

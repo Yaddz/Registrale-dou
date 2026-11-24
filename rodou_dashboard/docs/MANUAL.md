@@ -75,7 +75,9 @@ Para acessar o sistema, informe seu usuário e senha na tela inicial de login:
 > A sessão dura **30 minutos de inatividade**. Quando faltar 1 minuto para expirar, o painel exibirá um aviso permitindo estender o acesso com um clique.
 
 > [!TIP]
-> **Instalação como Aplicativo Desktop (PWA):** Você pode instalar o Ro-DOU Dashboard como um app nativo no Windows/macOS. No Google Chrome ou Microsoft Edge, clique no ícone **⊕ (Instalar Registrale)** na barra de endereços para fixar o ícone na sua barra de tarefas e abrir o sistema em uma janela dedicada sem poluição visual do navegador.
+> **Janela Própria e Bandeja do Sistema:** No Windows, o Registrale-DOU abre em uma janela própria (WebView2) fora do navegador. Fechar a janela pelo `X` apenas a esconde, mantendo o servidor e o agendador ativos na bandeja do sistema — clique em **Abrir painel** no ícone da bandeja para reabri-la (ou em **Sair** para encerrar tudo). Caso o WebView2 não esteja disponível, o sistema abre no navegador padrão em `http://localhost:5000`.
+>
+> **Pasta e Organização dos PDFs:** No primeiro acesso, escolha onde guardar os PDFs integrais do DOU e como organizá-los (`Por ano e mês`, `Só por ano` ou `Tudo na mesma pasta`). Você pode alterar essas opções depois em **Configurações → Arquivo PDF DOU** e usar **Reorganizar PDFs existentes** (com confirmação) para mover arquivos antigos sem sobrescrever nada.
 
 ---
 

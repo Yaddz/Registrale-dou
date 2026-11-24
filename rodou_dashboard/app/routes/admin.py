@@ -18,7 +18,7 @@ def get_settings():
     if session['user']['role'] != 'master':
         return jsonify({"status": "error", "message": "Acesso negado."}), 403
     from ..runtime.paths import get_default_pdf_dir
-    from ..runtime.pdf_archiver import DEFAULT_SECTIONS
+    from ..runtime.pdf_archiver import DEFAULT_LAYOUT, DEFAULT_SECTIONS
 
     settings_record = Settings.query.filter_by(key='global_settings').first()
     settings = {
@@ -30,6 +30,7 @@ def get_settings():
         "pdf_archive": {
             "enabled": True,
             "folder": str(get_default_pdf_dir(create=False)),
+            "layout": DEFAULT_LAYOUT,
             "sections": list(DEFAULT_SECTIONS),
         },
     }
@@ -200,13 +201,28 @@ def save_settings():
 
         if 'pdf_archive' in data and isinstance(data['pdf_archive'], dict):
             from ..runtime.paths import get_default_pdf_dir
-            from ..runtime.pdf_archiver import normalize_sections
+            from ..runtime.pdf_archiver import (
+                normalize_pdf_layout,
+                normalize_sections,
+                validate_pdf_folder,
+            )
 
             pa = data['pdf_archive']
+            enabled_val = bool(pa.get('enabled', True))
             folder_val = str(pa.get('folder') or '').strip() or str(get_default_pdf_dir(create=False))
+            if enabled_val or str(pa.get('folder') or '').strip():
+                try:
+                    checked = validate_pdf_folder(folder_val)
+                    folder_val = checked["path"]
+                except ValueError as exc:
+                    return jsonify({"status": "error", "message": str(exc)}), 400
+            layout_val = normalize_pdf_layout(
+                pa.get('layout', existing_val.get('pdf_archive', {}).get('layout'))
+            )
             merged_val['pdf_archive'] = {
-                "enabled": bool(pa.get('enabled', True)),
+                "enabled": enabled_val,
                 "folder": folder_val,
+                "layout": layout_val,
                 "sections": normalize_sections(pa.get('sections')),
             }
 
@@ -612,10 +628,13 @@ def get_first_run_status():
     from ..models import Company, Mention, Settings, db
     from ..runtime.migrations import get_schema_version
     from ..runtime.migrator import detect_legacy_sources
+    from ..runtime.pdf_archiver import get_pdf_archive_config
     from ..runtime.version import get_app_version
 
     done_rec = Settings.query.filter_by(key='first_run_import_done').first()
     import_done = bool(done_rec and done_rec.get_value())
+    pdf_done_rec = Settings.query.filter_by(key='pdf_onboarding_done').first()
+    pdf_onboarding_done = bool(pdf_done_rec and pdf_done_rec.get_value())
     is_fresh = (Company.query.count() == 0 and Mention.query.count() == 0 and not import_done)
     return jsonify({
         "status": "success",
@@ -623,8 +642,80 @@ def get_first_run_status():
         "schema_version": get_schema_version(db.engine),
         "import_done": import_done,
         "is_fresh_install": is_fresh,
+        "pdf_onboarding_done": pdf_onboarding_done,
+        "needs_pdf_onboarding": not pdf_onboarding_done,
+        "pdf_archive": get_pdf_archive_config(),
         "legacy_sources": detect_legacy_sources(),
     })
+
+
+@admin_bp.route('/admin/pdf_onboarding', methods=['POST'])
+@login_required
+def save_pdf_onboarding():
+    """Salva a configuração inicial de pasta/layout dos PDFs e marca o passo como concluído."""
+    if session['user']['role'] != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+
+    from ..runtime.paths import get_default_pdf_dir
+    from ..runtime.pdf_archiver import (
+        normalize_pdf_layout,
+        normalize_sections,
+        validate_pdf_folder,
+    )
+
+    data = request.get_json(silent=True) or {}
+    enabled_val = bool(data.get('enabled', True))
+    raw_folder = str(data.get('folder') or '').strip() or str(get_default_pdf_dir(create=False))
+    if enabled_val or str(data.get('folder') or '').strip():
+        try:
+            checked = validate_pdf_folder(raw_folder)
+            folder_val = checked["path"]
+        except ValueError as exc:
+            return jsonify({"status": "error", "message": str(exc)}), 400
+    else:
+        folder_val = raw_folder
+
+    layout_val = normalize_pdf_layout(data.get('layout'))
+    sections_val = normalize_sections(data.get('sections'))
+
+    try:
+        settings_record = Settings.query.filter_by(key='global_settings').first()
+        existing_val = settings_record.get_value() if settings_record else {}
+        if not isinstance(existing_val, dict):
+            existing_val = {}
+        if not settings_record:
+            settings_record = Settings(key='global_settings')
+            db.session.add(settings_record)
+
+        merged_val = dict(existing_val)
+        merged_val['pdf_archive'] = {
+            "enabled": enabled_val,
+            "folder": folder_val,
+            "layout": layout_val,
+            "sections": sections_val,
+        }
+        settings_record.set_value(merged_val)
+
+        done_rec = Settings.query.filter_by(key='pdf_onboarding_done').first()
+        if not done_rec:
+            done_rec = Settings(key='pdf_onboarding_done')
+            db.session.add(done_rec)
+        done_rec.set_value(True)
+        db.session.commit()
+
+        SyncHistory.log_event(
+            "Configuração Inicial PDF",
+            f"Pasta: {folder_val} | Organização: {layout_val} | Seções: {', '.join(sections_val)}",
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Preferências de arquivamento dos PDFs salvas!",
+            "pdf_archive": merged_val['pdf_archive'],
+            "pdf_onboarding_done": True,
+        })
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"Erro ao salvar configuração inicial: {exc}"}), 500
 
 
 @admin_bp.route('/admin/first_run_import', methods=['POST'])

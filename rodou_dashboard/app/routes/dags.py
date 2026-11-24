@@ -1980,3 +1980,54 @@ def api_pdf_archive_open():
         return jsonify({"status": "error", "message": "Acesso negado ao arquivo PDF."}), 403
 
     return send_file(str(resolved), mimetype="application/pdf", as_attachment=False, download_name=resolved.name)
+
+
+@dags_bp.route('/pdf_archive/reorganize', methods=['POST'])
+@login_required
+def api_pdf_archive_reorganize():
+    if session.get('user', {}).get('role') != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+
+    from ..runtime.pdf_archiver import (
+        get_pdf_archive_config,
+        normalize_pdf_layout,
+        reorganize_pdfs,
+    )
+
+    data = request.get_json(silent=True) or {}
+    dry_run = bool(data.get("dry_run", False))
+    confirm = bool(data.get("confirm", False))
+    if not dry_run and not confirm:
+        return jsonify({
+            "status": "error",
+            "message": "Confirmação obrigatória para reorganizar os PDFs existentes.",
+        }), 400
+
+    cfg = get_pdf_archive_config()
+    target_layout = normalize_pdf_layout(data.get("layout") or cfg.get("layout"))
+    res = reorganize_pdfs(cfg["folder"], target_layout, dry_run=dry_run)
+    if not dry_run and res.get("status") == "success":
+        try:
+            from ..models import Settings
+
+            rec = Settings.query.filter_by(key="global_settings").first()
+            val = rec.get_value() if rec else {}
+            if not isinstance(val, dict):
+                val = {}
+            if not rec:
+                rec = Settings(key="global_settings")
+                db.session.add(rec)
+            pa = dict(val.get("pdf_archive") or {})
+            pa.setdefault("enabled", cfg.get("enabled", True))
+            pa.setdefault("folder", cfg.get("folder"))
+            pa.setdefault("sections", cfg.get("sections"))
+            pa["layout"] = target_layout
+            val["pdf_archive"] = pa
+            rec.set_value(val)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    if not dry_run and res.get("moved", 0) > 0:
+        add_history_event("Reorganização de PDFs", res.get("message", "Reorganização concluída."))
+    code = 200 if res.get("status") == "success" else 500
+    return jsonify(res), code
