@@ -8,32 +8,7 @@ import re
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 
-def normalize_date_str(value):
-    """Converte datas vindas do painel/seletor para ISO (AAAA-MM-DD), formato
-    exigido pelo parâmetro `trigger_date` das DAGs (Param format="date").
-
-    Aceita: DD/MM/AAAA, D/M/AAAA, DD/MM/AA, DD-MM-AAAA, AAAA-MM-DD, AAAA/MM/DD
-    e ISO com horário (AAAA-MM-DDTHH:MM...). Retorna None se vazio e lança
-    ValueError se a data for inválida.
-    """
-    if value is None:
-        return None
-    raw = str(value).strip()
-    if not raw:
-        return None
-    raw = raw.split('T')[0].split(' ')[0]
-    parts = [p for p in re.split(r'[/\-.]', raw) if p]
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        raise ValueError(f"Data inválida: {value}")
-    if len(parts[0]) == 4:          # AAAA-MM-DD / AAAA/MM/DD
-        y, m, d = parts
-    else:                           # DD/MM/AAAA ou DD/MM/AA
-        d, m, y = parts
-        if len(y) == 2:
-            y = '20' + y
-    if len(y) != 4:
-        raise ValueError(f"Data inválida: {value}")
-    return datetime(int(y), int(m), int(d)).strftime('%Y-%m-%d')
+from ..runtime.executor import normalize_date_str  # noqa: F401
 
 
 def get_airflow_url():

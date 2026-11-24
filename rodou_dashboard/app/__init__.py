@@ -110,33 +110,27 @@ def create_app(config=None):
     
     # Configuração base
     app.secret_key = os.getenv("SECRET_KEY", "rodou-secret-key-123")
-    
-    DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data'))
-    os.makedirs(DATA_DIR, exist_ok=True)
-    
-    # Carrega variáveis persistidas no volume montado /data/.env
+
+    from .runtime.executor import get_executor_mode
+    from .runtime.paths import get_data_dir, get_db_path, get_sessions_dir
+
+    DATA_DIR = str(get_data_dir(create=True))
+    db_path = get_db_path()
+    if get_executor_mode() == "local" and not os.environ.get("REGISTRALE_DB_PATH"):
+        os.environ["REGISTRALE_DB_PATH"] = str(db_path)
+
+    # Carrega variáveis persistidas no diretório de dados (.env)
     _data_env = os.path.join(DATA_DIR, '.env')
     if os.path.exists(_data_env):
         try:
             load_dotenv(_data_env, override=True)
         except Exception:
             pass
-            
-    # Configura diretório de sessões persistente e cria se necessário
-    session_dir = os.environ.get('SESSION_FILE_DIR')
-    if not session_dir:
-        if os.path.exists('/flask_sessions'):
-            session_dir = '/flask_sessions'
-        else:
-            session_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'flask_sessions'))
-            
-    try:
-        os.makedirs(session_dir, exist_ok=True)
-    except Exception:
-        session_dir = os.path.join(DATA_DIR, 'flask_sessions')
-        os.makedirs(session_dir, exist_ok=True)
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(DATA_DIR, 'database.db')
+    # Configura diretório de sessões persistente e cria se necessário
+    session_dir = str(get_sessions_dir(create=True))
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + str(db_path)
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config.update(
         SESSION_TYPE='filesystem',
@@ -189,12 +183,8 @@ def create_app(config=None):
     with app.app_context():
         try:
             db.create_all()
-            with db.engine.connect() as conn:
-                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_mentions_cnpj_norm ON mentions (cnpj_norm);"))
-                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_mentions_data ON mentions (data);"))
-                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_companies_status ON companies (status);"))
-                conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_companies_origem ON companies (origem);"))
-                conn.commit()
+            from .runtime.migrations import apply_migrations
+            apply_migrations(db.engine)
         except Exception as e:
             app.logger.info(f"Tabelas do banco já criadas ou concorrência tratada: {e}")
             try: db.session.rollback()
@@ -214,8 +204,9 @@ def create_app(config=None):
     except Exception as e:
         app.logger.warning(f"Erro ao limpar DAGs temporárias na inicialização: {e}")
 
-    # Inicializar scheduler em background para Google Sheets (se não for modo teste)
-    if not app.config.get('TESTING'):
+    # Inicializar scheduler em background para Google Sheets no modo legado (Airflow/gunicorn)
+    # No modo local, a sincronização do Google Sheets roda como job único no APScheduler.
+    if not app.config.get('TESTING') and get_executor_mode() != 'local':
         try:
             from .services.sheets_service import start_sheets_scheduler
             start_sheets_scheduler(app)

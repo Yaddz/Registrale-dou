@@ -526,6 +526,29 @@
 
         <!-- Tab: Home -->
         <div x-show="activeTab === 'home'" x-cloak class="space-y-8 animate-in fade-in">
+            <!-- Aviso de Contingência INLABS -->
+            <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded)">
+                <div class="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+                    <div class="flex items-start gap-3">
+                        <div class="p-2.5 bg-amber-500/20 rounded-xl shrink-0 text-amber-700 dark:text-amber-400">
+                            <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h4 class="font-bold text-slate-900 dark:text-stone-100 text-sm" x-text="!inlabsStatus.portal_ok ? 'Portal INLABS indisponível / em manutenção' : 'INLABS sem a edição de hoje'"></h4>
+                                <span class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full" x-text="'Fonte em uso: ' + (inlabsStatus.fallback_label || 'PDF integral + API do DOU')"></span>
+                            </div>
+                            <p class="text-xs text-amber-800 dark:text-amber-300/90" x-text="inlabsStatus.portal_message || 'A edição do dia ainda não foi carregada no banco INLABS. As buscas utilizam a fonte de contingência configurada.'"></p>
+                        </div>
+                    </div>
+                    {% if user.role == 'master' %}
+                    <button @click="activeTab = 'settings'; settingsSubTab = 'integrations'" class="px-3.5 py-2 bg-white dark:bg-stone-800 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 hover:bg-amber-100 transition-all shrink-0">
+                        Configurar contingência
+                    </button>
+                    {% endif %}
+                </div>
+            </template>
+
             <!-- Alerta Unificado de Integrações Pendentes e Assistente Passo a Passo -->
             <template x-if="integrationsStatus && !integrationsStatus.all_configured">
                 <div class="p-5 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-2xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 shadow-sm animate-in fade-in">
@@ -733,6 +756,9 @@
                                             <a :href="m.link" target="_blank" class="inline-flex items-center justify-center p-2.5 bg-slate-50 text-slate-400 hover:bg-stone-700 hover:text-white rounded-xl transition-all shadow-sm active:scale-95" title="Abrir DOU">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
                                             </a>
+                                            <a x-show="m.pdf_path" :href="'/api/pdf_archive/open?mention_id=' + encodeURIComponent(m.id)" target="_blank" class="inline-flex items-center justify-center p-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-95" title="Abrir PDF Integral do Dia">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                            </a>
                                             <button @click="deleteMention(m.id)" class="inline-flex items-center justify-center p-2.5 bg-slate-50 text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-95" title="Excluir Menção">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
                                             </button>
@@ -934,9 +960,12 @@
                 <button @click="settingsSubTab = 'users'" :class="settingsSubTab === 'users' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="users" class="w-4 h-4"></i> Usuários</button>
                 <button @click="settingsSubTab = 'google_sheets'" :class="settingsSubTab === 'google_sheets' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Google sheets</button>
                 <button @click="settingsSubTab = 'integrations'" :class="settingsSubTab === 'integrations' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="plug-zap" class="w-4 h-4"></i> Integrações</button>
+                <button @click="settingsSubTab = 'pdf_archive'; fetchPdfArchiveStatus();" :class="settingsSubTab === 'pdf_archive' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="file-archive" class="w-4 h-4"></i> Arquivo PDF DOU</button>
                 <button @click="settingsSubTab = 'templates'" :class="settingsSubTab === 'templates' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="mail" class="w-4 h-4"></i> Templates de E-mail</button>
                 <button @click="settingsSubTab = 'clean'" :class="settingsSubTab === 'clean' ? 'bg-red-600 text-white shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="trash-2" class="w-4 h-4"></i> Limpeza de Sistema</button>
                 <button @click="settingsSubTab = 'storage'" :class="settingsSubTab === 'storage' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="hard-drive" class="w-4 h-4"></i> Armazenamento</button>
+                <button @click="settingsSubTab = 'logs'; fetchSystemLogs();" :class="settingsSubTab === 'logs' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="file-text" class="w-4 h-4"></i> Logs do Sistema</button>
+                <button @click="settingsSubTab = 'system'; fetchSystemUpdateInfo();" :class="settingsSubTab === 'system' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-sm font-bold' : 'text-slate-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-800 hover:shadow-xs'" class="w-full text-left p-3 rounded-xl font-bold text-sm transition-all flex items-center gap-3"><i data-lucide="download-cloud" class="w-4 h-4"></i> Sistema &amp; Atualizações</button>
             </div>
             
             <!-- Content Area -->
@@ -1080,10 +1109,96 @@
                                 <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Usuário INLABS</label><input type="text" x-model="settings.inlabs.user" placeholder="E-mail ou CPF cadastrado no INLABS" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
                                 <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase">Senha INLABS</label><input type="password" x-model="settings.inlabs.password" placeholder="Deixe em branco para manter a salva" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 placeholder-slate-400 dark:placeholder-stone-500 rounded-xl text-sm focus:outline-none"></div>
                             </div>
+                            <div class="mt-6 pt-5 border-t border-slate-200 dark:border-stone-700 space-y-2">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fonte quando o INLABS estiver fora</label>
+                                <select x-model="settings.inlabs_fallback" class="w-full md:w-1/2 p-3 bg-white dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm font-semibold focus:outline-none">
+                                    <option value="pdf">PDF integral + API do DOU (Recomendado)</option>
+                                    <option value="api">API do DOU (direto)</option>
+                                    <option value="off">Desligado (não usar contingência)</option>
+                                </select>
+                                <div class="text-xs text-slate-500 dark:text-stone-400 space-y-1 pt-1">
+                                    <div><strong>PDF integral + API do DOU:</strong> baixa os PDFs oficiais em <code>pesquisa.in.gov.br</code> (sem login), varre pela raiz do CNPJ e confirma os achados na API do DOU para manter os links das matérias.</div>
+                                    <div><strong>API do DOU:</strong> consulta todos os termos diretamente na API oficial do DOU (mais lento para listas grandes).</div>
+                                    <div><strong>Desligado:</strong> pesquisa apenas o banco INLABS local, sem fallback automático.</div>
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="pt-6 flex justify-end">
                             <button @click="saveSettings(settings)" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-10 py-4 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-white transition-all shadow-sm hover:shadow-md active:scale-95 whitespace-nowrap">Salvar Configurações</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub Tab: Arquivo PDF DOU -->
+                <div x-show="settingsSubTab === 'pdf_archive'" class="space-y-8" x-cloak>
+                    <div class="bg-white dark:bg-stone-900 p-8 rounded-3xl border border-slate-100 dark:border-stone-800 shadow-sm space-y-6">
+                        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 dark:border-stone-800 pb-6">
+                            <div>
+                                <h3 class="text-xl font-black text-slate-900 dark:text-stone-100">Arquivo Automático do PDF Integral do DOU</h3>
+                                <p class="text-xs text-slate-500 dark:text-stone-400 mt-1">Salva diariamente os PDFs completos em <span class="font-mono">AAAA/MM/DOU_AAAA-MM-DD_SecaoN.pdf</span> após a busca diária.</p>
+                            </div>
+                            <label class="inline-flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" x-model="settings.pdf_archive.enabled" class="w-5 h-5 rounded border-slate-300 text-slate-900 focus:ring-slate-900">
+                                <span class="text-sm font-bold text-slate-700 dark:text-stone-200" x-text="settings.pdf_archive.enabled ? 'Ativado' : 'Desativado'"></span>
+                            </label>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pasta de Destino</label>
+                            <input type="text" x-model="settings.pdf_archive.folder" placeholder="Documentos\Registrale\DOU" class="w-full p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 text-slate-900 dark:text-stone-100 rounded-xl text-sm font-mono focus:outline-none">
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Seções Arquivadas</label>
+                            <div class="flex flex-wrap gap-3">
+                                <template x-for="sec in [{id:'1', label:'Seção 1'}, {id:'2', label:'Seção 2'}, {id:'3', label:'Seção 3'}, {id:'extra', label:'Edições Extras'}]" :key="sec.id">
+                                    <label class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-stone-700 bg-slate-50 dark:bg-stone-800 cursor-pointer text-sm font-semibold text-slate-700 dark:text-stone-200">
+                                        <input type="checkbox" :checked="(settings.pdf_archive.sections || []).includes(sec.id)" @change="togglePdfSection(sec.id)" class="rounded border-slate-300 text-slate-900">
+                                        <span x-text="sec.label"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end">
+                            <button @click="saveSettings(settings)" class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-8 py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-all shadow-sm active:scale-95">Salvar Configurações</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-stone-900 p-8 rounded-3xl border border-slate-100 dark:border-stone-800 shadow-sm space-y-6">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-base font-black text-slate-900 dark:text-stone-100">Status e Disparo Manual</h4>
+                            <button @click="fetchPdfArchiveStatus()" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-stone-800 text-xs font-bold text-slate-600 dark:text-stone-300 hover:bg-slate-200 transition-colors">Atualizar Status</button>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/60 border border-slate-200 dark:border-stone-700 text-xs space-y-1">
+                            <div><span class="font-bold text-slate-500">Última execução:</span> <span class="font-mono" x-text="pdfArchiveStatus.last_run_at || 'Nunca'"></span> (<span x-text="pdfArchiveStatus.last_source || '-'"></span>)</div>
+                            <div><span class="font-bold text-slate-500">Referência:</span> <span class="font-mono" x-text="pdfArchiveStatus.last_date || '-'"></span></div>
+                            <div><span class="font-bold text-slate-500">Resultado:</span> <span x-text="pdfArchiveStatus.last_message || 'Aguardando execução.'"></span></div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="p-5 rounded-2xl border border-slate-200 dark:border-stone-700 space-y-3">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Arquivar Data Específica</label>
+                                <div class="flex gap-2">
+                                    <input type="text" x-model="pdfManualDate" @input="pdfManualDate = maskDate($event.target.value)" placeholder="DD/MM/AAAA" maxlength="10" class="flex-1 p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm font-mono">
+                                    <button @click="runPdfArchiveDate()" :disabled="pdfArchiveLoading" class="px-4 py-2.5 bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl text-xs font-bold hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap">Baixar Dia</button>
+                                </div>
+                            </div>
+                            <div class="p-5 rounded-2xl border border-slate-200 dark:border-stone-700 space-y-3">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Arquivar Mês Completo</label>
+                                <div class="flex gap-2">
+                                    <select x-model="pdfManualMonth" class="flex-1 p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm">
+                                        <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
+                                        <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
+                                        <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
+                                        <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+                                    </select>
+                                    <input type="number" x-model="pdfManualYear" min="2020" max="2035" class="w-24 p-2.5 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl text-sm font-mono">
+                                    <button @click="runPdfArchiveMonth()" :disabled="pdfArchiveLoading" class="px-4 py-2.5 bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl text-xs font-bold hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap">Baixar Mês</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1759,6 +1874,128 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Sub Tab: Logs do Sistema -->
+                <div x-show="settingsSubTab === 'logs'" class="space-y-6">
+                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h3 class="font-bold text-lg text-slate-900 flex items-center gap-3">
+                                    <i data-lucide="file-text" class="w-5 h-5 text-slate-500"></i>
+                                    Logs do Sistema e Execuções
+                                </h3>
+                                <p class="text-xs text-slate-500 mt-1">Visualize o log principal com rotação (<code>registrale.log</code>) e os logs individuais por execução.</p>
+                            </div>
+                            <button @click="fetchSystemLogs()" :disabled="logsLoading" class="px-4 py-2 bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl font-bold text-xs hover:bg-slate-800 transition-all flex items-center gap-2 shrink-0">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="logsLoading ? 'animate-spin' : ''"></i>
+                                Atualizar
+                            </button>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                            <select x-model="selectedLogFile" @change="fetchSystemLogs()" class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none">
+                                <option value="registrale.log">registrale.log (principal)</option>
+                                <template x-for="f in logFiles.filter(x => x.path !== 'registrale.log')" :key="f.path">
+                                    <option :value="f.path" x-text="f.path + ' (' + f.mtime + ')'"></option>
+                                </template>
+                            </select>
+                        </div>
+
+                        <div class="bg-slate-950 text-slate-100 rounded-2xl p-4 font-mono text-xs overflow-auto max-h-[480px] whitespace-pre-wrap leading-relaxed border border-slate-800">
+                            <span x-show="logsLoading" class="text-slate-400">Carregando logs...</span>
+                            <span x-show="!logsLoading && !logContent" class="text-slate-400">Nenhum conteúdo de log disponível ainda para este arquivo.</span>
+                            <span x-show="!logsLoading && logContent" x-text="logContent"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub Tab: Sistema & Atualizações -->
+                <div x-show="settingsSubTab === 'system'" class="space-y-8">
+                    <!-- Assistente de Primeira Execução / Importação -->
+                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h3 class="font-bold text-lg flex items-center gap-3">
+                                    <i data-lucide="database-backup" class="w-5 h-5 text-slate-400"></i>
+                                    Assistente de Importação (Primeira Execução)
+                                </h3>
+                                <p class="text-xs text-slate-500 mt-1">Importe empresas, menções, configurações, templates e rotinas YAML de uma instalação anterior. Um backup do banco atual é criado automaticamente antes da importação.</p>
+                            </div>
+                        </div>
+
+                        <template x-if="firstRunStatus && firstRunStatus.legacy_sources && (firstRunStatus.legacy_sources.legacy_db_path || firstRunStatus.legacy_sources.legacy_routines_dir)">
+                            <div class="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-900 space-y-2">
+                                <div class="font-bold">Dados anteriores detectados automaticamente:</div>
+                                <div x-show="firstRunStatus.legacy_sources.legacy_db_path">Banco: <code class="font-mono" x-text="firstRunStatus.legacy_sources.legacy_db_path"></code></div>
+                                <div x-show="firstRunStatus.legacy_sources.legacy_routines_dir">Rotinas: <code class="font-mono" x-text="firstRunStatus.legacy_sources.legacy_routines_dir"></code> (<span x-text="(firstRunStatus.legacy_sources.legacy_routine_files || []).length"></span> arquivos)</div>
+                                <button @click="runDetectedLegacyImport()" :disabled="importLoading" class="mt-2 px-4 py-2 bg-blue-700 text-white rounded-xl font-bold text-xs hover:bg-blue-800 transition-all">
+                                    <span x-text="importLoading ? 'Importando...' : 'Importar Dados Detectados'"></span>
+                                </button>
+                            </div>
+                        </template>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Arquivo database.db (Docker)</label>
+                                <input type="file" id="importDbFileInput" accept=".db,.sqlite,.sqlite3" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rotinas YAML (dag_confs/)</label>
+                                <input type="file" id="importRoutinesFilesInput" accept=".yaml,.yml" multiple class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-4">
+                            <label class="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" x-model="importOverwrite" class="rounded border-slate-300">
+                                Sobrescrever registros existentes (empresas, configurações e rotinas)
+                            </label>
+                            <button @click="runFirstRunUploadImport()" :disabled="importLoading" class="px-5 py-2.5 bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl font-bold text-xs hover:bg-slate-800 transition-all">
+                                <span x-text="importLoading ? 'Importando...' : 'Importar Arquivos Selecionados'"></span>
+                            </button>
+                        </div>
+
+                        <template x-if="importResult">
+                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-700 space-y-1">
+                                <div class="font-bold text-emerald-700" x-text="importResult.message"></div>
+                                <div x-show="importResult.backup_path">Backup criado: <span x-text="importResult.backup_path"></span></div>
+                                <div x-show="importResult.details" x-text="importResult.details"></div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Atualizações do Aplicativo -->
+                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h3 class="font-bold text-lg flex items-center gap-3">
+                                    <i data-lucide="download-cloud" class="w-5 h-5 text-slate-400"></i>
+                                    Versão e Atualizações
+                                </h3>
+                                <p class="text-xs text-slate-500 mt-1">
+                                    Versão atual: <strong x-text="firstRunStatus ? ('v' + firstRunStatus.version) : '—'"></strong>
+                                    &bull; Schema do banco: <strong x-text="firstRunStatus ? ('v' + firstRunStatus.schema_version) : '—'"></strong>
+                                </p>
+                            </div>
+                            <button @click="checkAppUpdates()" :disabled="updateLoading" class="px-4 py-2 bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shrink-0">
+                                <span x-text="updateLoading ? 'Verificando...' : 'Verificar Atualizações'"></span>
+                            </button>
+                        </div>
+
+                        <template x-if="updateInfo">
+                            <div class="p-4 rounded-2xl border text-xs space-y-3" :class="updateInfo.update_available ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-700'">
+                                <div class="font-bold" x-text="updateInfo.update_available ? ('Nova versão disponível: v' + updateInfo.latest_version) : (updateInfo.message || ('Você já está na versão mais recente (v' + updateInfo.latest_version + ').'))"></div>
+                                <div x-show="updateInfo.release_notes" class="whitespace-pre-wrap text-[11px] opacity-85" x-text="updateInfo.release_notes"></div>
+                                <div x-show="updateInfo.update_available && updateInfo.installer_url && updateInfo.sha256_url" class="flex items-center gap-3">
+                                    <button @click="downloadAppUpdate()" :disabled="updateLoading" class="px-4 py-2 bg-emerald-700 text-white rounded-xl font-bold text-xs hover:bg-emerald-800 transition-all">
+                                        <span x-text="updateLoading ? 'Baixando e verificando SHA-256...' : 'Baixar e Atualizar'"></span>
+                                    </button>
+                                </div>
+                                <div x-show="updateDownloadMessage" class="font-mono text-[11px]" x-text="updateDownloadMessage"></div>
+                            </div>
+                        </template>
                     </div>
                 </div>
 
@@ -3572,6 +3809,146 @@
                 sidebarOpen: true,
                 activeTab: 'home',
                 settingsSubTab: 'users',
+                logFiles: [],
+                selectedLogFile: 'registrale.log',
+                logContent: '',
+                logsLoading: false,
+                async fetchSystemLogs() {
+                    this.logsLoading = true;
+                    try {
+                        const r = await fetch(`/api/admin/logs?file=${encodeURIComponent(this.selectedLogFile)}&lines=300`);
+                        const data = await r.json();
+                        if (data.status === 'success') {
+                            this.logFiles = data.files || [];
+                            this.logContent = (data.tail && data.tail.content) ? data.tail.content : '';
+                        }
+                    } catch (e) {
+                        this.logContent = 'Erro ao carregar logs: ' + e.message;
+                    } finally {
+                        this.logsLoading = false;
+                    }
+                },
+                firstRunStatus: null,
+                updateInfo: null,
+                updateLoading: false,
+                updateDownloadMessage: '',
+                importLoading: false,
+                importOverwrite: false,
+                importResult: null,
+                async fetchSystemUpdateInfo() {
+                    try {
+                        const r = await fetch('/api/admin/first_run_status');
+                        const data = await r.json();
+                        if (data.status === 'success') {
+                            this.firstRunStatus = data;
+                        }
+                    } catch (e) {}
+                },
+                async checkAppUpdates() {
+                    this.updateLoading = true;
+                    this.updateDownloadMessage = '';
+                    try {
+                        const r = await fetch('/api/admin/updates/check');
+                        const data = await r.json();
+                        if (data.status === 'success') {
+                            this.updateInfo = data;
+                        } else {
+                            this.updateInfo = { update_available: false, latest_version: '—', message: data.message || 'Erro ao verificar atualizações.' };
+                        }
+                    } catch (e) {
+                        this.updateInfo = { update_available: false, latest_version: '—', message: 'Erro de rede: ' + e.message };
+                    } finally {
+                        this.updateLoading = false;
+                    }
+                },
+                async downloadAppUpdate() {
+                    if (!this.updateInfo) return;
+                    this.updateLoading = true;
+                    this.updateDownloadMessage = '';
+                    try {
+                        const r = await fetch('/api/admin/updates/download', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                installer_url: this.updateInfo.installer_url,
+                                sha256_url: this.updateInfo.sha256_url,
+                                installer_name: this.updateInfo.installer_name,
+                                launch: true
+                            })
+                        });
+                        const data = await r.json();
+                        this.updateDownloadMessage = data.message + (data.path ? (' (' + data.path + ')') : '');
+                    } catch (e) {
+                        this.updateDownloadMessage = 'Erro ao baixar atualização: ' + e.message;
+                    } finally {
+                        this.updateLoading = false;
+                    }
+                },
+                async runDetectedLegacyImport() {
+                    if (!this.firstRunStatus || !this.firstRunStatus.legacy_sources) return;
+                    this.importLoading = true;
+                    this.importResult = null;
+                    try {
+                        const r = await fetch('/api/admin/first_run_import', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                db_path: this.firstRunStatus.legacy_sources.legacy_db_path || '',
+                                routines_dir: this.firstRunStatus.legacy_sources.legacy_routines_dir || '',
+                                overwrite: this.importOverwrite
+                            })
+                        });
+                        const data = await r.json();
+                        if (data.status === 'success') {
+                            this.importResult = {
+                                message: 'Importação concluída com sucesso!',
+                                backup_path: (data.db && data.db.backup_path) || '',
+                                details: JSON.stringify({ db: (data.db && data.db.imported) || null, routines: (data.routines && data.routines.copied) || [] })
+                            };
+                            await this.fetchSystemUpdateInfo();
+                        } else {
+                            this.importResult = { message: data.message || 'Erro na importação.' };
+                        }
+                    } catch (e) {
+                        this.importResult = { message: 'Erro: ' + e.message };
+                    } finally {
+                        this.importLoading = false;
+                    }
+                },
+                async runFirstRunUploadImport() {
+                    const dbInput = document.getElementById('importDbFileInput');
+                    const routinesInput = document.getElementById('importRoutinesFilesInput');
+                    const fd = new FormData();
+                    fd.append('overwrite', this.importOverwrite ? 'true' : 'false');
+                    if (dbInput && dbInput.files && dbInput.files[0]) {
+                        fd.append('db_file', dbInput.files[0]);
+                    }
+                    if (routinesInput && routinesInput.files) {
+                        for (const f of routinesInput.files) {
+                            fd.append('routine_files', f);
+                        }
+                    }
+                    this.importLoading = true;
+                    this.importResult = null;
+                    try {
+                        const r = await fetch('/api/admin/first_run_import', { method: 'POST', body: fd });
+                        const data = await r.json();
+                        if (data.status === 'success') {
+                            this.importResult = {
+                                message: 'Importação concluída com sucesso!',
+                                backup_path: (data.db && data.db.backup_path) || '',
+                                details: JSON.stringify({ db: (data.db && data.db.imported) || null, routines: (data.routines && data.routines.copied) || [] })
+                            };
+                            await this.fetchSystemUpdateInfo();
+                        } else {
+                            this.importResult = { message: data.message || 'Erro na importação.' };
+                        }
+                    } catch (e) {
+                        this.importResult = { message: 'Erro: ' + e.message };
+                    } finally {
+                        this.importLoading = false;
+                    }
+                },
                 darkMode: localStorage.getItem('darkMode') === 'true',
                 
                 toggleDarkMode() {
@@ -3623,7 +4000,7 @@
                 loadingCompanies: false,
                 internalUsers: {{ users | tojson | safe }},
                 settings: (() => {
-                    const raw = Object.assign({smtp:{}, api_keys:{}, inlabs:{}, google_sheets: {}}, {{ settings | tojson | safe }});
+                    const raw = Object.assign({smtp:{}, api_keys:{}, inlabs:{}, google_sheets: {}, pdf_archive: {}}, {{ settings | tojson | safe }});
                     if (!raw.google_sheets) raw.google_sheets = {};
                     if (!raw.google_sheets.mapping) {
                         raw.google_sheets.mapping = {
@@ -3634,8 +4011,17 @@
                     if (raw.google_sheets.auto_sync === undefined) raw.google_sheets.auto_sync = false;
                     if (!raw.google_sheets.sync_interval) raw.google_sheets.sync_interval = 60;
                     if (raw.google_sheets.delete_obsolete === undefined) raw.google_sheets.delete_obsolete = false;
+                    if (!raw.pdf_archive) raw.pdf_archive = {};
+                    if (raw.pdf_archive.enabled === undefined) raw.pdf_archive.enabled = true;
+                    if (!raw.pdf_archive.folder) raw.pdf_archive.folder = '';
+                    if (!Array.isArray(raw.pdf_archive.sections)) raw.pdf_archive.sections = ['1', '2', '3', 'extra'];
                     return raw;
                 })(),
+                pdfArchiveStatus: {},
+                pdfManualDate: '',
+                pdfManualMonth: String(new Date().getMonth() + 1),
+                pdfManualYear: new Date().getFullYear(),
+                pdfArchiveLoading: false,
                 kpis: {{ init_data.kpis | tojson | safe }},
                 historico: {{ historico | tojson | safe }},
                 newU: {username: '', password: '', role: 'user'},
@@ -3708,6 +4094,7 @@
                         if (data.last_sync) this.topIndicators.last_sync = data.last_sync;
                         if (data.last_search) this.topIndicators.last_search = data.last_search;
                         if (data.next_search) this.topIndicators.next_search = data.next_search;
+                        if (data.inlabs_status) this.inlabsStatus = data.inlabs_status;
                         if (data.kpis) {
                             if (data.kpis.mencoes_total > this.lastSeenMentionsTotal) {
                                 this.unseenMentionsCount += (data.kpis.mencoes_total - this.lastSeenMentionsTotal);
@@ -3721,6 +4108,7 @@
                 },
 
                 // Integrations Wizard & Main DAG Status
+                inlabsStatus: null,
                 integrationsStatus: { is_configured: true, all_configured: true, pending_count: 0, next_pending: null, integrations: [], main_dag: {}, smtp: {} },
                 wizardModalOpen: false,
                 mainDagStatus: { is_configured: true, missing_fields: [], main_dag: {}, smtp_configured: false, smtp: {} },
@@ -4714,6 +5102,9 @@
                             if (data.historico) {
                                 this.historico = data.historico;
                             }
+                            if (data.inlabs_status) {
+                                this.inlabsStatus = data.inlabs_status;
+                            }
                             
                             const completionEvents = [
                                 'E-mail Enviado', 
@@ -5108,6 +5499,49 @@
                             this.onIntegrationStepCompleted();
                         }
                     } catch(e) { this.showAlert('Erro ao salvar configurações', 'error'); }
+                },
+
+                togglePdfSection(secId) {
+                    if (!this.settings.pdf_archive) this.settings.pdf_archive = { enabled: true, folder: '', sections: [] };
+                    const list = Array.isArray(this.settings.pdf_archive.sections) ? [...this.settings.pdf_archive.sections] : [];
+                    const idx = list.indexOf(secId);
+                    if (idx >= 0) list.splice(idx, 1);
+                    else list.push(secId);
+                    this.settings.pdf_archive.sections = list;
+                },
+
+                async fetchPdfArchiveStatus() {
+                    try {
+                        const r = await fetch('/api/pdf_archive/status');
+                        const res = await r.json();
+                        if (res.archive_status) this.pdfArchiveStatus = res.archive_status;
+                        if (res.config && this.settings.pdf_archive) {
+                            this.settings.pdf_archive = Object.assign(this.settings.pdf_archive, res.config);
+                        }
+                    } catch(e) {}
+                },
+
+                async runPdfArchiveDate() {
+                    if (!this.pdfManualDate) { this.showAlert('Informe uma data (DD/MM/AAAA).', 'error'); return; }
+                    this.pdfArchiveLoading = true;
+                    try {
+                        const r = await fetch('/api/pdf_archive/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({date: this.pdfManualDate})});
+                        const res = await r.json();
+                        this.showAlert(res.message, res.status);
+                        setTimeout(() => this.fetchPdfArchiveStatus(), 2000);
+                    } catch(e) { this.showAlert('Erro ao iniciar arquivamento.', 'error'); }
+                    finally { this.pdfArchiveLoading = false; }
+                },
+
+                async runPdfArchiveMonth() {
+                    this.pdfArchiveLoading = true;
+                    try {
+                        const r = await fetch('/api/pdf_archive/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({month: Number(this.pdfManualMonth), year: Number(this.pdfManualYear)})});
+                        const res = await r.json();
+                        this.showAlert(res.message, res.status);
+                        setTimeout(() => this.fetchPdfArchiveStatus(), 2000);
+                    } catch(e) { this.showAlert('Erro ao iniciar arquivamento mensal.', 'error'); }
+                    finally { this.pdfArchiveLoading = false; }
                 },
 
                 formatTime(seconds) {

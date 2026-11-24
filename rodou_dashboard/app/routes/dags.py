@@ -9,8 +9,9 @@ import logging
 from datetime import datetime, timezone, timedelta
 from .auth import login_required
 from ..models import db, Mention, Company, SyncHistory
-from ..services.dag_config_service import get_routines, get_dag_confs_path
+from ..services.dag_config_service import get_routines, get_dag_confs_path, touch_dag_generator
 from ..services.airflow_service import trigger_airflow_dag, get_airflow_auth
+from ..runtime.executor import get_executor, get_executor_mode, normalize_date_str
 
 # Assumindo a mesma estrutura
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -52,16 +53,56 @@ def add_history_event(evento, detalhes):
     from ..models import SyncHistory
     SyncHistory.log_event(evento, detalhes)
 
-def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=None):
-    """Extrai as menções diretamente do DAG Run recém-concluído via XCom da API REST
-    com fallback seguro para os logs daquela execução específica."""
-    import requests
-    import json
-    import ast
+def _fallback_sources():
+    """Fonte das buscas sem INLABS.
+
+    No modo local devolve ``["INLABS"]``: o runner percebe que o banco não tem o
+    dia e usa o PDF integral confirmado na API do DOU (``runtime/pdf_search.py``).
+    No modo Airflow (ou com ``inlabs_fallback = api``) mantém a API do DOU.
+    """
+    if get_executor_mode() == "local":
+        try:
+            from ..runtime.pdf_search import FALLBACK_PDF, get_fallback_mode
+            if get_fallback_mode() == FALLBACK_PDF:
+                return ["INLABS"]
+        except Exception:
+            pass
+    return ["DOU"]
+
+
+def _describe_local_fallback_source() -> str:
+    """Rótulo legível da fonte de contingência ativa no modo local."""
+    if get_executor_mode() == "local":
+        try:
+            from ..runtime.pdf_search import FALLBACK_PDF, get_fallback_mode
+            if get_fallback_mode() == FALLBACK_PDF:
+                return "PDF integral + API do DOU"
+        except Exception:
+            pass
+    return "API Oficial do DOU"
+
+
+def _extract_sources_used_from_runs(run_ids) -> str:
+    """Extrai os rótulos ``source_used`` gravados nos ``JobRun`` locais."""
+    if not run_ids or get_executor_mode() != "local":
+        return ""
+    try:
+        from ..models import JobRun
+        labels = []
+        for job in JobRun.query.filter(JobRun.id.in_(list(run_ids))).all():
+            for block in job.get_resultado():
+                if isinstance(block, dict):
+                    src = (block.get("source_used") or "").strip()
+                    if src and src not in labels:
+                        labels.append(src)
+        return ", ".join(labels)
+    except Exception:
+        return ""
+
+
+def extract_mentions_from_results(results_raw_list, cnpj_map=None):
+    """Extrai e normaliza menções a partir de uma lista de dicionários `result`."""
     import hashlib
-    import glob
-    import os
-    import re
     from datetime import datetime, timezone, timedelta
     from ..services.mention_service import clean_abstract_for_dashboard, normalize_cnpj
     from ..models import Company
@@ -74,73 +115,15 @@ def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=
         cnpj_map = {c.cnpj_norm: c.nome for c in companies if c.cnpj_norm}
         cnpj_map.update({c.cnpj: c.nome for c in companies if c.cnpj})
 
-    results_raw_list = []
-
-    # 1. Tentar obter via Airflow REST API XCom
-    if dag_run_id:
-        try:
-            ti_url = f"{airflow_url}/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances"
-            res_ti = requests.get(ti_url, auth=auth, timeout=10)
-            if res_ti.status_code == 200:
-                task_instances = res_ti.json().get('task_instances', [])
-                search_tasks = [
-                    ti['task_id'] for ti in task_instances 
-                    if 'exec_search' in ti.get('task_id', '') and ti.get('state') == 'success'
-                ]
-                for tid in search_tasks:
-                    xcom_url = f"{airflow_url}/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{tid}/xcomEntries/return_value"
-                    res_xc = requests.get(xcom_url, auth=auth, timeout=10)
-                    if res_xc.status_code == 200:
-                        xc_val = res_xc.json().get('value')
-                        if isinstance(xc_val, str):
-                            try:
-                                xc_val = json.loads(xc_val)
-                            except Exception:
-                                try:
-                                    xc_val = ast.literal_eval(xc_val)
-                                except Exception:
-                                    pass
-                        if isinstance(xc_val, dict):
-                            res_dict = xc_val.get('result', xc_val)
-                            if isinstance(res_dict, dict):
-                                results_raw_list.append(res_dict)
-        except Exception:
-            pass
-
-    # 2. Fallback: Ler apenas os logs daquele dag_run_id específico
-    if not results_raw_list and dag_run_id:
-        try:
-            from ..services.dag_config_service import LOGS_DIR
-            run_log_pattern = os.path.join(LOGS_DIR, f"dag_id={dag_id}", f"run_id={dag_run_id}", "task_id=exec_searchs.exec_search_*", "attempt=*.log")
-            specific_logs = glob.glob(run_log_pattern)
-            if not specific_logs:
-                alt_pattern = os.path.join(LOGS_DIR, f"dag_id={dag_id}", f"run_id={dag_run_id}", "task_id=exec_search_*", "attempt=*.log")
-                specific_logs = glob.glob(alt_pattern)
-
-            for log_path in specific_logs:
-                try:
-                    with open(log_path, 'rb') as f:
-                        content = f.read().decode('utf-8', errors='ignore')
-                    if 'Done. Returned value was:' in content:
-                        part = content.split('Done. Returned value was:', 1)[1].strip()
-                        dict_match = re.search(r'^(\{.*?\})\s*(?=\n\[\d{4}-\d{2}-\d{2}|\Z)', part, re.DOTALL)
-                        if dict_match:
-                            res_dict = ast.literal_eval(dict_match.group(1)).get('result', {})
-                            if isinstance(res_dict, dict):
-                                results_raw_list.append(res_dict)
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-    # 3. Processar e estruturar as menções
     now_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%Y-%m-%d %H:%M:%S')
     for raw_result in results_raw_list:
+        if not isinstance(raw_result, dict):
+            continue
         group_list = []
         if 'single_group' in raw_result and isinstance(raw_result['single_group'], dict):
             group_list.append(raw_result['single_group'])
         else:
-            for g_key, g_val in raw_result.items():
+            for _, g_val in raw_result.items():
                 if isinstance(g_val, dict):
                     group_list.append(g_val)
         if not group_list and raw_result:
@@ -153,7 +136,7 @@ def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=
                 cnpjs = [c.strip() for c in cnpj_raw_key.split(',')]
                 for cnpj_log in cnpjs:
                     cnpj_norm = normalize_cnpj(cnpj_log)
-                    for dept_name, depts in content_group.items():
+                    for _, depts in content_group.items():
                         if not isinstance(depts, list):
                             continue
                         for pub in depts:
@@ -187,6 +170,18 @@ def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url, auth, cnpj_map=
 
     return extracted_mentions
 
+
+def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url=None, auth=None, cnpj_map=None):
+    """Extrai as menções de uma execução concluída usando a camada Executor."""
+    raw_items = get_executor().result(dag_run_id, routine=dag_id)
+    results_raw_list = []
+    for item in raw_items or []:
+        if isinstance(item, dict):
+            res_dict = item.get('result', item)
+            if isinstance(res_dict, dict):
+                results_raw_list.append(res_dict)
+    return extract_mentions_from_results(results_raw_list, cnpj_map=cnpj_map)
+
 @dags_bp.route('/routines', methods=['GET', 'POST'])
 @login_required
 def manage_routines():
@@ -217,7 +212,7 @@ def manage_routines():
         new_id = re.sub(r'\W+', '_', data['name'].lower())
         filename = f"{new_id}.yaml"
         
-    file_path = os.path.join(BASE_DIR, "dag_confs", filename)
+    file_path = os.path.join(get_dag_confs_path(), filename)
     
     existing_data = {}
     if os.path.exists(file_path):
@@ -291,8 +286,11 @@ def manage_routines():
     if 'active' in data:
         dag["active"] = bool(data['active'])
         dag["is_paused"] = not bool(data['active'])
-        from ..services.airflow_service import toggle_airflow_dag
-        toggle_airflow_dag(dag.get("id"), is_paused=dag["is_paused"])
+        executor = get_executor()
+        if dag["is_paused"]:
+            executor.pause(dag.get("id"))
+        else:
+            executor.unpause(dag.get("id"))
         
     dag["report"] = report
     
@@ -539,7 +537,8 @@ def api_configure_main_dag():
             settings_record.set_value(current_val)
             db.session.commit()
             
-            DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data'))
+            from ..runtime.paths import get_data_dir
+            DATA_DIR = str(get_data_dir(create=True))
             env_path = os.path.join(DATA_DIR, '.env')
             if not os.path.exists(env_path): open(env_path, 'a').close()
             
@@ -561,13 +560,10 @@ def api_configure_main_dag():
                 set_key(env_path, "AIRFLOW__SMTP__SMTP_SSL", "true")
                 os.environ["AIRFLOW__SMTP__SMTP_SSL"] = "true"
                 
-            # Sincronizar conexão smtp_default no Airflow
+            # Sincronizar conexão smtp_default no orquestrador (no-op no modo local)
             try:
-                import requests
                 import json
-                airflow_url = os.getenv('AIRFLOW_URL', 'http://airflow-api-server:8080')
-                auth = get_airflow_auth()
-                
+
                 conn_payload = {
                     "connection_id": "smtp_default",
                     "conn_type": "smtp",
@@ -577,20 +573,10 @@ def api_configure_main_dag():
                     "port": int(port) if port.isdigit() else 587,
                     "extra": json.dumps({"from_email": from_email, "disable_tls": False})
                 }
-                
-                res = requests.get(f"{airflow_url}/api/v2/connections/smtp_default", auth=auth, timeout=5)
-                if res.status_code == 200:
-                    requests.patch(
-                        f"{airflow_url}/api/v2/connections/smtp_default?update_mask=host,login,password,port,extra",
-                        json=conn_payload,
-                        auth=auth,
-                        timeout=5
-                    )
-                else:
-                    requests.post(f"{airflow_url}/api/v2/connections", json=conn_payload, auth=auth, timeout=5)
+                get_executor().sync_connection("smtp_default", conn_payload)
             except Exception as e:
                 import logging
-                logging.error(f"Falha ao atualizar conexão smtp_default no Airflow via assistente: {e}")
+                logging.error(f"Falha ao atualizar conexão smtp_default via assistente: {e}")
                 
     return jsonify({
         "status": "success",
@@ -637,8 +623,11 @@ def toggle_routine_route(file):
             yaml.safe_dump(yaml_data, f, allow_unicode=True, sort_keys=False)
         os.replace(tmp_path, file_path)
         
-        from ..services.airflow_service import toggle_airflow_dag
-        toggle_airflow_dag(dag_id, is_paused=not new_active)
+        executor = get_executor()
+        if new_active:
+            executor.unpause(dag_id)
+        else:
+            executor.pause(dag_id)
         
         # Se for Pesquisa_cnpj.yaml, atualiza também no SQLite e propaga para partes
         if file == "Pesquisa_cnpj.yaml":
@@ -670,7 +659,10 @@ def toggle_routine_route(file):
                         yaml.safe_dump(pdata, pf, allow_unicode=True, sort_keys=False)
                     os.replace(ptmp, p)
                     if pdag_id:
-                        toggle_airflow_dag(pdag_id, is_paused=not new_active)
+                        if new_active:
+                            executor.unpause(pdag_id)
+                        else:
+                            executor.pause(pdag_id)
                 except Exception as part_err:
                     pass
         
@@ -716,21 +708,9 @@ def delete_routine(file):
 
             os.remove(file_path)
 
-            # Desregistrar do Airflow se aplicável
-            try:
-                from ..services.airflow_service import get_airflow_auth, get_airflow_url
-                auth = get_airflow_auth()
-                airflow_url = get_airflow_url()
-                requests.delete(f"{airflow_url}/api/v2/dags/{dag_id}", auth=auth, timeout=5)
-            except Exception:
-                pass
-
-            try:
-                generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                if os.path.exists(generator_path):
-                    os.utime(generator_path, None)
-            except Exception:
-                pass
+            # Desregistrar do orquestrador (no-op no modo local)
+            get_executor().delete_routine(dag_id)
+            touch_dag_generator()
 
             add_history_event("Rotina Excluída", f"Rotina {file} removida do sistema.")
             return jsonify({"status": "success", "message": "Rotina excluída com sucesso!"})
@@ -756,6 +736,220 @@ def cleanup_temp_dags_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _dispatch_routine(dag_id, logical_date=None, yaml_dict=None):
+    """Dispara uma rotina pelo Executor ativo (preservando monkeypatch de trigger_airflow_dag)."""
+    if get_executor_mode() == "local":
+        try:
+            target = yaml_dict if yaml_dict is not None else dag_id
+            run_id = get_executor().trigger(target, date=logical_date)
+            return True, f"Rotina {dag_id} disparada localmente.", {"dag_id": dag_id, "dag_run_id": run_id}
+        except Exception as exc:
+            return False, str(exc), {"dag_id": dag_id, "dag_run_id": None}
+    return trigger_airflow_dag(dag_id, logical_date)
+
+
+def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None):
+    import time
+    import logging
+    from datetime import datetime, timezone, timedelta
+    from ..services.mention_service import clear_mentions_cache, get_mentions_kpis
+    from ..services.email_service import EmailSender, build_mentions_email_html
+    from ..models import db, Settings, Mention, Company
+
+    # Garante lista estruturada de itens a monitorar
+    normalized_runs = []
+    for r in runs_to_watch:
+        if isinstance(r, dict):
+            normalized_runs.append(r)
+        else:
+            normalized_runs.append({"dag_id": str(r), "dag_run_id": None})
+
+    if get_executor_mode() == "local":
+        run_ids = [item["dag_run_id"] for item in normalized_runs if item.get("dag_run_id")]
+        if run_ids:
+            with app_context:
+                get_executor().wait(run_ids, timeout=1800)
+        airflow_url = None
+        auth = None
+    else:
+        import requests
+        import urllib.parse
+        from ..services.airflow_service import get_airflow_url, get_airflow_auth
+
+        airflow_url = get_airflow_url()
+        auth = get_airflow_auth()
+
+        time.sleep(3)
+        max_wait = 1800  # 30 min
+        start = time.time()
+
+        # 1. Aguarda conclusão de todos os DAG runs disparados
+        while (time.time() - start) < max_wait:
+            all_done = True
+            for item in normalized_runs:
+                did = item.get('dag_id')
+                run_id = item.get('dag_run_id')
+
+                try:
+                    did_quoted = urllib.parse.quote(str(did), safe='')
+                    if run_id:
+                        run_id_quoted = urllib.parse.quote(str(run_id), safe='')
+                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns/{run_id_quoted}"
+                        res = requests.get(url, auth=auth, timeout=5)
+                        if res.status_code == 200:
+                            st = res.json().get('state')
+                            if st in ('running', 'queued') or not st:
+                                all_done = False
+                                break
+                        else:
+                            all_done = False
+                            break
+                    else:
+                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns?order_by=-run_after&limit=10"
+                        res = requests.get(url, auth=auth, timeout=5)
+                        if res.status_code == 200:
+                            runs = res.json().get('dag_runs', [])
+                            active = [run for run in runs if run.get('state') in ('running', 'queued')]
+                            if active:
+                                all_done = False
+                                break
+                except Exception:
+                    all_done = False
+                    break
+
+            if all_done:
+                break
+            time.sleep(3)
+
+        time.sleep(2)
+    with app_context:
+        try:
+            # 2. Formatar data de referência
+            if logical_date:
+                try:
+                    target_date_str = datetime.strptime(str(logical_date).strip(), '%Y-%m-%d').strftime('%d/%m/%Y')
+                except Exception:
+                    try:
+                        target_date_str = datetime.strptime(str(logical_date).strip(), '%d/%m/%Y').strftime('%d/%m/%Y')
+                    except Exception:
+                        target_date_str = str(logical_date)
+            else:
+                target_date_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y')
+
+            # 3. Extrair menções diretamente dos DAG Runs concluídos (Ultrarrápido: ~0.05s)
+            direct_mentions = []
+            companies = Company.query.with_entities(Company.cnpj_norm, Company.nome, Company.cnpj).all()
+            cnpj_map = {c.cnpj_norm: c.nome for c in companies if c.cnpj_norm}
+            cnpj_map.update({c.cnpj: c.nome for c in companies if c.cnpj})
+
+            for item in normalized_runs:
+                did = item.get('dag_id')
+                run_id = item.get('dag_run_id')
+                if did:
+                    run_res = fetch_mentions_from_dag_run(did, run_id, airflow_url, auth, cnpj_map=cnpj_map)
+                    direct_mentions.extend(run_res)
+
+            # Se obteve menções diretas, insere/atualiza no banco SQLite para o Dashboard
+            if direct_mentions:
+                from ..runtime.pdf_archiver import resolve_pdf_for_mention
+                m_ids = [m['id'] for m in direct_mentions if m.get('id')]
+                existing_records = {e.id: e for e in Mention.query.filter(Mention.id.in_(m_ids)).all()} if m_ids else {}
+                for m in direct_mentions:
+                    pdf_path = m.get('pdf_path') or resolve_pdf_for_mention(m.get('data'), m.get('secao'))
+                    existing = existing_records.get(m['id'])
+                    if not existing:
+                        payload = dict(m)
+                        if pdf_path:
+                            payload['pdf_path'] = pdf_path
+                        db.session.add(Mention(**payload))
+                    else:
+                        existing.empresa = m.get('empresa', existing.empresa)
+                        existing.secao = m.get('secao', existing.secao)
+                        existing.data = m.get('data', existing.data)
+                        existing.detected_at = m.get('detected_at', existing.detected_at)
+                        existing.trecho = m.get('trecho', existing.trecho)
+                        existing.link = m.get('link', existing.link)
+                        if pdf_path:
+                            existing.pdf_path = pdf_path
+                db.session.commit()
+                clear_mentions_cache()
+                relevant_mentions = direct_mentions
+            else:
+                clear_mentions_cache()
+                relevant_mentions = []
+
+            # Filtragem opcional de termos para rotinas com termos específicos
+            if target_terms and routine_name != "Pesquisa_cnpj.yaml":
+                relevant_mentions = [
+                    m for m in relevant_mentions 
+                    if (m.get('cnpj_norm') in target_terms) or (m.get('cnpj') in target_terms)
+                ]
+
+            total, hoje, mes = get_mentions_kpis()
+
+            # 4. Destinatários de E-mail
+            emails = list(routine_emails or [])
+            if not emails:
+                settings_record = Settings.query.filter_by(key='global_settings').first()
+                if settings_record:
+                    smtp_data = settings_record.get_value().get('smtp', {})
+                    smtp_from = smtp_data.get('from_email') or smtp_data.get('user', '')
+                    if smtp_from:
+                        emails = [smtp_from]
+            emails = [e.strip() for e in emails if e and str(e).strip()]
+
+            logging.info(f"[Watcher {routine_name}] relevant_mentions={len(relevant_mentions)}, emails={emails}")
+
+            source_tag = ""
+            if get_executor_mode() == "local":
+                run_ids = [item.get("dag_run_id") for item in normalized_runs if item.get("dag_run_id")]
+                sources_label = _extract_sources_used_from_runs(run_ids)
+                if sources_label:
+                    source_tag = f" [Fonte: {sources_label}]"
+
+            # 5. Envio do E-mail Formatado
+            email_sent = False
+            email_failed = False
+            if emails and relevant_mentions:
+                from ..services.email_service import render_email_subject
+                subject = render_email_subject(
+                    routine_subject, relevant_mentions, template_name='Padrão Registrale',
+                    date_str=target_date_str,
+                    fallback=f"Registrale - Alerta DOU ({routine_name}) - {target_date_str}")
+                html = build_mentions_email_html(
+                    relevant_mentions,
+                    template_name='Padrão Registrale',
+                    title=routine_subject or f"Notificação DOU: {routine_name}",
+                    subtitle=f"Foram identificadas {len(relevant_mentions)} publicações no Diário Oficial da União para a data {target_date_str}:"
+                )
+                try:
+                    sender = EmailSender(None)
+                    sender.send_custom_email(
+                        to_emails=emails,
+                        subject=subject,
+                        html_content=html
+                    )
+                    email_sent = True
+                    add_history_event("E-mail Enviado", f"Alerta {routine_name} enviado para {', '.join(emails)} ({len(relevant_mentions)} menções){source_tag}.")
+                except Exception as e_mail:
+                    email_failed = True
+                    logging.error(f"Erro ao enviar e-mail da rotina {routine_name}: {e_mail}")
+                    add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail da rotina {routine_name}: {str(e_mail)}")
+
+            if not email_sent and not email_failed:
+                motivo = []
+                if not emails:
+                    motivo.append("nenhum destinatário configurado")
+                if not relevant_mentions:
+                    motivo.append(f"0 menções encontradas para {target_date_str}")
+                motivo_str = f" ({'; '.join(motivo)})" if motivo else ""
+                add_history_event("Busca Concluída", f"Rotina {routine_name} concluída{motivo_str}{source_tag}. Total no painel: {total} ({hoje} hoje).")
+
+        except Exception as e:
+            import logging
+            logging.error(f"Erro ao atualizar menções pós-busca: {e}")
+
+
 @dags_bp.route('/routines/trigger/<path:file>', methods=['POST'])
 @login_required
 def trigger_routine(file):
@@ -763,7 +957,6 @@ def trigger_routine(file):
     logical_date = req_data.get('logical_date')
     
     if logical_date:
-        from ..services.airflow_service import normalize_date_str
         try:
             logical_date = normalize_date_str(logical_date)
         except ValueError:
@@ -819,182 +1012,6 @@ def trigger_routine(file):
                         routine_cnpjs.add(clean_t)
     except Exception: pass
 
-    def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None):
-        import time
-        import requests
-        import logging
-        import urllib.parse
-        from datetime import datetime, timezone, timedelta
-        from ..services.mention_service import clear_mentions_cache, get_mentions_kpis
-        from ..services.email_service import EmailSender, build_mentions_email_html
-        from ..services.airflow_service import get_airflow_url, get_airflow_auth
-        from ..models import db, Settings, Mention, Company
-        
-        airflow_url = get_airflow_url()
-        auth = get_airflow_auth()
-        
-        time.sleep(3)
-        max_wait = 1800  # 30 min
-        start = time.time()
-        
-        # Garante lista estruturada de itens a monitorar
-        normalized_runs = []
-        for r in runs_to_watch:
-            if isinstance(r, dict):
-                normalized_runs.append(r)
-            else:
-                normalized_runs.append({"dag_id": str(r), "dag_run_id": None})
-        
-        # 1. Aguarda conclusão de todos os DAG runs disparados
-        while (time.time() - start) < max_wait:
-            all_done = True
-            for item in normalized_runs:
-                did = item.get('dag_id')
-                run_id = item.get('dag_run_id')
-                
-                try:
-                    did_quoted = urllib.parse.quote(str(did), safe='')
-                    if run_id:
-                        run_id_quoted = urllib.parse.quote(str(run_id), safe='')
-                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns/{run_id_quoted}"
-                        res = requests.get(url, auth=auth, timeout=5)
-                        if res.status_code == 200:
-                            st = res.json().get('state')
-                            if st in ('running', 'queued') or not st:
-                                all_done = False
-                                break
-                        else:
-                            all_done = False
-                            break
-                    else:
-                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns?order_by=-run_after&limit=10"
-                        res = requests.get(url, auth=auth, timeout=5)
-                        if res.status_code == 200:
-                            runs = res.json().get('dag_runs', [])
-                            active = [run for run in runs if run.get('state') in ('running', 'queued')]
-                            if active:
-                                all_done = False
-                                break
-                except Exception:
-                    all_done = False
-                    break
-            
-            if all_done:
-                break
-            time.sleep(3)
-            
-        time.sleep(2)
-        with app_context:
-            try:
-                # 2. Formatar data de referência
-                if logical_date:
-                    try:
-                        target_date_str = datetime.strptime(str(logical_date).strip(), '%Y-%m-%d').strftime('%d/%m/%Y')
-                    except Exception:
-                        try:
-                            target_date_str = datetime.strptime(str(logical_date).strip(), '%d/%m/%Y').strftime('%d/%m/%Y')
-                        except Exception:
-                            target_date_str = str(logical_date)
-                else:
-                    target_date_str = datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y')
-
-                # 3. Extrair menções diretamente dos DAG Runs concluídos (Ultrarrápido: ~0.05s)
-                direct_mentions = []
-                companies = Company.query.with_entities(Company.cnpj_norm, Company.nome, Company.cnpj).all()
-                cnpj_map = {c.cnpj_norm: c.nome for c in companies if c.cnpj_norm}
-                cnpj_map.update({c.cnpj: c.nome for c in companies if c.cnpj})
-
-                for item in normalized_runs:
-                    did = item.get('dag_id')
-                    run_id = item.get('dag_run_id')
-                    if did:
-                        run_res = fetch_mentions_from_dag_run(did, run_id, airflow_url, auth, cnpj_map=cnpj_map)
-                        direct_mentions.extend(run_res)
-
-                # Se obteve menções diretas, insere/atualiza no banco SQLite para o Dashboard
-                if direct_mentions:
-                    m_ids = [m['id'] for m in direct_mentions if m.get('id')]
-                    existing_records = {e.id: e for e in Mention.query.filter(Mention.id.in_(m_ids)).all()} if m_ids else {}
-                    for m in direct_mentions:
-                        existing = existing_records.get(m['id'])
-                        if not existing:
-                            db.session.add(Mention(**m))
-                        else:
-                            existing.empresa = m.get('empresa', existing.empresa)
-                            existing.secao = m.get('secao', existing.secao)
-                            existing.data = m.get('data', existing.data)
-                            existing.detected_at = m.get('detected_at', existing.detected_at)
-                            existing.trecho = m.get('trecho', existing.trecho)
-                            existing.link = m.get('link', existing.link)
-                    db.session.commit()
-                    clear_mentions_cache()
-                    relevant_mentions = direct_mentions
-                else:
-                    clear_mentions_cache()
-                    relevant_mentions = []
-
-                # Filtragem opcional de termos para rotinas com termos específicos
-                if target_terms and routine_name != "Pesquisa_cnpj.yaml":
-                    relevant_mentions = [
-                        m for m in relevant_mentions 
-                        if (m.get('cnpj_norm') in target_terms) or (m.get('cnpj') in target_terms)
-                    ]
-
-                total, hoje, mes = get_mentions_kpis()
-
-                # 4. Destinatários de E-mail
-                emails = list(routine_emails or [])
-                if not emails:
-                    settings_record = Settings.query.filter_by(key='global_settings').first()
-                    if settings_record:
-                        smtp_data = settings_record.get_value().get('smtp', {})
-                        smtp_from = smtp_data.get('from_email') or smtp_data.get('user', '')
-                        if smtp_from:
-                            emails = [smtp_from]
-                emails = [e.strip() for e in emails if e and str(e).strip()]
-
-                logging.info(f"[Watcher {routine_name}] relevant_mentions={len(relevant_mentions)}, emails={emails}")
-
-                # 5. Envio do E-mail Formatado
-                email_sent = False
-                if emails and relevant_mentions:
-                    from ..services.email_service import render_email_subject
-                    subject = render_email_subject(
-                        routine_subject, relevant_mentions, template_name='Padrão Registrale',
-                        date_str=target_date_str,
-                        fallback=f"Registrale - Alerta DOU ({routine_name}) - {target_date_str}")
-                    html = build_mentions_email_html(
-                        relevant_mentions,
-                        template_name='Padrão Registrale',
-                        title=routine_subject or f"Notificação DOU: {routine_name}",
-                        subtitle=f"Foram identificadas {len(relevant_mentions)} publicações no Diário Oficial da União para a data {target_date_str}:"
-                    )
-                    try:
-                        sender = EmailSender(None)
-                        sender.send_custom_email(
-                            to_emails=emails,
-                            subject=subject,
-                            html_content=html
-                        )
-                        email_sent = True
-                        add_history_event("E-mail Enviado", f"Alerta {routine_name} enviado para {', '.join(emails)} ({len(relevant_mentions)} menções).")
-                    except Exception as e_mail:
-                        logging.error(f"Erro ao enviar e-mail da rotina {routine_name}: {e_mail}")
-                        add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail da rotina {routine_name}: {str(e_mail)}")
-
-                if not email_sent:
-                    motivo = []
-                    if not emails:
-                        motivo.append("nenhum destinatário configurado")
-                    if not relevant_mentions:
-                        motivo.append(f"0 menções encontradas para {target_date_str}")
-                    motivo_str = f" ({'; '.join(motivo)})" if motivo else ""
-                    add_history_event("Busca Concluída", f"Rotina {routine_name} concluída{motivo_str}. Total no painel: {total} ({hoje} hoje).")
-
-            except Exception as e:
-                import logging
-                logging.error(f"Erro ao atualizar menções pós-busca: {e}")
-
     # ----------------------------------------------------
     # SE FOR ROTINA INLABS COM DATA ESPECÍFICA (EX: 2026-08-15)
     # ----------------------------------------------------
@@ -1008,7 +1025,7 @@ def trigger_routine(file):
 
         if already_loaded:
             add_history_event("Busca Iniciada", f"Dados de {logical_date} já disponíveis ({articles_found} artigos). Disparando pesquisa na rotina {file}...")
-            ok, msg, run_info = trigger_airflow_dag(dag_id_to_trigger, logical_date)
+            ok, msg, run_info = _dispatch_routine(dag_id_to_trigger, logical_date)
             threading.Thread(
                 target=watch_dag_and_update_mentions,
                 args=(
@@ -1051,7 +1068,7 @@ def trigger_routine(file):
                             "field": block.get("field", "TUDO"),
                             "full_text": block.get("full_text", True),
                             "date": "DIA",
-                            "sources": ["DOU"],
+                            "sources": _fallback_sources(),
                         }
                         if block.get("department"): temp_block["department"] = block["department"]
                         if block.get("organs"): temp_block["organs"] = block["organs"]
@@ -1076,16 +1093,19 @@ def trigger_routine(file):
                         }
                     }
 
-                    temp_yaml_path = os.path.join(dag_confs_path, f"{temp_dag_id}.yaml")
-                    with open(temp_yaml_path, 'w', encoding='utf-8') as f:
-                        yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
+                    if get_executor_mode() == "local":
+                        ok, msg, run_info = _dispatch_routine(temp_dag_id, target_date, yaml_dict=temp_yaml)
+                    else:
+                        temp_yaml_path = os.path.join(dag_confs_path, f"{temp_dag_id}.yaml")
+                        with open(temp_yaml_path, 'w', encoding='utf-8') as f:
+                            yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
 
-                    import time
-                    time.sleep(2)
+                        import time
+                        time.sleep(2)
 
-                    wait_for_dag_discovery(temp_dag_id, max_wait=120)
+                        wait_for_dag_discovery(temp_dag_id, max_wait=120)
 
-                    ok, msg, run_info = trigger_airflow_dag(temp_dag_id, target_date)
+                        ok, msg, run_info = trigger_airflow_dag(temp_dag_id, target_date)
                     if ok:
                         watch_dag_and_update_mentions(
                             app_context_obj,
@@ -1100,59 +1120,83 @@ def trigger_routine(file):
                 except Exception as e:
                     logging.error(f"Erro na busca ad-hoc API DOU para {target_date}: {e}")
                 finally:
-                    from ..services.dag_config_service import cleanup_orphaned_temp_dags
-                    if temp_yaml_path and os.path.exists(temp_yaml_path):
+                    if get_executor_mode() != "local":
+                        from ..services.dag_config_service import cleanup_orphaned_temp_dags
+                        if temp_yaml_path and os.path.exists(temp_yaml_path):
+                            try:
+                                os.remove(temp_yaml_path)
+                            except Exception:
+                                pass
+                        if temp_dag_id:
+                            get_executor().delete_routine(temp_dag_id)
+                            try:
+                                import shutil
+                                log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
+                                if os.path.exists(log_dir):
+                                    shutil.rmtree(log_dir, ignore_errors=True)
+                            except Exception:
+                                pass
+                        touch_dag_generator()
                         try:
-                            os.remove(temp_yaml_path)
+                            cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
                         except Exception:
                             pass
-                    if temp_dag_id:
-                        try:
-                            from ..services.airflow_service import get_airflow_auth, get_airflow_url
-                            auth = get_airflow_auth()
-                            airflow_url = get_airflow_url()
-                            requests.delete(f"{airflow_url}/api/v2/dags/{temp_dag_id}", auth=auth, timeout=5)
-                        except Exception:
-                            pass
-                        try:
-                            import shutil
-                            log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
-                            if os.path.exists(log_dir):
-                                shutil.rmtree(log_dir, ignore_errors=True)
-                        except Exception:
-                            pass
-                    try:
-                        generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                        if os.path.exists(generator_path):
-                            os.utime(generator_path, None)
-                    except Exception:
-                        pass
-                    try:
-                        cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
-                    except Exception:
-                        pass
+
+        # Helper para verificar se o INLABS local está pronto (Postgres portátil/URL + credenciais)
+        def _local_inlabs_ready():
+            if not os.getenv("INLABS_DB_URL"):
+                try:
+                    from ..runtime.pg_portable import get_portable_postgres
+                    pg = get_portable_postgres()
+                    if pg.get_connection_info() is None or not pg.is_running():
+                        return False
+                except Exception:
+                    return False
+            try:
+                from ..models import Settings
+                rec = Settings.query.filter_by(key="global_settings").first()
+                inlabs_cfg = (rec.get_value() or {}).get("inlabs", {}) if rec else {}
+                if not (inlabs_cfg.get("user") and inlabs_cfg.get("password")):
+                    return False
+            except Exception:
+                return False
+            return True
+
+        # No modo local, se o INLABS local não estiver pronto (sem Postgres portátil
+        # ou sem credenciais), pesquisa via contingência configurada (PDF integral ou API do DOU).
+        if get_executor_mode() == "local" and not _local_inlabs_ready():
+            src_label = _describe_local_fallback_source()
+            add_history_event(f"Busca Individual ({src_label})", f"Modo local: pesquisando {logical_date} via {src_label}...")
+            threading.Thread(
+                target=run_adhoc_dou_search,
+                args=(app_ctx, file, logical_date, routine_emails, routine_subject, routine_cnpjs),
+                daemon=True
+            ).start()
+            return jsonify({"status": "success", "source_used": src_label, "message": f"Busca para {logical_date} iniciada via {src_label}!"})
 
         from ..services.inlabs_service import check_inlabs_portal_status
         portal_ok, portal_msg = check_inlabs_portal_status()
 
         if not portal_ok:
-            add_history_event("Busca Individual (API DOU)", f"{portal_msg}. Pesquisando {logical_date} via API Oficial do DOU...")
+            src_label = _describe_local_fallback_source()
+            add_history_event(f"Busca Individual ({src_label})", f"{portal_msg}. Pesquisando {logical_date} via {src_label}...")
             threading.Thread(
                 target=run_adhoc_dou_search,
                 args=(app_ctx, file, logical_date, routine_emails, routine_subject, routine_cnpjs),
                 daemon=True
             ).start()
-            return jsonify({"status": "success", "message": f"{portal_msg}. Busca iniciada via API Oficial do DOU!"})
+            return jsonify({"status": "success", "source_used": src_label, "message": f"{portal_msg}. Busca iniciada via {src_label}!"})
 
-        # Se for anterior à janela de 120 dias do portal INLABS, executa diretamente via API DOU
+        # Se for anterior à janela de 120 dias do portal INLABS, executa via contingência
         if not is_within_inlabs_retention_window(logical_date, 120):
-            add_history_event("Busca Individual (API DOU)", f"Data {logical_date} anterior a 120 dias (fora da retenção do INLABS). Disparando busca via API Oficial do DOU...")
+            src_label = _describe_local_fallback_source()
+            add_history_event(f"Busca Individual ({src_label})", f"Data {logical_date} anterior a 120 dias (fora da retenção do INLABS). Disparando busca via {src_label}...")
             threading.Thread(
                 target=run_adhoc_dou_search,
                 args=(app_ctx, file, logical_date, routine_emails, routine_subject, routine_cnpjs),
                 daemon=True
             ).start()
-            return jsonify({"status": "success", "message": f"Data anterior a 120 dias. Busca iniciada diretamente via API Oficial do DOU!"})
+            return jsonify({"status": "success", "source_used": src_label, "message": f"Data anterior a 120 dias. Busca iniciada via {src_label}!"})
 
         def run_inlabs_then_search(app_context_obj, target_dag_id, target_date, filename, r_emails, r_subject, r_terms):
             from ..services.airflow_service import trigger_airflow_dag, wait_for_specific_dag_runs
@@ -1161,22 +1205,32 @@ def trigger_routine(file):
             with app_context_obj:
                 enforce_inlabs_retention_limit(max_days=120, protected_dates=[target_date])
 
-            ok_inlabs, msg_inlabs, inlabs_run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", target_date)
-            inlabs_run_id = inlabs_run_info.get("dag_run_id") if isinstance(inlabs_run_info, dict) else None
-            
-            load_state = None
-            if inlabs_run_id:
-                _, states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", [inlabs_run_id], max_wait=900)
-                load_state = states.get(inlabs_run_id)
+            if get_executor_mode() == "local":
+                exec_inst = get_executor()
+                inlabs_run_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=target_date)
+                load_state = None
+                if inlabs_run_id:
+                    _, states = exec_inst.wait([inlabs_run_id], timeout=900)
+                    load_state = states.get(inlabs_run_id)
+                msg_inlabs = load_state or ""
+            else:
+                ok_inlabs, msg_inlabs, inlabs_run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", target_date)
+                inlabs_run_id = inlabs_run_info.get("dag_run_id") if isinstance(inlabs_run_info, dict) else None
+                
+                load_state = None
+                if inlabs_run_id:
+                    _, states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", [inlabs_run_id], max_wait=900)
+                    load_state = states.get(inlabs_run_id)
 
             from ..services.inlabs_service import is_date_loaded
             with app_context_obj:
                 loaded, _cnt = is_date_loaded(target_date)
             if not loaded:
                 # Carga INLABS falhou (portal fora do ar, sem edição etc.):
-                # cai para a API Oficial do DOU em vez de pesquisar um banco vazio.
+                # cai para a contingência em vez de pesquisar um banco vazio.
+                src_label = _describe_local_fallback_source()
                 with app_context_obj:
-                    add_history_event("Carga INLABS Falhou", f"Sem dados INLABS para {target_date} (estado da carga: {load_state or msg_inlabs}). Pesquisando via API Oficial do DOU...")
+                    add_history_event("Carga INLABS Falhou", f"Sem dados INLABS para {target_date} (estado da carga: {load_state or msg_inlabs}). Pesquisando via {src_label}...")
                 run_adhoc_dou_search(app_context_obj, filename, target_date, r_emails, r_subject, r_terms)
                 return
 
@@ -1185,16 +1239,17 @@ def trigger_routine(file):
                 add_history_event("Carga INLABS Concluída", f"Download concluído para {target_date}. Disparando agora a busca {filename}...")
                 
             with app_context_obj:
-                ok, msg, run_info = trigger_airflow_dag(target_dag_id, target_date)
+                ok, msg, run_info = _dispatch_routine(target_dag_id, target_date)
+            if ok and run_info:
                 watch_dag_and_update_mentions(
-                    app_context_obj, 
-                    [run_info], 
-                    filename, 
-                    r_emails, 
-                    r_subject, 
-                    target_date, 
+                    app_context_obj,
+                    [run_info],
+                    filename,
+                    r_emails,
+                    r_subject,
+                    target_date,
                     r_terms,
-                    run_info.get("trigger_time") if isinstance(run_info, dict) else None
+                    run_info.get("trigger_time") if isinstance(run_info, dict) else None,
                 )
         
         add_history_event("Carga INLABS", f"Iniciando download dos dados INLABS para {logical_date}...")
@@ -1221,7 +1276,7 @@ def trigger_routine(file):
                     data = yaml.safe_load(f)
                     dag_id = data.get('dag', {}).get('id')
                     if dag_id:
-                        ok, msg, run_info = trigger_airflow_dag(dag_id, logical_date)
+                        ok, msg, run_info = _dispatch_routine(dag_id, logical_date)
                         if ok:
                             success_count += 1
                             triggered_runs.append(run_info)
@@ -1251,7 +1306,7 @@ def trigger_routine(file):
             dag_id = data.get('dag', {}).get('id')
             if not dag_id: dag_id = re.sub(r'\.[^.]*$', '', file)
             
-            ok, msg, run_info = trigger_airflow_dag(dag_id, logical_date)
+            ok, msg, run_info = _dispatch_routine(dag_id, logical_date)
             if ok:
                 add_history_event("Busca Iniciada", f"Rotina {file} disparada via Airflow. Data Lógica: {logical_date or 'Atual'}")
                 app_ctx = current_app._get_current_object().app_context()
@@ -1280,7 +1335,6 @@ def api_check_date():
     if not target_date:
         return jsonify({"status": "error", "message": "Parâmetro date é obrigatório."}), 400
         
-    from ..services.airflow_service import normalize_date_str
     try:
         target_date = normalize_date_str(target_date)
     except ValueError:
@@ -1433,6 +1487,33 @@ def api_download_missing_inlabs():
     if not downloadable_days:
         return jsonify({"status": "ok", "message": "Nenhum dia disponível para download no portal INLABS (fora da janela de 120 dias). A busca será realizada via API DOU."})
 
+    if get_executor_mode() == "local":
+        if not os.getenv("INLABS_DB_URL"):
+            try:
+                from ..runtime.pg_portable import get_portable_postgres
+                pg = get_portable_postgres()
+                if pg.get_connection_info() is None or not pg.is_running():
+                    return jsonify({
+                        "status": "ok",
+                        "message": "PostgreSQL portátil INLABS indisponível no momento. A busca utilizará a API Oficial do DOU.",
+                        "days": downloadable_days,
+                    })
+            except Exception:
+                return jsonify({
+                    "status": "ok",
+                    "message": "PostgreSQL portátil INLABS indisponível no momento. A busca utilizará a API Oficial do DOU.",
+                    "days": downloadable_days,
+                })
+
+        from ..services.inlabs_service import check_inlabs_portal_status
+        portal_ok, portal_msg = check_inlabs_portal_status()
+        if not portal_ok:
+            return jsonify({
+                "status": "ok",
+                "message": f"{portal_msg}. A busca utilizará a API Oficial do DOU.",
+                "days": downloadable_days,
+            })
+
     import threading
     def run_downloads(app_context, target_days):
         import time
@@ -1445,27 +1526,43 @@ def api_download_missing_inlabs():
             sucessos = 0
             run_ids = []
             date_by_run = {}
+            is_local = (get_executor_mode() == "local")
+            exec_inst = get_executor() if is_local else None
             for d_str in target_days:
-                ok, msg, run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", d_str)
-                if ok and isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                    r_id = run_info.get("dag_run_id")
-                    run_ids.append(r_id)
-                    date_by_run[r_id] = d_str
-                    sucessos += 1
-                time.sleep(0.05)
+                if is_local:
+                    try:
+                        r_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=d_str)
+                        if r_id:
+                            run_ids.append(r_id)
+                            date_by_run[r_id] = d_str
+                            sucessos += 1
+                    except Exception as exc:
+                        logging.warning("Falha ao disparar carga INLABS local (%s): %s", d_str, exc)
+                else:
+                    ok, msg, run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", d_str)
+                    if ok and isinstance(run_info, dict) and run_info.get("dag_run_id"):
+                        r_id = run_info.get("dag_run_id")
+                        run_ids.append(r_id)
+                        date_by_run[r_id] = d_str
+                        sucessos += 1
+                    time.sleep(0.05)
                 
             try:
                 hist = SyncHistory(
                     data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S'),
                     evento="Download INLABS Solicitado",
-                    detalhes=f"Disparado download INLABS para {len(target_days)} dia(s) faltantes ({sucessos} DAGs acionadas)."
+                    detalhes=f"Disparado download INLABS para {len(target_days)} dia(s) faltantes ({sucessos} execuções acionadas)."
                 )
                 db.session.add(hist)
                 db.session.commit()
             except: pass
 
             if run_ids:
-                finished_all, run_states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", run_ids, max_wait=max(1800, 300 * len(run_ids)))
+                max_wait_sec = max(1800, 300 * len(run_ids))
+                if is_local:
+                    finished_all, run_states = exec_inst.wait(run_ids, timeout=max_wait_sec)
+                else:
+                    finished_all, run_states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", run_ids, max_wait=max_wait_sec)
                 for r_id, st in run_states.items():
                     if st == 'success' and r_id in date_by_run:
                         record_inlabs_download_success(date_by_run[r_id])
@@ -1523,15 +1620,20 @@ def api_trigger_monthly():
         import glob
         import logging
         from ..services.holiday_service import get_business_days_for_month, is_within_inlabs_retention_window
-        from ..services.airflow_service import trigger_airflow_dag, wait_for_specific_dag_runs
+        from ..services.airflow_service import wait_for_specific_dag_runs
         from ..services.inlabs_service import get_downloaded_dates, enforce_inlabs_retention_limit, record_inlabs_download_success
         from ..models import db, Settings
-        from ..services.airflow_service import get_airflow_url, get_airflow_auth
-        import urllib.parse
-        
+
+        is_local_mode = (get_executor_mode() == "local")
         confs_path = get_dag_confs_path()
-        airflow_url = get_airflow_url()
-        auth = get_airflow_auth()
+        if is_local_mode:
+            airflow_url = None
+            auth = None
+        else:
+            from ..services.airflow_service import get_airflow_url, get_airflow_auth
+            import urllib.parse
+            airflow_url = get_airflow_url()
+            auth = get_airflow_auth()
         
         def wait_for_dags(dags_list, max_wait=1200):
             import time as _time
@@ -1609,6 +1711,22 @@ def api_trigger_monthly():
         if mode in ('download_and_search', 'full') and missing_days:
             downloadable_missing = [d for d in missing_days if is_within_inlabs_retention_window(d, 120)]
 
+            if is_local_mode and downloadable_missing and not os.getenv("INLABS_DB_URL"):
+                local_pg_ok = False
+                try:
+                    from ..runtime.pg_portable import get_portable_postgres
+                    pg = get_portable_postgres()
+                    local_pg_ok = (pg.get_connection_info() is not None and pg.is_running())
+                except Exception:
+                    local_pg_ok = False
+                if not local_pg_ok:
+                    with app_context:
+                        add_history_event(
+                            "INLABS Indisponível",
+                            f"PostgreSQL portátil INLABS indisponível. Os {len(missing_days)} dia(s) faltantes de {str(month).zfill(2)}/{year} serão pesquisados via API Oficial do DOU.",
+                        )
+                    downloadable_missing = []
+
             if downloadable_missing:
                 from ..services.inlabs_service import check_inlabs_portal_status
                 portal_ok, portal_msg = check_inlabs_portal_status()
@@ -1627,20 +1745,38 @@ def api_trigger_monthly():
                 
                 triggered_load_run_ids = []
                 date_by_run = {}
+                exec_inst = get_executor() if is_local_mode else None
                 for d_str in downloadable_missing:
-                    ok, msg, run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", d_str)
-                    if ok and isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                        r_id = run_info.get("dag_run_id")
-                        triggered_load_run_ids.append(r_id)
-                        date_by_run[r_id] = d_str
-                    time.sleep(0.05)
+                    if is_local_mode:
+                        try:
+                            with app_context:
+                                r_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=d_str)
+                            if r_id:
+                                triggered_load_run_ids.append(r_id)
+                                date_by_run[r_id] = d_str
+                        except Exception as exc:
+                            logging.warning("Falha ao disparar carga INLABS local (%s): %s", d_str, exc)
+                    else:
+                        ok, msg, run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", d_str)
+                        if ok and isinstance(run_info, dict) and run_info.get("dag_run_id"):
+                            r_id = run_info.get("dag_run_id")
+                            triggered_load_run_ids.append(r_id)
+                            date_by_run[r_id] = d_str
+                        time.sleep(0.05)
                     
                 if triggered_load_run_ids:
-                    # max_active_runs=1 na DAG de carga: os dias rodam em fila, então o
-                    # tempo de espera precisa crescer com a quantidade de dias.
-                    finished_all, run_states = wait_for_specific_dag_runs(
-                        "ro-dou_inlabs_load_pg", triggered_load_run_ids,
-                        max_wait=max(1800, 300 * len(triggered_load_run_ids)))
+                    max_wait_sec = max(1800, 300 * len(triggered_load_run_ids))
+                    if is_local_mode:
+                        with app_context:
+                            finished_all, run_states = exec_inst.wait(
+                                triggered_load_run_ids, timeout=max_wait_sec
+                            )
+                    else:
+                        # max_active_runs=1 na DAG de carga: os dias rodam em fila, então o
+                        # tempo de espera precisa crescer com a quantidade de dias.
+                        finished_all, run_states = wait_for_specific_dag_runs(
+                            "ro-dou_inlabs_load_pg", triggered_load_run_ids,
+                            max_wait=max_wait_sec)
                     
                     with app_context:
                         for r_id, st in run_states.items():
@@ -1680,6 +1816,7 @@ def api_trigger_monthly():
             except Exception:
                 pass
 
+        inlabs_run_ids = []
         if mode != 'api_dou_only' and inlabs_days:
             for routine_file in routines:
                 file_path = os.path.join(confs_path, routine_file)
@@ -1709,17 +1846,22 @@ def api_trigger_monthly():
                             pid = re.sub(r'\.[^.]*$', '', os.path.basename(p_file))
                             
                         for date_str in inlabs_days:
-                            ok, msg, run_info = trigger_airflow_dag(pid, date_str)
+                            ok, msg, run_info = _dispatch_routine(pid, date_str)
                             if ok:
                                 if pid not in triggered_inlabs_dags:
                                     triggered_inlabs_dags.append(pid)
                                 if isinstance(run_info, dict) and run_info.get("dag_run_id"):
                                     all_triggered_runs.append(run_info)
-                            time.sleep(0.08)
+                                    inlabs_run_ids.append(run_info["dag_run_id"])
+                            if not is_local_mode:
+                                time.sleep(0.08)
                     except Exception as e:
                         logging.error(f"Erro ao disparar rotina INLABS {p_file}: {e}")
 
-            if triggered_inlabs_dags:
+            if is_local_mode and inlabs_run_ids:
+                with app_context:
+                    get_executor().wait(inlabs_run_ids, timeout=1200)
+            elif triggered_inlabs_dags:
                 wait_for_dags(triggered_inlabs_dags)
 
         # ─── FASE 2: DAG Temporária para dias sem INLABS (modo 'full', 'download_and_search' ou 'api_dou_only') ───
@@ -1765,7 +1907,7 @@ def api_trigger_monthly():
                                 "field": block.get("field", "TUDO"),
                                 "full_text": block.get("full_text", True),
                                 "date": "DIA",
-                                "sources": ["DOU"],
+                                "sources": ["DOU"] if mode == 'api_dou_only' else _fallback_sources(),
                             }
                             if block.get("department"): temp_block["department"] = block["department"]
                             if block.get("organs"): temp_block["organs"] = block["organs"]
@@ -1791,37 +1933,44 @@ def api_trigger_monthly():
                         }
                     }
                     
-                    temp_yaml_path = os.path.join(confs_path, f"{temp_dag_id}.yaml")
-                    with open(temp_yaml_path, 'w', encoding='utf-8') as f:
-                        yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
-                    
-                    # Força o Airflow a reler os YAMLs alterando a data do gerador python
-                    try:
-                        generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                        if os.path.exists(generator_path):
-                            os.utime(generator_path, None)
-                    except Exception:
-                        pass
-                    
-                    dag_found = wait_for_dag_discovery(temp_dag_id)
-                    if not dag_found:
-                        logging.warning(f"Airflow não descobriu a DAG temporária {temp_dag_id} em 120s.")
-                    
+                    if not is_local_mode:
+                        temp_yaml_path = os.path.join(confs_path, f"{temp_dag_id}.yaml")
+                        with open(temp_yaml_path, 'w', encoding='utf-8') as f:
+                            yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
+
+                        # Força o Airflow a reler os YAMLs alterando a data do gerador python
+                        touch_dag_generator()
+
+                        dag_found = wait_for_dag_discovery(temp_dag_id)
+                        if not dag_found:
+                            logging.warning(f"Airflow não descobriu a DAG temporária {temp_dag_id} em 120s.")
+
                     triggered_dou_dags = []
+                    dou_run_ids = []
                     with app_context:
-                        add_history_event("Busca Mensal (API DOU)",
-                            f"Disparando busca via API Oficial do DOU para {len(dou_target_days)} dia(s) históricos/fora do INLABS.")
-                    
+                        monthly_src = "API do DOU" if mode == 'api_dou_only' else _describe_local_fallback_source()
+                        add_history_event(f"Busca Mensal ({monthly_src})",
+                            f"Disparando busca via {monthly_src} para {len(dou_target_days)} dia(s) históricos/fora do INLABS.")
+
                     for date_str in dou_target_days:
-                        ok, msg, run_info = trigger_airflow_dag(temp_dag_id, date_str)
+                        ok, msg, run_info = _dispatch_routine(
+                            temp_dag_id,
+                            date_str,
+                            yaml_dict=temp_yaml if is_local_mode else None,
+                        )
                         if ok:
                             if temp_dag_id not in triggered_dou_dags:
                                 triggered_dou_dags.append(temp_dag_id)
                             if isinstance(run_info, dict) and run_info.get("dag_run_id"):
                                 all_triggered_runs.append(run_info)
-                        time.sleep(0.05)
-                    
-                    if triggered_dou_dags:
+                                dou_run_ids.append(run_info["dag_run_id"])
+                        if not is_local_mode:
+                            time.sleep(0.05)
+
+                    if is_local_mode and dou_run_ids:
+                        with app_context:
+                            get_executor().wait(dou_run_ids, timeout=max(1800, 300 * len(dou_run_ids)))
+                    elif triggered_dou_dags:
                         wait_for_dags(triggered_dou_dags, max_wait=1800)
                         
             except Exception as e:
@@ -1832,7 +1981,8 @@ def api_trigger_monthly():
             from ..services.mention_service import clear_mentions_cache
             from ..models import db, Settings, Mention, Company
             try:
-                time.sleep(3)
+                if not is_local_mode:
+                    time.sleep(3)
                 
                 companies = Company.query.with_entities(Company.cnpj_norm, Company.nome, Company.cnpj).all()
                 cnpj_map = {c.cnpj_norm: c.nome for c in companies if c.cnpj_norm}
@@ -1854,12 +2004,17 @@ def api_trigger_monthly():
                 
                 # 2. Persistir novas menções no banco SQLite
                 if monthly_new_mentions:
+                    from ..runtime.pdf_archiver import resolve_pdf_for_mention
                     m_ids = [m['id'] for m in monthly_new_mentions if m.get('id')]
                     existing_records = {e.id: e for e in Mention.query.filter(Mention.id.in_(m_ids)).all()} if m_ids else {}
                     for m in monthly_new_mentions:
+                        pdf_path = m.get('pdf_path') or resolve_pdf_for_mention(m.get('data'), m.get('secao'))
                         existing = existing_records.get(m['id'])
                         if not existing:
-                            db.session.add(Mention(**m))
+                            payload = dict(m)
+                            if pdf_path:
+                                payload['pdf_path'] = pdf_path
+                            db.session.add(Mention(**payload))
                         else:
                             existing.empresa = m.get('empresa', existing.empresa)
                             existing.secao = m.get('secao', existing.secao)
@@ -1867,6 +2022,8 @@ def api_trigger_monthly():
                             existing.detected_at = m.get('detected_at', existing.detected_at)
                             existing.trecho = m.get('trecho', existing.trecho)
                             existing.link = m.get('link', existing.link)
+                            if pdf_path:
+                                existing.pdf_path = pdf_path
                     db.session.commit()
                 
                 clear_mentions_cache()
@@ -1892,10 +2049,20 @@ def api_trigger_monthly():
                         if smtp_from: emails = [smtp_from]
                 emails = [e.strip() for e in emails if e and str(e).strip()]
                 
+                monthly_source_tag = ""
+                if is_local_mode:
+                    monthly_run_ids = [
+                        r_info.get("dag_run_id") for r_info in all_triggered_runs
+                        if isinstance(r_info, dict) and r_info.get("dag_run_id")
+                    ]
+                    monthly_sources_label = _extract_sources_used_from_runs(monthly_run_ids)
+                    if monthly_sources_label:
+                        monthly_source_tag = f" [Fonte: {monthly_sources_label}]"
+
                 if not emails:
-                    add_history_event("Busca Mensal Concluída", f"Busca finalizada ({len(relevant_monthly_mentions)} menções em {month}/{year}), mas nenhum destinatário de e-mail configurado.")
+                    add_history_event("Busca Mensal Concluída", f"Busca finalizada ({len(relevant_monthly_mentions)} menções em {month}/{year}){monthly_source_tag}, mas nenhum destinatário de e-mail configurado.")
                 elif not relevant_monthly_mentions:
-                    add_history_event("Busca Mensal Concluída", f"Nenhuma menção encontrada para o mês {month}/{year}.")
+                    add_history_event("Busca Mensal Concluída", f"Nenhuma menção encontrada para o mês {month}/{year}{monthly_source_tag}.")
                 else:
                     from ..services.email_service import EmailSender, build_mentions_email_html, render_email_subject
                     sender = EmailSender(None)
@@ -1906,54 +2073,158 @@ def api_trigger_monthly():
                         title=f"Relatório Consolidado de Menções ({month}/{year})",
                         subtitle=f"Abaixo constam as {len(relevant_monthly_mentions)} publicações identificadas pelo sistema Registrale no período consolidado:"
                     )
-                    sender.send_custom_email(
-                        to_emails=emails,
-                        subject=render_email_subject(
-                            None, relevant_monthly_mentions, template_name='Relatório Mensal Registrale',
-                            date_str=f"{str(month).zfill(2)}/{year}",
-                            fallback=f"Registrale - Relatório Mensal {month}/{year}"),
-                        html_content=html
-                    )
-                    
-                    add_history_event("Busca Mensal Concluída",
-                        f"Relatório mensal {month}/{year} enviado com {len(relevant_monthly_mentions)} menções para {len(emails)} destinatário(s).")
+                    try:
+                        sender.send_custom_email(
+                            to_emails=emails,
+                            subject=render_email_subject(
+                                None, relevant_monthly_mentions, template_name='Relatório Mensal Registrale',
+                                date_str=f"{str(month).zfill(2)}/{year}",
+                                fallback=f"Registrale - Relatório Mensal {month}/{year}"),
+                            html_content=html
+                        )
+                        add_history_event("Busca Mensal Concluída",
+                            f"Relatório mensal {month}/{year} enviado com {len(relevant_monthly_mentions)} menções para {len(emails)} destinatário(s){monthly_source_tag}.")
+                    except Exception as e_mail:
+                        logging.error(f"Erro ao enviar e-mail da busca mensal {month}/{year}: {e_mail}")
+                        add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail do relatório mensal {month}/{year}: {str(e_mail)}")
             except Exception as e:
                 logging.error(f"Erro ao consolidar busca mensal: {e}")
                 add_history_event("Erro (Busca Mensal)", str(e))
             finally:
-                # ─── LIMPEZA DA DAG TEMPORÁRIA (Executada APÓS extração das menções na FASE 3) ───
-                from ..services.dag_config_service import cleanup_orphaned_temp_dags
-                if temp_yaml_path and os.path.exists(temp_yaml_path):
+                if not is_local_mode:
+                    # ─── LIMPEZA DA DAG TEMPORÁRIA (Executada APÓS extração das menções na FASE 3) ───
+                    from ..services.dag_config_service import cleanup_orphaned_temp_dags
+                    if temp_yaml_path and os.path.exists(temp_yaml_path):
+                        try:
+                            os.remove(temp_yaml_path)
+                        except Exception:
+                            pass
+                    if temp_dag_id:
+                        get_executor().delete_routine(temp_dag_id)
+                        try:
+                            import shutil
+                            from ..runtime.paths import get_logs_dir
+                            log_dir = os.path.join(str(get_logs_dir(create=False)), f"dag_id={temp_dag_id}")
+                            if os.path.exists(log_dir):
+                                shutil.rmtree(log_dir, ignore_errors=True)
+                        except Exception:
+                            pass
+                    touch_dag_generator()
                     try:
-                        os.remove(temp_yaml_path)
+                        cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
                     except Exception:
                         pass
-                if temp_dag_id:
-                    try:
-                        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-                        auth = get_airflow_auth()
-                        airflow_url = get_airflow_url()
-                        requests.delete(f"{airflow_url}/api/v2/dags/{temp_dag_id}", auth=auth, timeout=5)
-                    except Exception:
-                        pass
-                    try:
-                        import shutil
-                        log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
-                        if os.path.exists(log_dir):
-                            shutil.rmtree(log_dir, ignore_errors=True)
-                    except Exception:
-                        pass
-                try:
-                    generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-                    if os.path.exists(generator_path):
-                        os.utime(generator_path, None)
-                except Exception:
-                    pass
-                try:
-                    cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
-                except Exception:
-                    pass
 
     app_context = current_app._get_current_object().app_context()
     threading.Thread(target=run_monthly_search_in_background, args=(app_context, routines, month, year, mode), daemon=True).start()
     return jsonify({"status": "success", "message": "Busca mensal iniciada em segundo plano."})
+
+
+@dags_bp.route('/pdf_archive/status', methods=['GET'])
+@login_required
+def api_pdf_archive_status():
+    from ..runtime.pdf_archiver import get_pdf_archive_config, get_pdf_archive_status
+    return jsonify({
+        "status": "ok",
+        "config": get_pdf_archive_config(),
+        "archive_status": get_pdf_archive_status(),
+    })
+
+
+@dags_bp.route('/pdf_archive/run', methods=['POST'])
+@login_required
+def api_pdf_archive_run():
+    if session.get('user', {}).get('role') != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+
+    from ..runtime.pdf_archiver import archive_date_pdfs, archive_month_pdfs, normalize_date_iso
+
+    data = request.json or {}
+    raw_date = str(data.get("date") or "").strip()
+    year = data.get("year")
+    month = data.get("month")
+    run_sync = bool(data.get("sync", False))
+    sections = data.get("sections")
+
+    if not raw_date and (not year or not month):
+        return jsonify({"status": "error", "message": "Informe uma data ou mês/ano."}), 400
+
+    parsed_year = None
+    parsed_month = None
+    if raw_date:
+        try:
+            raw_date = normalize_date_iso(raw_date)
+        except ValueError as exc:
+            return jsonify({"status": "error", "message": str(exc)}), 400
+    else:
+        try:
+            parsed_year = int(year)
+            parsed_month = int(month)
+            if not (2000 <= parsed_year <= 2100 and 1 <= parsed_month <= 12):
+                raise ValueError("Ano ou mês fora do intervalo válido.")
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "Ano ou mês inválido."}), 400
+
+    def _execute(app_ctx):
+        with app_ctx:
+            try:
+                if raw_date:
+                    res = archive_date_pdfs(raw_date, sections=sections)
+                else:
+                    res = archive_month_pdfs(parsed_year, parsed_month, sections=sections)
+                add_history_event("Arquivo PDF DOU", res.get("message", "Arquivamento concluído."))
+                return res
+            except Exception as exc:
+                add_history_event("Erro Arquivo PDF", str(exc))
+                return {"status": "error", "message": str(exc)}
+
+    app_obj = current_app._get_current_object()
+    if run_sync:
+        res = _execute(app_obj.app_context())
+        code = 200 if res.get("status") != "error" else 500
+        return jsonify(res), code
+
+    threading.Thread(target=_execute, args=(app_obj.app_context(),), daemon=True).start()
+    target_label = raw_date if raw_date else f"{str(parsed_month).zfill(2)}/{parsed_year}"
+    return jsonify({
+        "status": "success",
+        "message": f"Arquivamento de PDFs para {target_label} iniciado em segundo plano.",
+    })
+
+
+@dags_bp.route('/pdf_archive/open', methods=['GET'])
+@login_required
+def api_pdf_archive_open():
+    from pathlib import Path
+    from flask import send_file
+    from ..runtime.pdf_archiver import get_pdf_archive_config, resolve_pdf_for_mention
+
+    mention_id = request.args.get("mention_id")
+    raw_date = request.args.get("date")
+    raw_section = request.args.get("section") or "1"
+
+    cfg = get_pdf_archive_config()
+    base_folder = Path(cfg["folder"]).resolve()
+    pdf_path_str = None
+
+    if mention_id:
+        mention = Mention.query.get(mention_id)
+        if not mention:
+            return jsonify({"status": "error", "message": "Menção não encontrada."}), 404
+        if mention.pdf_path and os.path.isfile(mention.pdf_path):
+            pdf_path_str = mention.pdf_path
+        else:
+            pdf_path_str = resolve_pdf_for_mention(mention.data, mention.secao, folder=base_folder)
+    elif raw_date:
+        pdf_path_str = resolve_pdf_for_mention(raw_date, raw_section, folder=base_folder)
+    else:
+        return jsonify({"status": "error", "message": "Parâmetro mention_id ou date obrigatório."}), 400
+
+    if not pdf_path_str:
+        return jsonify({"status": "error", "message": "PDF do dia não encontrado no arquivo local."}), 404
+
+    resolved = Path(pdf_path_str).resolve()
+    if not resolved.is_relative_to(base_folder) or not resolved.is_file():
+        return jsonify({"status": "error", "message": "Acesso negado ao arquivo PDF."}), 403
+
+    return send_file(str(resolved), mimetype="application/pdf", as_attachment=False, download_name=resolved.name)

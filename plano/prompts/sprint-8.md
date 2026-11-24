@@ -11,13 +11,13 @@ Leitura obrigatória antes de qualquer ação:
 Objetivo: deixar o repositório só com o aplicativo Windows, mantendo a capacidade de receber atualizações do Ro-DOU oficial.
 
 Passos principais (detalhes no plano):
-1. Remova os artefatos de Docker, Airflow e Kubernetes listados no plano. A lógica da carga INLABS já está em `runtime/inlabs_loader.py`; confirme antes de apagar `dag_load_inlabs/`.
-2. Remova o `AirflowExecutor`, o `airflow_service.py` e a variável `REGISTRALE_EXECUTOR`. Mantenha `compat/airflow_shim/`, que é necessário para o `src/` do upstream.
+1. Remova os artefatos de Docker, Airflow e Kubernetes listados no plano. A lógica da carga INLABS já está em `runtime/inlabs_loader.py`; antes de apagar `dag_load_inlabs/`, mova `sql/init-db.sql` para o runtime e atualize `pg_portable`. **Não remova** `src/utils/open_search/` (o `src/hooks/inlabs_hook.py` do upstream o importa) nem o alias `ro_dou_src` de `runtime/runner.py`.
+2. Remova o `AirflowExecutor`, o `airflow_service.py`, a variável `REGISTRALE_EXECUTOR` e os ramos do modo Airflow no painel. Mantenha `compat/airflow_shim/` (necessário para o `src/` do upstream) e a contingência sem INLABS do Sprint 6.1 (PDF integral → API do DOU, configuração `inlabs_fallback`).
 3. Atualize `plano/UPSTREAM.md` com a lista final de caminhos removidos e valide `tools/sync_upstream.py` contra o `upstream/main`: o merge deve re-remover esses caminhos e os testes devem passar.
 4. Limpeza do git, item a item e com confirmação: worktree `Registrale-dou-sync`, branch `upstream-sync`, stash `backup-pre-merge`, containers `sync-*` e imagens antigas, `.gitignore`. Depois integre `feature/modo-local` em `main` e crie a tag `v1.0.0`.
 5. Reescreva o `README.md` (estrutura no plano), atualize o `AGENTS.md` para o estado pós-migração e corrija os manuais que citam Docker, Airflow ou `make`.
 
-Critério principal: o `grep` do plano só encontra o shim, o changelog e a seção de upstream, e o instalador gerado a partir de `main` passa o checklist do Sprint 6.
+Critério principal: o `grep` do plano só encontra o que o critério de aceite permite (shim, alias `ro_dou_src`, imports do upstream em `src/`, changelog e seção de upstream); o instalador gerado a partir de `main` passa o checklist do Sprint 6; `tests/local/test_pdf_search.py` e o smoke fora do pytest passam.
 
 Regras deste sprint:
 - Faça só o escopo do Sprint 8. Se surgir algo de outro sprint, anote no Registro como pendência; não implemente.

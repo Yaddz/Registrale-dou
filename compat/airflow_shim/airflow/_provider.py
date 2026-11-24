@@ -8,6 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import unquote, urlparse
 
 
 @dataclass
@@ -117,12 +118,95 @@ def resolve_variable(key: str) -> tuple[bool, Any]:
     return False, None
 
 
+def _resolve_builtin_connection(conn_id: str) -> Connection | None:
+    """Resolve `inlabs_portal` e `inlabs_db` a partir do SQLite e/ou Postgres portátil."""
+    if conn_id == "inlabs_portal":
+        host = os.getenv("INLABS_PORTAL_URL", "https://inlabs.in.gov.br/")
+        found, raw_settings = _read_sqlite_setting("global_settings")
+        login = None
+        password = None
+        if found and raw_settings:
+            try:
+                parsed = (
+                    json.loads(raw_settings)
+                    if isinstance(raw_settings, str)
+                    else raw_settings
+                )
+                if isinstance(parsed, dict):
+                    inlabs_cfg = parsed.get("inlabs") or {}
+                    if isinstance(inlabs_cfg, dict):
+                        login = inlabs_cfg.get("user") or None
+                        password = inlabs_cfg.get("password") or None
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        if login or password:
+            return Connection(
+                conn_id="inlabs_portal",
+                conn_type="http",
+                host=host,
+                login=login,
+                password=password,
+            )
+        return None
+
+    if conn_id == "inlabs_db":
+        db_url = os.getenv("INLABS_DB_URL")
+        if db_url:
+            parsed = urlparse(db_url)
+            return Connection(
+                conn_id="inlabs_db",
+                conn_type="postgres",
+                host=parsed.hostname or "127.0.0.1",
+                port=parsed.port or 5432,
+                schema=(parsed.path or "").lstrip("/") or "inlabs",
+                login=unquote(parsed.username or "") or None,
+                password=unquote(parsed.password or "") or None,
+            )
+
+        try:
+            from rodou_dashboard.app.runtime.pg_portable import get_portable_postgres
+
+            info = get_portable_postgres().get_connection_info()
+            if info and info.get("port"):
+                return Connection(
+                    conn_id="inlabs_db",
+                    conn_type="postgres",
+                    host=info.get("host", "127.0.0.1"),
+                    port=int(info["port"]),
+                    schema=info.get("database", "inlabs"),
+                    login=info.get("user", "postgres"),
+                    password=info.get("password"),
+                )
+        except Exception:
+            pass
+
+        found, raw_pg = _read_sqlite_setting("inlabs_pg_config")
+        if found and raw_pg:
+            try:
+                cfg = json.loads(raw_pg) if isinstance(raw_pg, str) else raw_pg
+                if isinstance(cfg, dict) and cfg.get("port"):
+                    return Connection(
+                        conn_id="inlabs_db",
+                        conn_type="postgres",
+                        host="127.0.0.1",
+                        port=int(cfg["port"]),
+                        schema=cfg.get("database", "inlabs"),
+                        login=cfg.get("user", "postgres"),
+                        password=cfg.get("password"),
+                    )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        return None
+
+    return None
+
+
 def resolve_connection(conn_id: str) -> Connection | None:
-    """Resolve uma conexão na ordem: memória -> provedor."""
+    """Resolve uma conexão na ordem: memória -> provedor -> configurações locais."""
     if conn_id in _connections:
         return _connections[conn_id]
     if _connection_provider is not None:
         conn = _connection_provider(conn_id)
         if conn is not None:
             return conn
-    return None
+    return _resolve_builtin_connection(conn_id)

@@ -4,7 +4,19 @@ version = "0.1.0"
 description = "Monitoramento de publicações no Diário Oficial da União (DOU) por CNPJ"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = [
+    "pypdf>=7.1.1",
+]
+
+[project.scripts]
+registrale = "rodou_dashboard.app.runtime.server:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rodou_dashboard*", "compat*"]
 
 [dependency-groups]
 core = [
@@ -46,6 +58,11 @@ dashboard = [
     "openpyxl>=3.1.0,<4.0",
     "google-api-python-client>=2.0.0,<3.0",
     "google-auth>=2.0.0,<3.0",
+]
+windows = [
+    { include-group = "dashboard" },
+    "pystray>=0.19.5,<1.0",
+    "pillow>=10.0.0,<12.0",
 ]
 dev = [
     { include-group = "dashboard" },

@@ -1,0 +1,105 @@
+; Script Inno Setup para o Registrale-DOU
+; Compilado por windows/build.ps1 via ISCC.exe /DAppVersion=x.y.z
+
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
+
+#ifndef StageDir
+  #define StageDir "..\build\stage"
+#endif
+
+#ifndef OutputDir
+  #define OutputDir "..\dist"
+#endif
+
+#define AppName "Registrale-DOU"
+#define AppPublisher "Registrale"
+#define AppURL "https://github.com/Yaddz/Registrale-dou"
+
+[Setup]
+AppId={{8F6D54A2-7B9E-4C13-9A41-2C6E7B5D1F08}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+AppPublisher={#AppPublisher}
+AppPublisherURL={#AppURL}
+AppSupportURL={#AppURL}
+AppUpdatesURL={#AppURL}/releases
+DefaultDirName={localappdata}\Programs\Registrale
+DefaultGroupName={#AppName}
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+OutputDir={#OutputDir}
+OutputBaseFilename=Registrale-Setup-{#AppVersion}
+SetupIconFile=registrale.ico
+UninstallDisplayIcon={app}\app\windows\registrale.ico
+Compression=lzma2/normal
+SolidCompression=yes
+WizardStyle=modern
+CloseApplications=yes
+CloseApplicationsFilter=python.exe,pythonw.exe,pg_ctl.exe,postgres.exe
+RestartApplications=no
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos e inicialização:"
+Name: "startupicon"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Atalhos e inicialização:"
+
+[Files]
+Source: "{#StageDir}\python\*"; DestDir: "{app}\python"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\site-packages\*"; DestDir: "{app}\site-packages"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{group}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\windows\launcher.pyw"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\windows\registrale.ico"
+Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\windows\launcher.pyw"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\windows\registrale.ico"; Tasks: desktopicon
+Name: "{userstartup}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\windows\launcher.pyw"" --no-browser"; WorkingDir: "{app}\app"; IconFilename: "{app}\app\windows\registrale.ico"; Tasks: startupicon
+
+[Run]
+Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\app\windows\launcher.pyw"""; WorkingDir: "{app}\app"; Description: "Iniciar o {#AppName} agora"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  PgCtlPath: String;
+  PgDataDir: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+  PgCtlPath := ExpandConstant('{app}\app\windows\vendor\pgsql\bin\pg_ctl.exe');
+  PgDataDir := ExpandConstant('{localappdata}\Registrale\pgdata');
+  if FileExists(PgCtlPath) and FileExists(PgDataDir + '\postmaster.pid') then
+  begin
+    Exec(PgCtlPath, 'stop -D "' + PgDataDir + '" -m fast -w -t 10', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: String;
+  Choice: Integer;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    DataDir := ExpandConstant('{localappdata}\Registrale');
+    if DirExists(DataDir) then
+    begin
+      Choice := MsgBox(
+        'Deseja remover também os dados locais do Registrale-DOU (banco de empresas, menções, configurações e logs em ' + DataDir + ')?' + #13#10 + #13#10 +
+        'Clique em Não (recomendado) para preservar seus dados para uma futura reinstalação.',
+        mbConfirmation,
+        MB_YESNO or MB_DEFBUTTON2
+      );
+      if Choice = IDYES then
+      begin
+        DelTree(DataDir, True, True, True);
+      end;
+    end;
+  end;
+end;

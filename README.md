@@ -131,6 +131,13 @@ make run
 > 8. Ativa a DAG principal de carga do INLABS (`ro-dou_inlabs_load_pg`).
 > 9. Abre automaticamente o Dashboard no seu navegador.
 
+### Contingência quando o portal INLABS estiver em manutenção (Modo Docker/Airflow)
+
+Se o portal INLABS estiver em manutenção programada ou indisponível no modo Docker:
+1. Acesse o painel em **Rotinas de Busca**, clique em **Editar** na rotina principal (`Pesquisa_cnpj.yaml`) e altere a fonte de busca de **INLABS** para **API Oficial do DOU** para que o agendamento diário continue encontrando publicações.
+2. Quando o portal INLABS voltar ao ar, edite novamente a rotina principal e restaure a fonte para **INLABS**.
+*(Observação: no modo local sem Docker, essa contingência é automática via **PDF integral + API do DOU**, configurável em **Configurações → Integrações**.)*
+
 ---
 
 ### 📱 Como Instalar como Aplicativo Desktop (PWA)

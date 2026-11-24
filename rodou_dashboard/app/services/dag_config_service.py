@@ -4,11 +4,13 @@ import yaml
 import re
 from datetime import datetime, timezone, timedelta
 
+from ..runtime.paths import get_logs_dir, get_routines_dir
+
 # Replicando a lógica do BASE_DIR usada no app antigo
 # Dependendo da estrutura, ajuste o BASE_DIR para o local correto
 # No app antigo, estava na raiz. Aqui estamos em rodou_dashboard/app/services
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-LOGS_DIR = os.path.join(BASE_DIR, "mnt", "airflow-logs")
+LOGS_DIR = str(get_logs_dir(create=False))
 
 import logging
 logger = logging.getLogger(__name__)
@@ -24,27 +26,20 @@ def normalize_cnpj(cnpj):
     return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
 
 def get_dag_confs_path():
-    candidates = [
-        os.path.join(BASE_DIR, "dag_confs"),
-        os.path.abspath("dag_confs"),
-        "/app/dag_confs",
-        "/dag_confs"
-    ]
-    for c in candidates:
-        if os.path.exists(c) and os.path.isdir(c):
-            return c
-    default_p = os.path.join(BASE_DIR, "dag_confs")
-    try:
-        os.makedirs(default_p, exist_ok=True)
-    except: pass
-    return default_p
+    return str(get_routines_dir(create=True))
 
 def get_base_yaml_path():
     dag_confs_path = get_dag_confs_path()
     return os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
 
 def touch_dag_generator():
-    """Atualiza o timestamp de modificação do gerador de DAGs do Airflow para forçar recarregamento imediato."""
+    """Atualiza o timestamp do gerador do Airflow ou recarrega o APScheduler no modo local."""
+    from ..runtime.executor import get_executor_mode
+    if get_executor_mode() == "local":
+        from ..runtime.scheduler import reload_scheduler_if_running
+        reload_scheduler_if_running()
+        return
+
     candidates = [
         os.path.join(BASE_DIR, "src", "dou_dag_generator.py"),
         "/opt/airflow/dags/ro_dou_src/dou_dag_generator.py",
@@ -108,6 +103,25 @@ def get_last_search_time():
     now = time.time()
     if (now - _last_search_cache['time']) < 15 and _last_search_cache['data'] != 'N/A':
         return _last_search_cache['data']
+
+    from ..runtime.executor import get_executor_mode
+    if get_executor_mode() == "local":
+        try:
+            from ..models import JobRun
+            last_job = (
+                JobRun.query.filter(JobRun.status == "success")
+                .order_by(JobRun.fim.desc())
+                .first()
+            )
+            if last_job and (last_job.fim or last_job.inicio):
+                ts = last_job.fim or last_job.inicio
+                dt = datetime.fromisoformat(ts)
+                res = dt.strftime('%d/%m/%Y %H:%M')
+                _last_search_cache = {'time': now, 'data': res}
+                return res
+        except Exception:
+            pass
+        return "N/A"
 
     if not os.path.exists(LOGS_DIR): return "N/A"
     
@@ -198,7 +212,12 @@ def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
     """
     Remove arquivos temporários de DAGs (temp_*.yaml e temp_*.yml) do disco,
     desregistra as DAGs correspondentes na API do Airflow e limpa pastas de logs órfãs.
+    No modo local, não há DAGs temporárias em disco nem Airflow.
     """
+    from ..runtime.executor import get_executor_mode
+    if get_executor_mode() == "local":
+        return 0
+
     import shutil
     import requests
     from .airflow_service import get_airflow_auth, get_airflow_url
