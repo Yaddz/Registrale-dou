@@ -219,6 +219,7 @@ table, .tabular { font-variant-numeric: tabular-nums; }
 }
 .input::placeholder { color: var(--text-muted); }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+select.input option { background: var(--surface); color: var(--text); }
 
 /* Cartão ------------------------------------------------------------------ */
 .card {

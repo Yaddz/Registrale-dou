@@ -494,3 +494,48 @@ class TestWindowsLauncherAndArtifacts:
         run = iss.split("[Run]", 1)[1].split("[Code]", 1)[0]
         line = next(l for l in run.splitlines() if "ie4uinit.exe" in l)
         assert '"-show"' in line and "runhidden" in line and "postinstall" not in line
+
+    def test_seed_routines_creates_empty_main_routine_without_client_cnpjs(self, tmp_path, monkeypatch):
+        """Primeiro uso cria Pesquisa_cnpj.yaml vazia e nunca copia rotina com CNPJs de dag_confs/."""
+        import yaml
+        from rodou_dashboard.app.runtime import paths
+
+        fake_base = tmp_path / "app_base"
+        dag_confs = fake_base / "dag_confs"
+        dag_confs.mkdir(parents=True)
+        (dag_confs / "Pesquisa_cnpj.yaml").write_text(
+            "dag:\n  id: pesquisa_cnpj_anvisa\n  search:\n    - terms:\n        - '12.345.678'\n",
+            encoding="utf-8",
+        )
+        (dag_confs / "exemplo_modelo.yaml").write_text("dag:\n  id: exemplo\n", encoding="utf-8")
+
+        monkeypatch.setattr(paths, "get_base_dir", lambda: fake_base)
+        rotinas_dir = tmp_path / "rotinas"
+        rotinas_dir.mkdir()
+
+        paths._seed_routines_if_empty(rotinas_dir)
+
+        main_yaml = rotinas_dir / "Pesquisa_cnpj.yaml"
+        assert main_yaml.is_file()
+        parsed = yaml.safe_load(main_yaml.read_text(encoding="utf-8"))
+        assert parsed["dag"]["search"][0]["terms"] == []
+        assert (rotinas_dir / "exemplo_modelo.yaml").is_file()
+
+    def test_build_excludes_client_routine_and_git_does_not_track_it(self):
+        """build.ps1 remove Pesquisa_cnpj*.yaml do stage e Pesquisa_cnpj.yaml não está versionado."""
+        import subprocess
+
+        repo_root = Path(__file__).resolve().parents[2]
+        build_ps1 = (repo_root / "windows" / "build.ps1").read_text(encoding="utf-8")
+        assert "Pesquisa_cnpj*.y*ml" in build_ps1
+        assert "LeakedRoutines" in build_ps1
+
+        gitignore = (repo_root / ".gitignore").read_text(encoding="utf-8")
+        assert "dag_confs/Pesquisa_cnpj*.yaml" in gitignore
+
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "dag_confs/Pesquisa_cnpj.yaml"],
+            cwd=str(repo_root),
+            text=True,
+        ).strip()
+        assert tracked == ""

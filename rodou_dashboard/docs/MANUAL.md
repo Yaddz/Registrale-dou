@@ -118,10 +118,12 @@ Se houver qualquer integração pendente, um **banner informativo com badges int
   * Clicar em qualquer badge direciona o operador imediatamente para o formulário correspondente (com rolagem suave e foco no card).
 
 * **As 4 Integrações Monitoradas pelo Assistente:**
-  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados. Em instalações limpas, a rotina inicia sem dados fictícios (em branco) e o sistema abre diretamente o modal padrão de rotinas para preenchimento.
-  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui preservação segura de senhas preexistentes, higienização automática de espaços em senhas de app do Gmail, diagnósticos aprimorados e suporte a teste imediato de conexão.
+  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados. Em instalações limpas, a rotina inicia sem CNPJs pré-cadastrados (vazia) e o indicador **Última sync** exibe **Nunca** até a primeira sincronização.
+  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui interruptor **Enviar e-mails** (ligado/desligado): quando desligado, o SMTP sai das pendências, as buscas continuam gravando as menções normalmente e o histórico registra **E-mail desativado**.
   3. **Planilha Google Sheets:** Conexão via Conta de Serviço (Service Account) com URL da planilha (`spreadsheet_url`), nome da aba e mapeamento de colunas para sincronização contínua de clientes.
   4. **Credenciais INLABS:** Usuário e senha de acesso ao portal da Imprensa Nacional para download automatizado das edições do DOU.
+
+* **Avisos dispensáveis na Visão geral:** tanto o aviso de contingência do **INLABS** quanto o aviso **Integrações pendentes** podem ser fechados pelo botão **X** (além de recolher no caso de integrações). O fechamento fica salvo por usuário no servidor e reaparece automaticamente se o estado do portal mudar ou surgir uma pendência nova.
 
 * **Fluxo Passo a Passo do Assistente (Wizard):**
   1. Clique no botão de ação destacado no banner (ex: **"Configurar: Rotina Principal"** ou **"Configurar: Servidor SMTP"**). Para a rotina principal, o sistema abre o modal padrão de edição de rotinas.

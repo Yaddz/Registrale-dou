@@ -74,6 +74,32 @@ class SyncHistory(db.Model):
             "detalhes": self.detalhes
         }
 
+    @classmethod
+    def get_last_sync_display(cls) -> str:
+        """Retorna a data/hora da última sincronização no fuso de Brasília, ou 'Nunca'."""
+        last_sync_record = cls.query.filter(
+            (cls.evento.like('%GestãoClick%'))
+            | (cls.evento.like('%Google Sheets%'))
+            | (cls.evento.like('%Sincronização%'))
+            | (cls.evento.like('%Sync%'))
+        ).order_by(cls.id.desc()).first()
+
+        if not last_sync_record or not last_sync_record.data:
+            return "Nunca"
+
+        raw = str(last_sync_record.data).strip()
+        if len(raw) >= 10 and raw[2] == "/" and raw[5] == "/":
+            return raw
+
+        br_tz = timezone(timedelta(hours=-3))
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(br_tz).strftime("%d/%m/%Y %H:%M:%S")
+        except ValueError:
+            return raw
+
 class InlabsDownloadLog(db.Model):
     __tablename__ = 'inlabs_download_log'
     id = db.Column(db.Integer, primary_key=True)

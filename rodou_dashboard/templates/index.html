@@ -189,7 +189,7 @@
         <!-- Tab: Home -->
         <div x-show="activeTab === 'home'" x-cloak class="space-y-6">
             <!-- Aviso de Contingência INLABS -->
-            <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded)">
+            <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
                 <div class="callout callout-warning px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div class="flex items-start gap-3">
                         <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
@@ -201,16 +201,21 @@
                             <p class="text-xs text-amber-800 dark:text-amber-300/90" x-text="inlabsStatus.portal_message || 'A edição do dia ainda não foi carregada no banco INLABS. As buscas utilizam a fonte de contingência configurada.'"></p>
                         </div>
                     </div>
-                    {% if user.role == 'master' %}
-                    <button @click="activeTab = 'settings'; settingsSubTab = 'integrations'" class="btn btn-secondary btn-sm shrink-0">
-                        Configurar contingência
-                    </button>
-                    {% endif %}
+                    <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        {% if user.role == 'master' %}
+                        <button @click="activeTab = 'settings'; settingsSubTab = 'integrations'" class="btn btn-secondary btn-sm shrink-0">
+                            Configurar contingência
+                        </button>
+                        {% endif %}
+                        <button type="button" @click="dismissNotice('inlabs', inlabsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
                 </div>
             </template>
 
-            <!-- Integrações pendentes (aviso recolhível; lembra o estado até mudar a lista de pendências) -->
-            <template x-if="integrationsStatus && !integrationsStatus.all_configured">
+            <!-- Integrações pendentes (aviso recolhível e dispensável; volta se surgir pendência nova) -->
+            <template x-if="integrationsStatus && !integrationsStatus.all_configured && !isNoticeDismissed('integrations', integrationsNoticeSignature())">
                 <div class="callout callout-warning"
                      x-data="{
                         open: true,
@@ -221,7 +226,7 @@
                             try { this.open ? localStorage.removeItem('integrationsCollapsed') : localStorage.setItem('integrationsCollapsed', this.pendingKey); } catch (e) {}
                         }
                      }">
-                    <div class="flex items-center gap-3 px-4 py-3">
+                    <div class="flex items-center gap-2 px-4 py-3">
                         <button type="button" class="callout-toggle flex-1 min-w-0" @click="toggle()" :aria-expanded="open.toString()" aria-controls="integrations-body">
                             <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 shrink-0"></i>
                             <span class="text-sm font-semibold text-slate-900 dark:text-stone-100 whitespace-nowrap">Integrações pendentes</span>
@@ -235,6 +240,9 @@
                         </button>
                         <button type="button" class="btn btn-ghost btn-icon btn-sm shrink-0" @click="toggle()" :title="open ? 'Recolher' : 'Expandir'" :aria-label="open ? 'Recolher' : 'Expandir'">
                             <span class="callout-chevron inline-flex" :class="open && 'is-open'"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>
+                        </button>
+                        <button type="button" @click="dismissNotice('integrations', integrationsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
+                            <i data-lucide="x"></i>
                         </button>
                     </div>
                     <div id="integrations-body" x-show="open" class="px-4 pb-4 space-y-3">
@@ -356,7 +364,7 @@
                         </div>
                         <div class="relative shrink-0 flex items-center">
                             <i data-lucide="calendar" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none"></i>
-                            <input type="text" x-model="mentionsDateFilter" @input="mentionsDateFilter = maskDate($event.target.value)" x-init="initDatePicker($el, (val) => mentionsDateFilter = val)" placeholder="DD/MM/AAAA" maxlength="10" class="input pl-10 pr-8 w-40 font-mono text-center" title="Filtro de data (DD/MM/AAAA)">
+                            <input type="text" x-model="mentionsDateFilter" @input="mentionsDateFilter = maskDate($event.target.value, $event.target)" x-init="initDatePicker($el, (val) => mentionsDateFilter = val)" placeholder="DD/MM/AAAA" maxlength="14" class="input pl-10 pr-8 w-40 font-mono text-center" title="Filtro de data (DD/MM/AAAA)">
                             <button x-show="mentionsDateFilter" @click="mentionsDateFilter = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-danger-600 transition-colors p-0.5 rounded-full" title="Limpar data">
                                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
                             </button>
@@ -693,30 +701,43 @@
                 <div x-show="settingsSubTab === 'integrations'" class="space-y-8" x-cloak>
                     <div id="smtp-settings-card" class="card p-6 space-y-8">
                         <div>
-                            <div class="flex items-center justify-between mb-6">
-                                <h3 class="font-semibold text-lg flex items-center gap-3"><i data-lucide="mail" class="w-5 h-5 text-slate-400"></i> SMTP & Notificações</h3>
-                                <div>
-                                    <span x-show="settings.smtp?.server && settings.smtp?.user" class="badge badge-success">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                                <div class="flex items-center gap-3">
+                                    <h3 class="font-semibold text-lg flex items-center gap-3"><i data-lucide="mail" class="w-5 h-5 text-slate-400"></i> SMTP & Notificações</h3>
+                                    <span x-show="!settings.smtp?.enabled" class="badge">
+                                        Desativado
+                                    </span>
+                                    <span x-show="settings.smtp?.enabled && settings.smtp?.server && settings.smtp?.user" class="badge badge-success">
                                         <span class="status-dot status-dot-success"></span> Configurado
                                     </span>
-                                    <span x-show="!settings.smtp?.server || !settings.smtp?.user" class="badge badge-warning">
+                                    <span x-show="settings.smtp?.enabled && (!settings.smtp?.server || !settings.smtp?.user)" class="badge badge-warning">
                                         <span class="status-dot status-dot-warning"></span> Pendente
                                     </span>
                                 </div>
+                                <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-3 px-4 py-2">
+                                    <span class="text-xs font-medium text-neutral-700 dark:text-neutral-300 whitespace-nowrap">Enviar e-mails:</span>
+                                    <label class="dash-switch" title="Ativar ou desativar o envio de e-mails">
+                                        <input type="checkbox" x-model="settings.smtp.enabled" class="sr-only dash-switch-input">
+                                        <div class="dash-switch-track dash-switch-sm">
+                                            <div class="dash-switch-thumb"></div>
+                                        </div>
+                                    </label>
+                                    <span :class="settings.smtp?.enabled ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.smtp?.enabled ? 'Ligado' : 'Desligado'"></span>
+                                </div>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="space-y-1"><label class="field-label">Servidor SMTP</label><input type="text" x-model="settings.smtp.server" placeholder="smtp.gmail.com" class="input"></div>
-                                <div class="space-y-1"><label class="field-label">Porta</label><input type="text" x-model="settings.smtp.port" placeholder="587" class="input"></div>
-                                <div class="space-y-1"><label class="field-label">Usuário</label><input type="text" x-model="settings.smtp.user" placeholder="seu-email@gmail.com" class="input"></div>
-                                <div class="space-y-1"><label class="field-label">Senha</label><input type="password" x-model="settings.smtp.password" placeholder="Deixe em branco para manter a salva" class="input"></div>
-                                <div class="space-y-1"><label class="field-label">E-mail de envio (From)</label><input type="email" x-model="settings.smtp.from_email" placeholder="notificacoes@seudominio.com.br" class="input"></div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6" :class="!settings.smtp?.enabled && 'opacity-50'">
+                                <div class="space-y-1"><label class="field-label">Servidor SMTP</label><input type="text" x-model="settings.smtp.server" :disabled="!settings.smtp?.enabled" placeholder="smtp.gmail.com" class="input disabled:cursor-not-allowed"></div>
+                                <div class="space-y-1"><label class="field-label">Porta</label><input type="text" x-model="settings.smtp.port" :disabled="!settings.smtp?.enabled" placeholder="587" class="input disabled:cursor-not-allowed"></div>
+                                <div class="space-y-1"><label class="field-label">Usuário</label><input type="text" x-model="settings.smtp.user" :disabled="!settings.smtp?.enabled" placeholder="seu-email@gmail.com" class="input disabled:cursor-not-allowed"></div>
+                                <div class="space-y-1"><label class="field-label">Senha</label><input type="password" x-model="settings.smtp.password" :disabled="!settings.smtp?.enabled" placeholder="Deixe em branco para manter a salva" class="input disabled:cursor-not-allowed"></div>
+                                <div class="space-y-1"><label class="field-label">E-mail de envio (From)</label><input type="email" x-model="settings.smtp.from_email" :disabled="!settings.smtp?.enabled" placeholder="notificacoes@seudominio.com.br" class="input disabled:cursor-not-allowed"></div>
                             </div>
-                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 mt-6 p-6 flex flex-col md:flex-row items-end gap-4">
+                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 mt-6 p-6 flex flex-col md:flex-row items-end gap-4" :class="!settings.smtp?.enabled && 'opacity-50'">
                                 <div class="flex-1 space-y-1">
                                     <label class="field-label">Destinatário para teste SMTP</label>
-                                    <input type="email" x-model="testEmail" placeholder="teste@exemplo.com" class="input">
+                                    <input type="email" x-model="testEmail" :disabled="!settings.smtp?.enabled" placeholder="teste@exemplo.com" class="input disabled:cursor-not-allowed">
                                 </div>
-                                <button @click="testSmtpConnection()" class="btn btn-primary" :disabled="isTestingSmtp">
+                                <button @click="testSmtpConnection()" class="btn btn-primary" :disabled="isTestingSmtp || !settings.smtp?.enabled">
                                     <i data-lucide="send" :class="isTestingSmtp && 'animate-pulse'"></i>
                                     <span x-text="isTestingSmtp ? 'Enviando…' : 'Enviar e-mail de teste'"></span>
                                 </button>
@@ -864,6 +885,10 @@
                         </div>
 
                         <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 text-xs space-y-1">
+                            <div x-show="pdfArchiveStatus.running" class="flex items-center gap-2 text-ink-600 dark:text-ink-400 font-medium pb-1">
+                                <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+                                <span>Arquivamento em andamento…</span>
+                            </div>
                             <div><span class="font-semibold text-slate-500">Última execução:</span> <span class="font-mono" x-text="pdfArchiveStatus.last_run_at || 'Nunca'"></span> (<span x-text="pdfArchiveStatus.last_source || '-'"></span>)</div>
                             <div><span class="font-semibold text-slate-500">Referência:</span> <span class="font-mono" x-text="pdfArchiveStatus.last_date || '-'"></span></div>
                             <div><span class="font-semibold text-slate-500">Resultado:</span> <span x-text="pdfArchiveStatus.last_message || 'Aguardando execução.'"></span></div>
@@ -871,23 +896,33 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="p-5 rounded-lg border border-neutral-200 dark:border-neutral-800 space-y-3">
-                                <label class="field-label">Arquivar data específica</label>
-                                <div class="flex gap-2">
-                                    <input type="text" x-model="pdfManualDate" @input="pdfManualDate = maskDate($event.target.value)" placeholder="DD/MM/AAAA" maxlength="10" class="input flex-1 font-mono">
-                                    <button @click="runPdfArchiveDate()" :disabled="pdfArchiveLoading" class="btn btn-primary">Baixar dia</button>
+                                <label for="pdf-manual-date" class="field-label">Arquivar data específica</label>
+                                <div class="flex gap-2 items-end">
+                                    <input id="pdf-manual-date" type="text" x-model="pdfManualDate" @input="pdfManualDate = maskDate($event.target.value, $event.target)" placeholder="DD/MM/AAAA" maxlength="14" class="input flex-1 font-mono">
+                                    <button @click="runPdfArchiveDate()" :disabled="pdfArchiveLoading" class="btn btn-primary">
+                                        <span x-text="pdfArchiveLoading ? 'Baixando…' : 'Baixar dia'"></span>
+                                    </button>
                                 </div>
                             </div>
                             <div class="p-5 rounded-lg border border-neutral-200 dark:border-neutral-800 space-y-3">
-                                <label class="field-label">Arquivar mês completo</label>
-                                <div class="flex gap-2">
-                                    <select x-model="pdfManualMonth" class="input flex-1">
-                                        <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
-                                        <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
-                                        <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
-                                        <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
-                                    </select>
-                                    <input type="number" x-model="pdfManualYear" min="2020" max="2035" class="input font-mono">
-                                    <button @click="runPdfArchiveMonth()" :disabled="pdfArchiveLoading" class="btn btn-primary">Baixar mês</button>
+                                <div class="text-xs font-medium text-neutral-600 dark:text-neutral-300">Arquivar mês completo</div>
+                                <div class="flex flex-wrap items-end gap-2">
+                                    <div class="flex-1 min-w-[140px]">
+                                        <label for="pdf-manual-month" class="field-label">Mês</label>
+                                        <select id="pdf-manual-month" x-model="pdfManualMonth" class="input">
+                                            <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
+                                            <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
+                                            <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
+                                            <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+                                        </select>
+                                    </div>
+                                    <div class="w-24">
+                                        <label for="pdf-manual-year" class="field-label">Ano</label>
+                                        <input id="pdf-manual-year" type="number" x-model.number="pdfManualYear" min="2020" max="2035" class="input font-mono">
+                                    </div>
+                                    <button @click="runPdfArchiveMonth()" :disabled="pdfArchiveLoading" class="btn btn-primary">
+                                        <span x-text="pdfArchiveLoading ? 'Baixando…' : 'Baixar mês'"></span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1859,7 +1894,7 @@
                 <div class="p-6 space-y-4">
                     <div class="relative">
                         <i data-lucide="calendar" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i>
-                        <input type="text" x-model="triggerLogicalDate" @input="triggerLogicalDate = maskDate($event.target.value); checkSingleDate()" x-init="initDatePicker($el, (val) => { triggerLogicalDate = val; checkSingleDate(); })" placeholder="DD/MM/AAAA (ex: 25/08/2026)" maxlength="10" class="input pl-10 pr-4 font-mono" title="Se vazio, usa a data atual">
+                        <input type="text" x-model="triggerLogicalDate" @input="triggerLogicalDate = maskDate($event.target.value, $event.target); checkSingleDate()" x-init="initDatePicker($el, (val) => { triggerLogicalDate = val; checkSingleDate(); })" placeholder="DD/MM/AAAA (ex: 25/08/2026)" maxlength="14" class="input pl-10 pr-4 font-mono" title="Se vazio, usa a data atual">
                     </div>
                     
                     <!-- Aviso de Feriado ou Fim de Semana -->
@@ -2444,7 +2479,7 @@
                             </div>
                             <div class="relative">
                                 <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i>
-                                <input type="text" x-model="reportFilters.startDate" @input="reportFilters.startDate = maskDate($event.target.value)" x-init="initDatePicker($el, (val) => reportFilters.startDate = val)" placeholder="DD/MM/AAAA" maxlength="10" class="input pl-9 pr-3 font-mono text-center" title="Data Inicial (DD/MM/AAAA)">
+                                <input type="text" x-model="reportFilters.startDate" @input="reportFilters.startDate = maskDate($event.target.value, $event.target)" x-init="initDatePicker($el, (val) => reportFilters.startDate = val)" placeholder="DD/MM/AAAA" maxlength="14" class="input pl-9 pr-3 font-mono text-center" title="Data Inicial (DD/MM/AAAA)">
                             </div>
                         </div>
                         <div class="space-y-1.5">
@@ -2453,7 +2488,7 @@
                             </div>
                             <div class="relative">
                                 <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"></i>
-                                <input type="text" x-model="reportFilters.endDate" @input="reportFilters.endDate = maskDate($event.target.value)" x-init="initDatePicker($el, (val) => reportFilters.endDate = val)" placeholder="DD/MM/AAAA" maxlength="10" class="input pl-9 pr-3 font-mono text-center" title="Data Final (DD/MM/AAAA)">
+                                <input type="text" x-model="reportFilters.endDate" @input="reportFilters.endDate = maskDate($event.target.value, $event.target)" x-init="initDatePicker($el, (val) => reportFilters.endDate = val)" placeholder="DD/MM/AAAA" maxlength="14" class="input pl-9 pr-3 font-mono text-center" title="Data Final (DD/MM/AAAA)">
                             </div>
                         </div>
                     </div>
@@ -3756,6 +3791,10 @@
                 internalUsers: {{ users | tojson | safe }},
                 settings: (() => {
                     const raw = Object.assign({smtp:{}, api_keys:{}, inlabs:{}, google_sheets: {}, pdf_archive: {}}, {{ settings | tojson | safe }});
+                    if (!raw.smtp) raw.smtp = {};
+                    if (raw.smtp.enabled === undefined) {
+                        raw.smtp.enabled = true;
+                    }
                     if (!raw.google_sheets) raw.google_sheets = {};
                     if (!raw.google_sheets.mapping) {
                         raw.google_sheets.mapping = {
@@ -3821,12 +3860,38 @@
                     next_search: '{{ next_search }}'
                 },
 
-                maskDate(val) {
-                    if (!val) return '';
-                    let v = String(val).replace(/\D/g, '').slice(0, 8);
-                    if (v.length >= 5) return v.replace(/^(\d{2})(\d{2})(\d{0,4})/, '$1/$2/$3');
-                    if (v.length >= 3) return v.replace(/^(\d{2})(\d{0,2})/, '$1/$2');
-                    return v;
+                maskDate(val, el = null) {
+                    const raw = String(val || '').trim();
+                    let digits = raw.replace(/\D/g, '');
+                    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+                    if (isoMatch) {
+                        digits = `${isoMatch[3]}${isoMatch[2]}${isoMatch[1]}`;
+                    }
+                    digits = digits.slice(0, 8);
+                    let masked = digits;
+                    if (digits.length > 4) {
+                        masked = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                    } else if (digits.length > 2) {
+                        masked = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+                    }
+                    if (el && el.value !== masked) {
+                        el.value = masked;
+                    }
+                    if (el && el._flatpickr && !masked) {
+                        el._flatpickr.clear(false);
+                    }
+                    return masked;
+                },
+
+                isValidBrDate(val) {
+                    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(val || '').trim());
+                    if (!m) return false;
+                    const day = Number(m[1]);
+                    const month = Number(m[2]);
+                    const year = Number(m[3]);
+                    if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1) return false;
+                    const dt = new Date(year, month - 1, day);
+                    return dt.getFullYear() === year && dt.getMonth() === month - 1 && dt.getDate() === day;
                 },
 
                 initDatePicker(el, onChange) {
@@ -3857,6 +3922,7 @@
                         if (data.last_search) this.topIndicators.last_search = data.last_search;
                         if (data.next_search) this.topIndicators.next_search = data.next_search;
                         if (data.inlabs_status) this.inlabsStatus = data.inlabs_status;
+                        if (data.dismissed_notices) this.dismissedNotices = data.dismissed_notices;
                         if (data.kpis) {
                             if (data.kpis.mencoes_total > this.lastSeenMentionsTotal) {
                                 this.unseenMentionsCount += (data.kpis.mencoes_total - this.lastSeenMentionsTotal);
@@ -3871,6 +3937,41 @@
 
                 // Integrations Wizard & Main DAG Status
                 inlabsStatus: null,
+                dismissedNotices: {{ (dismissed_notices or {}) | tojson | safe }},
+                inlabsNoticeSignature() {
+                    if (!this.inlabsStatus || (this.inlabsStatus.portal_ok && this.inlabsStatus.today_loaded)) return '';
+                    return `${this.inlabsStatus.portal_ok ? 1 : 0}:${this.inlabsStatus.today_loaded ? 1 : 0}`;
+                },
+                integrationsNoticeSignature() {
+                    if (!this.integrationsStatus || this.integrationsStatus.all_configured) return '';
+                    return (this.integrationsStatus.integrations || [])
+                        .filter(i => !i.is_configured)
+                        .map(i => i.id)
+                        .sort()
+                        .join(',');
+                },
+                isNoticeDismissed(notice, sig) {
+                    if (!sig) return false;
+                    const saved = (this.dismissedNotices && this.dismissedNotices[notice]) || '';
+                    if (notice === 'integrations') {
+                        // Só volta se surgir uma pendência nova; resolver uma não reabre o aviso.
+                        const savedIds = saved.split(',').filter(Boolean);
+                        return sig.split(',').every(id => savedIds.includes(id));
+                    }
+                    return saved === sig;
+                },
+                async dismissNotice(notice, sig) {
+                    this.dismissedNotices = Object.assign({}, this.dismissedNotices, { [notice]: sig });
+                    try {
+                        const r = await fetch('/api/notices/dismiss', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notice, signature: sig })
+                        });
+                        const data = await r.json();
+                        if (data && data.dismissed) this.dismissedNotices = data.dismissed;
+                    } catch (e) {}
+                },
                 integrationsStatus: { is_configured: true, all_configured: true, pending_count: 0, next_pending: null, integrations: [], main_dag: {}, smtp: {} },
                 wizardModalOpen: false,
                 mainDagStatus: { is_configured: true, missing_fields: [], main_dag: {}, smtp_configured: false, smtp: {} },
@@ -4899,6 +5000,10 @@
                 async confirmTriggerRoutine() {
                     const file = this.triggerDateFile;
                     const date = this.triggerLogicalDate;
+                    if (date && !this.isValidBrDate(date) && !/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+                        this.showAlert('Informe uma data válida no formato DD/MM/AAAA.', 'error');
+                        return;
+                    }
                     const routine = this.routines.find(r => r.file === file);
                     if (routine && !routine.active) {
                         this.showAlert('Esta rotina está pausada. Ative-a antes de disparar pesquisas.', 'warning');
@@ -5379,27 +5484,74 @@
                     } catch(e) {}
                 },
 
+                async pollPdfArchiveStatus(maxAttempts = 180, intervalMs = 1500) {
+                    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                        await new Promise(resolve => setTimeout(resolve, intervalMs));
+                        await this.fetchPdfArchiveStatus();
+                        if (!this.pdfArchiveStatus || !this.pdfArchiveStatus.running) {
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                            return this.pdfArchiveStatus;
+                        }
+                    }
+                    return this.pdfArchiveStatus;
+                },
+
                 async runPdfArchiveDate() {
-                    if (!this.pdfManualDate) { this.showAlert('Informe uma data (DD/MM/AAAA).', 'error'); return; }
+                    if (!this.isValidBrDate(this.pdfManualDate)) {
+                        this.showAlert('Informe uma data válida no formato DD/MM/AAAA.', 'error');
+                        return;
+                    }
                     this.pdfArchiveLoading = true;
+                    this.pdfArchiveStatus = Object.assign({}, this.pdfArchiveStatus, { running: true });
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     try {
                         const r = await fetch('/api/pdf_archive/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({date: this.pdfManualDate})});
                         const res = await r.json();
                         this.showAlert(res.message, res.status);
-                        setTimeout(() => this.fetchPdfArchiveStatus(), 2000);
-                    } catch(e) { this.showAlert('Erro ao iniciar arquivamento.', 'error'); }
-                    finally { this.pdfArchiveLoading = false; }
+                        if (r.ok && res.status === 'success') {
+                            const finalStatus = await this.pollPdfArchiveStatus(120, 1500);
+                            if (finalStatus && !finalStatus.running && finalStatus.last_message) {
+                                this.showAlert(finalStatus.last_message, finalStatus.last_status === 'error' ? 'error' : 'success');
+                            }
+                        } else {
+                            await this.fetchPdfArchiveStatus();
+                        }
+                    } catch(e) {
+                        this.showAlert('Erro ao iniciar arquivamento.', 'error');
+                        await this.fetchPdfArchiveStatus();
+                    } finally {
+                        this.pdfArchiveLoading = false;
+                    }
                 },
 
                 async runPdfArchiveMonth() {
+                    const monthNum = Number(this.pdfManualMonth);
+                    const yearNum = Number(this.pdfManualYear);
+                    if (!monthNum || monthNum < 1 || monthNum > 12 || !yearNum || yearNum < 2020 || yearNum > 2035) {
+                        this.showAlert('Informe um mês e ano válidos.', 'error');
+                        return;
+                    }
                     this.pdfArchiveLoading = true;
+                    this.pdfArchiveStatus = Object.assign({}, this.pdfArchiveStatus, { running: true });
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                     try {
-                        const r = await fetch('/api/pdf_archive/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({month: Number(this.pdfManualMonth), year: Number(this.pdfManualYear)})});
+                        const r = await fetch('/api/pdf_archive/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({month: monthNum, year: yearNum})});
                         const res = await r.json();
                         this.showAlert(res.message, res.status);
-                        setTimeout(() => this.fetchPdfArchiveStatus(), 2000);
-                    } catch(e) { this.showAlert('Erro ao iniciar arquivamento mensal.', 'error'); }
-                    finally { this.pdfArchiveLoading = false; }
+                        if (r.ok && res.status === 'success') {
+                            const finalStatus = await this.pollPdfArchiveStatus(300, 2000);
+                            if (finalStatus && !finalStatus.running && finalStatus.last_message) {
+                                this.showAlert(finalStatus.last_message, finalStatus.last_status === 'error' ? 'error' : 'success');
+                            }
+                        } else {
+                            await this.fetchPdfArchiveStatus();
+                        }
+                    } catch(e) {
+                        this.showAlert('Erro ao iniciar arquivamento mensal.', 'error');
+                        await this.fetchPdfArchiveStatus();
+                    } finally {
+                        this.pdfArchiveLoading = false;
+                    }
                 },
 
                 formatTime(seconds) {

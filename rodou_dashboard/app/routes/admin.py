@@ -42,6 +42,8 @@ def get_settings():
                     settings[k].update(v)
                 else:
                     settings[k] = v
+    from ..services.email_service import is_smtp_enabled
+    settings["smtp"]["enabled"] = is_smtp_enabled(settings.get("smtp"))
     return jsonify({"status": "ok", "settings": settings})
 
 @admin_bp.route('/save_settings', methods=['POST'])
@@ -118,8 +120,11 @@ def save_settings():
             if 'gmail.com' in smtp_server.lower() or 'googlemail.com' in smtp_server.lower():
                 smtp_password = raw_password.replace(' ', '')
             smtp_from = str(smtp.get('from_email') or smtp_user).strip()
-            
+            from ..services.email_service import is_smtp_enabled
+            smtp_enabled = bool(smtp['enabled']) if 'enabled' in smtp else is_smtp_enabled(existing_val.get('smtp', {}))
+
             merged_val['smtp'] = {
+                "enabled": smtp_enabled,
                 "server": smtp_server,
                 "port": smtp_port,
                 "user": smtp_user,
@@ -457,30 +462,7 @@ def api_status():
         "mencoes_total": total_mentions
     }
 
-    last_sync_record = SyncHistory.query.filter(
-        (SyncHistory.evento.like('%GestãoClick%')) | 
-        (SyncHistory.evento.like('%Google Sheets%')) |
-        (SyncHistory.evento.like('%Sincronização%')) |
-        (SyncHistory.evento.like('%Sync%'))
-    ).order_by(SyncHistory.id.desc()).first()
-
-    if last_sync_record:
-        last_sync = last_sync_record.data
-    else:
-        from ..services.dag_config_service import get_dag_confs_path, get_base_yaml_path
-        dag_confs_path = get_dag_confs_path()
-        yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
-        if not yaml_files: 
-            yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
-        if not yaml_files:
-            base = get_base_yaml_path()
-            if os.path.exists(base):
-                yaml_files = [base]
-                
-        last_sync = "N/A"
-        if yaml_files:
-            mtime = os.path.getmtime(yaml_files[0])
-            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
+    last_sync = SyncHistory.get_last_sync_display()
 
     from ..runtime.pdf_search import FALLBACK_API, FALLBACK_OFF, FALLBACK_PDF, get_fallback_mode
     from ..services.inlabs_service import is_date_loaded
@@ -501,12 +483,17 @@ def api_status():
         FALLBACK_OFF: "Desligado",
     }
 
+    username = session.get('user', {}).get('username', '')
+    if portal_ok and today_loaded and username:
+        set_user_dismissed_notice(username, 'inlabs', None)
+
     return jsonify({
         "last_sync": last_sync,
         "last_search": get_last_search_time(),
         "next_search": get_next_search_time(),
         "historico": history,
         "kpis": kpis,
+        "dismissed_notices": get_user_dismissed_notices(username),
         "inlabs_status": {
             "portal_ok": portal_ok,
             "portal_message": portal_msg,
@@ -862,4 +849,73 @@ def download_app_update():
         return jsonify({"status": "error", "message": str(exc)}), 400
     except Exception as exc:
         return jsonify({"status": "error", "message": f"Erro ao baixar atualização: {exc}"}), 502
+
+
+_VALID_NOTICES = ("inlabs", "integrations")
+
+
+def get_user_dismissed_notices(username: str) -> dict:
+    """Retorna o mapa de avisos dispensados para o usuário informado."""
+    if not username:
+        return {}
+    rec = Settings.query.filter_by(key="dismissed_notices").first()
+    val = rec.get_value() if rec else {}
+    if not isinstance(val, dict):
+        return {}
+    user_map = val.get(username, {})
+    return dict(user_map) if isinstance(user_map, dict) else {}
+
+
+def set_user_dismissed_notice(username: str, notice: str, signature):
+    """Persiste ou limpa o fechamento de um aviso da Visão geral para o usuário."""
+    if not username or notice not in _VALID_NOTICES:
+        return {}
+    rec = Settings.query.filter_by(key="dismissed_notices").first()
+    val = rec.get_value() if rec else {}
+    if not isinstance(val, dict):
+        val = {}
+    user_map = val.get(username)
+    if not isinstance(user_map, dict):
+        user_map = {}
+
+    changed = False
+    if signature is None or signature == "":
+        if notice in user_map:
+            user_map.pop(notice, None)
+            changed = True
+    else:
+        sig_str = str(signature)
+        if user_map.get(notice) != sig_str:
+            user_map[notice] = sig_str
+            changed = True
+
+    if changed:
+        val[username] = user_map
+        if not rec:
+            rec = Settings(key="dismissed_notices")
+            db.session.add(rec)
+        rec.set_value(val)
+        db.session.commit()
+    return dict(user_map)
+
+
+@admin_bp.route('/notices/dismissed', methods=['GET'])
+@login_required
+def api_get_dismissed_notices():
+    username = session.get('user', {}).get('username', '')
+    return jsonify({"status": "ok", "dismissed": get_user_dismissed_notices(username)})
+
+
+@admin_bp.route('/notices/dismiss', methods=['POST'])
+@login_required
+def api_dismiss_notice():
+    data = request.get_json(silent=True) or {}
+    notice = str(data.get('notice') or '').strip()
+    if notice not in _VALID_NOTICES:
+        return jsonify({"status": "error", "message": "Aviso inválido."}), 400
+    signature = data.get('signature')
+    username = session.get('user', {}).get('username', '')
+    updated = set_user_dismissed_notice(username, notice, signature)
+    return jsonify({"status": "ok", "dismissed": updated})
+
 

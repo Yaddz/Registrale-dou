@@ -354,8 +354,17 @@ class TestDashboardLocalMode:
         assert normalize_date_str("2026-11-23T12:00:00") == "2026-11-23"
 
     def test_rotas_painel_modo_local_sem_arquivos_temporarios(self, tmp_path, monkeypatch):
+        import yaml
         monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "registrale_data"))
         app = _make_app(tmp_path)
+        rotina_path = tmp_path / "registrale_data" / "rotinas" / "Pesquisa_cnpj.yaml"
+        rotina_path.parent.mkdir(parents=True, exist_ok=True)
+        _syn = _memory_dou_yaml(["24.684.423/0001-36"])
+        _syn["dag"]["search"][0]["is_exact_search"] = True
+        rotina_path.write_text(
+            yaml.safe_dump(_syn, sort_keys=False),
+            encoding="utf-8",
+        )
         executor = get_executor(app)
         assert isinstance(executor, LocalExecutor)
 
@@ -431,8 +440,17 @@ class TestDashboardLocalMode:
         executor_mod._LOCAL_EXECUTOR_INSTANCE = None
 
     def test_trigger_individual_modo_local_sem_airflow(self, tmp_path, monkeypatch):
+        import yaml
         monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "registrale_data"))
         app = _make_app(tmp_path)
+        rotina_path = tmp_path / "registrale_data" / "rotinas" / "Pesquisa_cnpj.yaml"
+        rotina_path.parent.mkdir(parents=True, exist_ok=True)
+        _syn = _memory_dou_yaml(["24.684.423/0001-36"])
+        _syn["dag"]["search"][0]["is_exact_search"] = True
+        rotina_path.write_text(
+            yaml.safe_dump(_syn, sort_keys=False),
+            encoding="utf-8",
+        )
         executor = get_executor(app)
 
         from app.runtime.runner import _ensure_src_imports
@@ -487,3 +505,29 @@ class TestDashboardLocalMode:
         from app.runtime import executor as executor_mod
         executor.shutdown(wait=True)
         executor_mod._LOCAL_EXECUTOR_INSTANCE = None
+
+
+def test_rotina_principal_vazia_nao_busca_todo_o_orgao():
+    """Rotina semeada no primeiro uso (`terms: []`) não pode buscar todas as
+    publicações da ANVISA: o bloco é pulado e nada vira menção."""
+    import yaml
+
+    from app.runtime.paths import _EMPTY_MAIN_ROUTINE_YAML
+
+    calls = []
+
+    class _SpySearcher:
+        def exec_search(self, **kwargs):
+            calls.append(kwargs)
+            return {"single_group": {"": {"ANVISA": [{"title": "qualquer ato"}]}}}
+
+    spy = _SpySearcher()
+    searchers = {"DOU": spy, "INLABS": spy, "QD": spy, "DOESP": spy}
+    outputs = run_routine(
+        yaml.safe_load(_EMPTY_MAIN_ROUTINE_YAML), execution_date="2026-11-23", searchers=searchers
+    )
+
+    assert calls == []
+    assert len(outputs) == 1
+    assert outputs[0]["result"] == {}
+    assert extract_mentions_from_results([outputs[0]], cnpj_map={}) == []

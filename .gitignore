@@ -70,9 +70,11 @@ coverage.xml
 *.cover
 .hypothesis/
 
-# Generated Airflow DAG Partitions (keep base template and examples)
-dag_confs/Pesquisa_cnpj_part_*.yaml
-dag_confs/Pesquisa_cnpj_sync.yaml
+# Generated routines with client CNPJs (never commit client lists)
+dag_confs/Pesquisa_cnpj*.yaml
+dag_confs/Pesquisa_cnpj*.yml
+dag_confs/temp_*.yaml
+dag_confs/temp_*.yml
 
 # IDE & OS specifics
 .vscode/

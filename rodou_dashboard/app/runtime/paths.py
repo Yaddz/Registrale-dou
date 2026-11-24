@@ -96,27 +96,72 @@ def get_inlabs_dir(create: bool = True) -> Path:
     return path
 
 
+_EMPTY_MAIN_ROUTINE_YAML = """dag:
+  id: pesquisa_cnpj_anvisa
+  description: Busca padrão diária vinculada às empresas com monitoramento ativo.
+  tags:
+    - pesquisa_cnpj
+    - inlabs
+  owner:
+    - CNPJ_SYNC
+  schedule: 0 8 * * MON-FRI
+  active: true
+  is_paused: false
+  dataset: inlabs
+  search:
+    - header: MONITORAMENTO PADRÃO
+      is_exact_search: true
+      force_rematch: true
+      department:
+        - ANVISA
+        - Agência Nacional de Vigilância Sanitária
+      dou_sections:
+        - SECAO_1
+        - SECAO_2
+        - SECAO_3
+        - EDICAO_EXTRA
+      terms_ignore: []
+      terms: []
+  report:
+    title: MONITORAMENTO PADRÃO
+    subject: ""
+    skip_null: true
+    emails: []
+"""
+
+
 def _seed_routines_if_empty(target_dir: Path) -> None:
-    """Copia rotinas iniciais de `dag_confs/` para `rotinas/` na primeira execução local."""
+    """Inicializa `rotinas/` na primeira execução com a rotina principal vazia (sem CNPJs de clientes)."""
     if any(target_dir.glob("*.y*ml")):
         return
     source_dir = get_base_dir() / "dag_confs"
-    if not source_dir.is_dir():
-        return
-    for item in sorted(source_dir.iterdir()):
-        if not item.is_file():
-            continue
-        name_lower = item.name.lower()
-        if not name_lower.endswith((".yaml", ".yml")):
-            continue
-        if name_lower.startswith("temp_") or "_part_" in name_lower or "_sync" in name_lower:
-            continue
-        dest = target_dir / item.name
-        if not dest.exists():
-            try:
-                shutil.copy2(item, dest)
-            except Exception:
-                pass
+    if source_dir.is_dir():
+        for item in sorted(source_dir.iterdir()):
+            if not item.is_file():
+                continue
+            name_lower = item.name.lower()
+            if not name_lower.endswith((".yaml", ".yml")):
+                continue
+            if (
+                name_lower.startswith("pesquisa_cnpj")
+                or name_lower.startswith("temp_")
+                or "_part_" in name_lower
+                or "_sync" in name_lower
+            ):
+                continue
+            dest = target_dir / item.name
+            if not dest.exists():
+                try:
+                    shutil.copy2(item, dest)
+                except Exception:
+                    pass
+
+    main_dest = target_dir / "Pesquisa_cnpj.yaml"
+    if not main_dest.exists():
+        try:
+            main_dest.write_text(_EMPTY_MAIN_ROUTINE_YAML, encoding="utf-8")
+        except Exception:
+            pass
 
 
 def get_routines_dir(create: bool = True) -> Path:

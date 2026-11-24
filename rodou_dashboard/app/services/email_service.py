@@ -5,6 +5,20 @@ import logging
 import os
 from ..models import Settings
 
+
+def is_smtp_enabled(smtp_config=None) -> bool:
+    """Indica se o envio de e-mails (SMTP) está ativado nas configurações globais."""
+    if smtp_config is None:
+        settings_record = Settings.query.filter_by(key='global_settings').first()
+        s_val = settings_record.get_value() if settings_record else {}
+        smtp_config = s_val.get('smtp', {}) if isinstance(s_val, dict) else {}
+    if not isinstance(smtp_config, dict):
+        return False
+    if 'enabled' in smtp_config:
+        return bool(smtp_config['enabled'])
+    return True
+
+
 class EmailSender:
     def __init__(self, config=None):
         self._smtp_config = config

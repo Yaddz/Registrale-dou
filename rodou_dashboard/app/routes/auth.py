@@ -89,27 +89,7 @@ def index():
     history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(50).all()]
     total_m, hoje_m, mes_m = get_mentions_kpis()
     
-    last_sync_record = SyncHistory.query.filter(
-        (SyncHistory.evento.like('%GestãoClick%')) | 
-        (SyncHistory.evento.like('%Google Sheets%')) |
-        (SyncHistory.evento.like('%Sincronização%')) |
-        (SyncHistory.evento.like('%Sync%'))
-    ).order_by(SyncHistory.id.desc()).first()
-
-    if last_sync_record:
-        last_sync = last_sync_record.data
-    else:
-        from ..services.dag_config_service import get_dag_confs_path, get_base_yaml_path
-        dag_confs_path = get_dag_confs_path()
-        yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_sync.yaml"))
-        if not yaml_files: yaml_files = glob.glob(os.path.join(dag_confs_path, "Pesquisa_cnpj_part_*.yaml"))
-        if not yaml_files:
-            base = get_base_yaml_path()
-            if os.path.exists(base): yaml_files = [base]
-        last_sync = "N/A"
-        if yaml_files:
-            mtime = os.path.getmtime(yaml_files[0])
-            last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
+    last_sync = SyncHistory.get_last_sync_display()
 
     last_search = get_last_search_time()
     next_search = get_next_search_time()
@@ -129,6 +109,9 @@ def index():
         }
     }
 
+    from .admin import get_user_dismissed_notices
+    dismissed_notices = get_user_dismissed_notices(session['user'].get('username', ''))
+
     return render_template('index.html', 
                            user=session['user'],
                            init_data=init_data,
@@ -138,4 +121,5 @@ def index():
                            time_left=time_left,
                            settings=settings,
                            users=users_list,
+                           dismissed_notices=dismissed_notices,
                            historico=history if history else [{"data": last_sync, "evento": "Status", "detalhes": "Aguardando sincronização."}])

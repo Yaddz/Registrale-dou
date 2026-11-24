@@ -7,6 +7,7 @@ de `DouDigestDagGenerator.perform_searches`.
 from __future__ import annotations
 
 import ast
+import logging
 from datetime import date, datetime, timedelta, timezone
 from functools import reduce
 import os
@@ -284,6 +285,22 @@ def run_search_block(
 
     sources = subsearch.sources
     term_list = _resolve_terms(subsearch)
+    if isinstance(term_list, list) and not term_list:
+        # Lista de termos explícita e vazia (ex.: rotina principal antes da
+        # primeira sincronização). Para o upstream "sem termos" significa
+        # "todas as publicações do órgão", o que gravaria cada ato da ANVISA
+        # como menção. `terms` ausente (None) segue a regra do upstream.
+        logging.getLogger(__name__).info(
+            "Bloco '%s' sem termos de busca: busca pulada.", subsearch.header
+        )
+        return {
+            "result": {},
+            "header": subsearch.header,
+            "department": subsearch.department,
+            "department_ignore": subsearch.department_ignore,
+            "pubtype": subsearch.pubtype,
+            "source_used": "",
+        }
     result_as_email = bool(not (specs.report.discord or specs.report.slack))
 
     dou_result: Dict[str, Any] = {}

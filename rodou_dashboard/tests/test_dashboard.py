@@ -1106,6 +1106,122 @@ class TestNewOptimizedFeatures:
             assert s_rec2.get_value().get('active') is True
 
 
+class TestSprint10PanelAdjustments:
+    def test_last_sync_never_without_record_and_brasilia_with_record(self, auth_client, app):
+        from app.models import SyncHistory, db as _db
+
+        # Sem registro de sincronização, deve mostrar "Nunca" mesmo com YAML no disco
+        resp = auth_client.get('/api/status')
+        assert resp.status_code == 200
+        assert resp.get_json()['last_sync'] == 'Nunca'
+
+        # Evento não relacionado a sincronização não altera last_sync
+        with app.app_context():
+            SyncHistory.log_event('Busca Concluída', 'Rotina executada')
+        assert auth_client.get('/api/status').get_json()['last_sync'] == 'Nunca'
+
+        # Registro ISO UTC é convertido para fuso de Brasília (UTC-3)
+        with app.app_context():
+            _db.session.add(SyncHistory(data='2026-11-24T15:00:00Z', evento='Sincronização Google Sheets', detalhes='ok'))
+            _db.session.commit()
+        assert auth_client.get('/api/status').get_json()['last_sync'] == '24/11/2026 12:00:00'
+
+    def test_dismissed_notices_persist_per_user_and_reopen_on_state_change(self, auth_client, app, monkeypatch):
+        from app.models import User, db as _db
+        from app.routes import admin as admin_routes
+
+        monkeypatch.setattr(admin_routes, '_get_cached_inlabs_portal_status', lambda force_refresh=False: (False, 'Em manutenção'))
+
+        r1 = auth_client.post('/api/notices/dismiss', json={'notice': 'inlabs', 'signature': '0:0'})
+        assert r1.status_code == 200
+        assert r1.get_json()['dismissed'] == {'inlabs': '0:0'}
+
+        r2 = auth_client.post('/api/notices/dismiss', json={'notice': 'integrations', 'signature': 'google_sheets,inlabs'})
+        assert r2.status_code == 200
+        assert r2.get_json()['dismissed']['integrations'] == 'google_sheets,inlabs'
+
+        # Outro usuário não herda o fechamento
+        with app.app_context():
+            u2 = User(username='analista2', role='user')
+            u2.set_password('123456')
+            _db.session.add(u2)
+            _db.session.commit()
+        with auth_client.session_transaction() as sess:
+            sess['user'] = {'username': 'analista2', 'role': 'user'}
+        assert auth_client.get('/api/notices/dismissed').get_json()['dismissed'] == {}
+
+        # Volta para admin e simula portal voltando ao ar + dia carregado -> limpa dispensa de inlabs
+        with auth_client.session_transaction() as sess:
+            sess['user'] = {'username': 'admin', 'role': 'master'}
+        monkeypatch.setattr(admin_routes, '_get_cached_inlabs_portal_status', lambda force_refresh=False: (True, 'OK'))
+        monkeypatch.setattr('app.services.inlabs_service.is_date_loaded', lambda d: (True, 10))
+        st = auth_client.get('/api/status').get_json()
+        assert 'inlabs' not in st['dismissed_notices']
+        assert st['dismissed_notices']['integrations'] == 'google_sheets,inlabs'
+
+    def test_smtp_switch_off_removes_pending_skips_email_and_saves_mentions(self, auth_client, app, monkeypatch):
+        from unittest.mock import patch
+        from app.models import Mention, Settings, SyncHistory
+        from app.routes.dags import watch_dag_and_update_mentions
+        from app.services.email_service import is_smtp_enabled
+
+        # Instalação limpa sem SMTP configurado: ligado por padrão (pendente), desligar tira das pendências
+        st_clean = auth_client.get('/api/system/integrations_status').get_json()
+        assert st_clean['smtp_enabled'] is True
+        assert 'smtp' in [i['id'] for i in st_clean['integrations']]
+        assert 'smtp' in st_clean['missing_fields']
+
+        # Instalação legada com server+user e sem chave enabled -> ligado por padrão
+        with app.app_context():
+            assert is_smtp_enabled({'server': 'smtp.teste.com', 'user': 'u@teste.com'}) is True
+
+        # Desligado: sai das pendências, salva menções, pula envio de e-mail e registra "E-mail desativado"
+        auth_client.post('/api/save_settings', json={
+            'smtp': {'enabled': False, 'server': 'smtp.teste.com', 'port': '587', 'user': 'u@teste.com'}
+        })
+        st_off = auth_client.get('/api/system/integrations_status').get_json()
+        assert st_off['smtp_enabled'] is False
+        assert 'smtp' not in [i['id'] for i in st_off['integrations']]
+        assert 'smtp' not in st_off['missing_fields']
+
+        fake_mentions = [{
+            'id': 'm-smtp-off-1',
+            'empresa': 'EMPRESA TESTE LTDA',
+            'cnpj': '24.684.423/0001-01',
+            'cnpj_norm': '24684423000101',
+            'secao': 'DO1',
+            'data': '24/11/2026',
+            'trecho': 'CNPJ 24.684.423/0001-01 empresa teste',
+            'link': 'https://www.in.gov.br/web/dou/-/teste-smtp-off',
+        }]
+        with patch('app.runtime.executor.LocalExecutor.wait', return_value=None), \
+             patch('app.routes.dags.fetch_mentions_from_dag_run', return_value=fake_mentions), \
+             patch('app.services.email_service.EmailSender.send_custom_email') as mock_send:
+            watch_dag_and_update_mentions(
+                app.app_context(),
+                [{"dag_id": "Pesquisa_cnpj.yaml", "dag_run_id": "run-smtp-off"}],
+                'Pesquisa_cnpj.yaml',
+                ['destino@teste.com'],
+                'Assunto teste',
+                '2026-11-24',
+            )
+            mock_send.assert_not_called()
+
+        with app.app_context():
+            assert Mention.query.count() == 1
+            hist = SyncHistory.query.filter_by(evento='E-mail desativado').first()
+            assert hist is not None
+
+        # Ligado sem servidor configurado -> volta a aparecer como pendência
+        auth_client.post('/api/save_settings', json={
+            'smtp': {'enabled': True, 'server': '', 'port': '587', 'user': ''}
+        })
+        st_on = auth_client.get('/api/system/integrations_status').get_json()
+        assert st_on['smtp_enabled'] is True
+        smtp_item = next(i for i in st_on['integrations'] if i['id'] == 'smtp')
+        assert smtp_item['is_configured'] is False
+
+
 
 
 

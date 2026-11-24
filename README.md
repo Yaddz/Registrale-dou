@@ -36,10 +36,10 @@ Na primeira abertura do painel:
 
 1. **Importação opcional:** se você utilizava uma instalação anterior, o assistente permite importar o banco `database.db` e as rotinas YAML existentes.
 2. **Credenciais e integrações:** acesse **Configurações** para informar:
-   - **SMTP:** servidor, porta, usuário, senha e remetente para envio dos alertas por e-mail;
+   - **SMTP (opcional):** servidor, porta, usuário, senha e remetente para envio dos alertas por e-mail (pode ser desligado pelo interruptor em *Configurações → Integrações*; quando desligado, as menções continuam sendo gravadas no painel);
    - **Google Sheets / GestãoClick:** credenciais da planilha ou ERP para sincronização automática da lista de CNPJs;
    - **INLABS (opcional):** usuário e senha do portal `inlabs.in.gov.br`. Quando o INLABS estiver indisponível ou em manutenção, a contingência configurada (`inlabs_fallback`: `pdf` padrão ou `api`) usa o PDF integral do dia confirmado na API do DOU.
-3. **Rotina principal (`Pesquisa_cnpj.yaml`):** defina os e-mails de destino e o horário do agendamento diário.
+3. **Empresas e rotina principal (`Pesquisa_cnpj.yaml`):** uma instalação limpa começa com 0 CNPJs monitorados; sincronize com o Google Sheets/GestãoClick ou adicione empresas manualmente e defina os destinatários da rotina.
 
 ---
 

@@ -473,6 +473,66 @@ def test_validate_pdf_folder_and_onboarding_flow(app_ctx, monkeypatch):
     assert r_status2.get_json()["needs_pdf_onboarding"] is False
 
 
+def test_manual_pdf_archive_background_records_status(app_ctx, monkeypatch):
+    """Disparo manual em segundo plano grava status final em Settings e atualiza flag running."""
+    import time
+    from rodou_dashboard.app.runtime import pdf_archiver
+
+    app, _ = app_ctx
+
+    def _fake_archive_date(raw_date, **kwargs):
+        pdf_archiver._save_pdf_archive_status({
+            "last_run_at": "24/11/2026 16:00:00",
+            "last_date": "23/11/2026",
+            "last_source": "pesquisa",
+            "last_status": "success",
+            "last_message": "1 PDF(s) salvo(s) para 23/11/2026.",
+            "saved_files": ["2026-11-23-S1.pdf"],
+            "skipped_files": [],
+            "errors": [],
+        })
+        return {"status": "success", "message": "1 PDF(s) salvo(s) para 23/11/2026."}
+
+    monkeypatch.setattr(pdf_archiver, "archive_date_pdfs", _fake_archive_date)
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user"] = {"username": "admin", "role": "master"}
+
+    r = client.post("/api/pdf_archive/run", json={"date": "23/11/2026"})
+    assert r.status_code == 200
+
+    final_status = None
+    for _ in range(40):
+        st = client.get("/api/pdf_archive/status").get_json()["archive_status"]
+        if not st["running"] and st["last_status"] == "success":
+            final_status = st
+            break
+        time.sleep(0.05)
+
+    assert final_status is not None
+    assert final_status["last_run_at"] == "24/11/2026 16:00:00"
+    assert "23/11/2026" in final_status["last_message"]
+
+    def _failing_archive_date(raw_date, **kwargs):
+        raise RuntimeError("falha simulada")
+
+    monkeypatch.setattr(pdf_archiver, "archive_date_pdfs", _failing_archive_date)
+    r_err = client.post("/api/pdf_archive/run", json={"date": "23/11/2026"})
+    assert r_err.status_code == 200
+
+    err_status = None
+    for _ in range(40):
+        st = client.get("/api/pdf_archive/status").get_json()["archive_status"]
+        if not st["running"] and st["last_status"] == "error":
+            err_status = st
+            break
+        time.sleep(0.05)
+
+    assert err_status is not None
+    assert "falha simulada" in err_status["last_message"]
+
+
 @pytest.mark.live
 def test_live_archive_extra_edition_nov2026(tmp_path):
     """Teste ao vivo real: baixa a Edição Extra A (2 páginas) de 23/11/2026 via pesquisa.in.gov.br."""

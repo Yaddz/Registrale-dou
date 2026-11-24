@@ -336,7 +336,9 @@ def api_integrations_status():
     settings_data = settings_record.get_value() if settings_record else {}
     
     # SMTP
+    from ..services.email_service import is_smtp_enabled
     smtp_data = settings_data.get('smtp', {})
+    smtp_enabled = is_smtp_enabled(smtp_data)
     smtp_configured = bool(str(smtp_data.get('server') or '').strip() and str(smtp_data.get('user') or '').strip())
     
     # Google Sheets
@@ -360,7 +362,9 @@ def api_integrations_status():
             "icon": "calendar-clock",
             "missing_fields": main_info.get("missing_fields", [])
         },
-        {
+    ]
+    if smtp_enabled:
+        integrations.append({
             "id": "smtp",
             "name": "Servidor SMTP",
             "title": "Servidor de Envio (SMTP)",
@@ -369,7 +373,8 @@ def api_integrations_status():
             "action_type": "modal_smtp",
             "icon": "mail",
             "missing_fields": [f for f in ["server", "user"] if not str(smtp_data.get(f) or '').strip()]
-        },
+        })
+    integrations.extend([
         {
             "id": "google_sheets",
             "name": "Google Sheets",
@@ -390,7 +395,7 @@ def api_integrations_status():
             "icon": "newspaper",
             "missing_fields": [f for f in ["user", "password"] if not str(inlabs_data.get(f) or '').strip()]
         }
-    ]
+    ])
     
     pending = [i for i in integrations if not i["is_configured"]]
     
@@ -398,7 +403,7 @@ def api_integrations_status():
     for i in pending:
         missing_all.append(i["id"])
         
-    main_dag_is_configured = bool(main_dag_configured and smtp_configured)
+    main_dag_is_configured = bool(main_dag_configured and (smtp_configured or not smtp_enabled))
     
     return jsonify({
         "status": "ok",
@@ -409,8 +414,10 @@ def api_integrations_status():
         "integrations": integrations,
         "missing_fields": missing_all,
         "main_dag": main_info,
+        "smtp_enabled": smtp_enabled,
         "smtp_configured": smtp_configured,
         "smtp": {
+            "enabled": smtp_enabled,
             "server": smtp_data.get("server", ""),
             "port": smtp_data.get("port", "587"),
             "user": smtp_data.get("user", ""),
@@ -520,6 +527,7 @@ def api_configure_main_dag():
             from_email = str(smtp.get('from_email') or user).strip()
             
             current_val['smtp'] = {
+                "enabled": bool(smtp.get("enabled", True)),
                 "server": server,
                 "port": port,
                 "user": user,
@@ -843,9 +851,16 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 source_tag = f" [Fonte: {sources_label}]"
 
             # 5. Envio do E-mail Formatado
+            from ..services.email_service import is_smtp_enabled
             email_sent = False
             email_failed = False
-            if emails and relevant_mentions:
+            smtp_enabled = is_smtp_enabled()
+            if not smtp_enabled:
+                add_history_event(
+                    "E-mail desativado",
+                    f"Envio de e-mail desativado nas configurações. Rotina {routine_name} gravou {len(relevant_mentions)} menção(ões) para {target_date_str}{source_tag}."
+                )
+            elif emails and relevant_mentions:
                 from ..services.email_service import render_email_subject
                 subject = render_email_subject(
                     routine_subject, relevant_mentions, template_name='Padrão Registrale',
@@ -873,7 +888,9 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
 
             if not email_sent and not email_failed:
                 motivo = []
-                if not emails:
+                if not smtp_enabled:
+                    motivo.append("e-mail desativado")
+                elif not emails:
                     motivo.append("nenhum destinatário configurado")
                 if not relevant_mentions:
                     motivo.append(f"0 menções encontradas para {target_date_str}")
@@ -1835,7 +1852,13 @@ def api_trigger_monthly():
                 if monthly_sources_label:
                     monthly_source_tag = f" [Fonte: {monthly_sources_label}]"
 
-                if not emails:
+                from ..services.email_service import is_smtp_enabled
+                if not is_smtp_enabled():
+                    add_history_event(
+                        "E-mail desativado",
+                        f"Envio de e-mail desativado nas configurações. Busca mensal {month}/{year} gravou {len(relevant_monthly_mentions)} menção(ões){monthly_source_tag}."
+                    )
+                elif not emails:
                     add_history_event("Busca Mensal Concluída", f"Busca finalizada ({len(relevant_monthly_mentions)} menções em {month}/{year}){monthly_source_tag}, mas nenhum destinatário de e-mail configurado.")
                 elif not relevant_monthly_mentions:
                     add_history_event("Busca Mensal Concluída", f"Nenhuma menção encontrada para o mês {month}/{year}{monthly_source_tag}.")
@@ -1872,24 +1895,37 @@ def api_trigger_monthly():
     return jsonify({"status": "success", "message": "Busca mensal iniciada em segundo plano."})
 
 
+_MANUAL_ARCHIVE_LOCK = threading.Lock()
+_MANUAL_ARCHIVE_RUNNING = False
+
+
 @dags_bp.route('/pdf_archive/status', methods=['GET'])
 @login_required
 def api_pdf_archive_status():
     from ..runtime.pdf_archiver import get_pdf_archive_config, get_pdf_archive_status
+    archive_status = get_pdf_archive_status()
+    archive_status["running"] = bool(archive_status.get("running") or _MANUAL_ARCHIVE_RUNNING)
     return jsonify({
         "status": "ok",
         "config": get_pdf_archive_config(),
-        "archive_status": get_pdf_archive_status(),
+        "archive_status": archive_status,
     })
 
 
 @dags_bp.route('/pdf_archive/run', methods=['POST'])
 @login_required
 def api_pdf_archive_run():
+    global _MANUAL_ARCHIVE_RUNNING
     if session.get('user', {}).get('role') != 'master':
         return jsonify({"status": "error", "message": "Acesso negado."}), 403
 
-    from ..runtime.pdf_archiver import archive_date_pdfs, archive_month_pdfs, normalize_date_iso
+    from ..runtime.pdf_archiver import (
+        _BRASILIA_TZ,
+        _save_pdf_archive_status,
+        archive_date_pdfs,
+        archive_month_pdfs,
+        normalize_date_iso,
+    )
 
     data = request.json or {}
     raw_date = str(data.get("date") or "").strip()
@@ -1918,6 +1954,7 @@ def api_pdf_archive_run():
             return jsonify({"status": "error", "message": "Ano ou mês inválido."}), 400
 
     def _execute(app_ctx):
+        global _MANUAL_ARCHIVE_RUNNING
         with app_ctx:
             try:
                 if raw_date:
@@ -1927,15 +1964,34 @@ def api_pdf_archive_run():
                 add_history_event("Arquivo PDF DOU", res.get("message", "Arquivamento concluído."))
                 return res
             except Exception as exc:
+                now_str = datetime.now(_BRASILIA_TZ).strftime("%d/%m/%Y %H:%M:%S")
+                ref_label = raw_date if raw_date else f"{str(parsed_month).zfill(2)}/{parsed_year}"
+                _save_pdf_archive_status({
+                    "last_run_at": now_str,
+                    "last_date": ref_label,
+                    "last_source": "-",
+                    "last_status": "error",
+                    "last_message": f"Falha ao arquivar PDFs: {exc}",
+                    "saved_files": [],
+                    "skipped_files": [],
+                    "errors": [str(exc)],
+                })
                 add_history_event("Erro Arquivo PDF", str(exc))
                 return {"status": "error", "message": str(exc)}
+            finally:
+                with _MANUAL_ARCHIVE_LOCK:
+                    _MANUAL_ARCHIVE_RUNNING = False
 
     app_obj = current_app._get_current_object()
     if run_sync:
+        with _MANUAL_ARCHIVE_LOCK:
+            _MANUAL_ARCHIVE_RUNNING = True
         res = _execute(app_obj.app_context())
         code = 200 if res.get("status") != "error" else 500
         return jsonify(res), code
 
+    with _MANUAL_ARCHIVE_LOCK:
+        _MANUAL_ARCHIVE_RUNNING = True
     threading.Thread(target=_execute, args=(app_obj.app_context(),), daemon=True).start()
     target_label = raw_date if raw_date else f"{str(parsed_month).zfill(2)}/{parsed_year}"
     return jsonify({

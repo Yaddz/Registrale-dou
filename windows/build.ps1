@@ -127,8 +127,20 @@ foreach ($Dir in $DirsToCopy) {
     }
 }
 
-# Remove pastas de testes, caches e artefatos locais do pacote final
+# Remove pastas de testes, caches, artefatos locais e rotinas com dados de clientes do pacote final
 Get-ChildItem -Path $AppStage -Include "__pycache__",".pytest_cache","tests" -Directory -Recurse | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+$DagConfsStage = Join-Path $AppStage "dag_confs"
+if (Test-Path $DagConfsStage) {
+    Get-ChildItem -Path $DagConfsStage -File | Where-Object {
+        $_.Name -like "Pesquisa_cnpj*.y*ml" -or $_.Name -like "temp_*.y*ml"
+    } | Remove-Item -Force -ErrorAction SilentlyContinue
+    $LeakedRoutines = Get-ChildItem -Path $DagConfsStage -File -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -like "Pesquisa_cnpj*.y*ml"
+    }
+    if ($LeakedRoutines) {
+        throw "Rotina com dados de cliente encontrada no stage do build: $($LeakedRoutines.Name -join ', ')"
+    }
+}
 
 Copy-Item -Path (Join-Path $RepoRoot "pyproject.toml") -Destination $AppStage -Force
 Set-Content -Path (Join-Path $AppStage "VERSION") -Value $Version -Encoding UTF8
