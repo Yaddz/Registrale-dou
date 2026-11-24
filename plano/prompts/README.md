@@ -15,5 +15,6 @@ Use um prompt por sessão de trabalho, na ordem. Cada prompt manda o agente ler 
 | 7 | [sprint-7.md](sprint-7.md) | Sprints 6 e 6.1 revisados |
 | 8 | [sprint-8.md](sprint-8.md) | **Aprovação escrita do usuário** em `plano/HOMOLOGACAO.md` (assinada em 24/11/2026) e revisão do Sprint 7 aprovada |
 | 9 | [sprint-9.md](sprint-9.md) | Sprint 8 revisado |
+| 10 | [sprint-10.md](sprint-10.md) | Sprint 9 aprovado (24/11/2026) |
 
 Depois de cada sprint, abra uma sessão separada com [revisao.md](revisao.md), trocando `<N>` pelo número do sprint. Só avance quando o veredito for "aprovado".

@@ -41,6 +41,7 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 | 7 | Validação de paridade 100% e homologação com o analista | 6.1 |
 | 8 | Remoção de Docker/Airflow, limpeza do git, novo README | Aprovação escrita do Sprint 7 |
 | 9 | Pasta e organização dos PDFs no onboarding, janela própria (pywebview) e ícone do site no `.exe` | 8 |
+| 10 | Ajustes de uso (status do arquivamento, máscara de data, seletor de mês, última sync), avisos dispensáveis, interruptor do SMTP e rotina de clientes fora do instalador | 9 |
 | Backlog | Exportar a página com a menção destacada (standby) | 5 |
 
 ---
@@ -724,6 +725,54 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
   - Testes novos: `test_apply_window_icon_sends_wm_seticon` e `test_installer_refreshes_icon_cache`. `uv run pytest -m "not live" -q` → `622 passed, 3 deselected`.
   - VM Windows 10: `Registrale-Setup-1.1.0.exe` (SHA-256 `0ac19ec5...0f24e`) instalado por cima da 1.0.0 → versão `1.1.0`; barra de título da janela, atalho da Área de Trabalho, barra de tarefas e bandeja com o ícone do site.
   - Sugestões da revisão que continuam abertas (não bloqueiam): status do disparo manual que não atualiza na tela, máscara do campo de data, rótulo do seletor de mês, horário de "Última sync" e a rotina com os 122 CNPJs embutida no instalador público.
+---
+
+## Sprint 10: Ajustes de uso do painel e privacidade da rotina
+
+**Pré-condição:** Sprint 9 aprovado e commitado (`37b0088`, `f73bc0a`). Pedido do usuário em 24/11/2026, a partir da revisão do Sprint 9.
+
+**Objetivo:** corrigir os incômodos de uso achados na validação do Sprint 9, deixar os avisos da Visão geral dispensáveis, permitir desligar o e-mail sem o sistema acusar pendência e parar de distribuir a lista de clientes no instalador público.
+
+**Situação atual (24/11/2026)**
+- **Status do arquivamento:** em Configurações → Arquivo PDF DOU, depois de **Baixar Dia** o quadro "Status e disparo manual" continua com o valor anterior (ou "Nunca"), mesmo com os PDFs gravados. O disparo roda em segundo plano (`routes/dags.py::api_pdf_archive_run`, `threading.Thread`) e a tela não acompanha o fim; o status só é gravado ao terminar (`pdf_archiver._save_pdf_archive_status`).
+- **Máscara de data:** os campos com `maskDate()` (`templates/index.html`: filtro de Menções, Baixar Dia, data da busca avulsa, período de Relatórios) não limpam com `Ctrl+A` + `Backspace` e, ao digitar sobre um valor existente, embaralham a data (ex.: `31/12/3022`).
+- **Seletor de mês:** em "Arquivar mês completo" o `<select x-model="pdfManualMonth">` aparece sem rótulo nem mês selecionado.
+- **"Última sync" adiantada:** sem nenhum registro de sincronização em `SyncHistory`, `admin.py` (~linha 460) e `auth.py` (~linha 92) mostram a data de modificação do `Pesquisa_cnpj.yaml`. No app instalado essa data é a do arquivo no momento do build, não uma sincronização.
+- **Lista de clientes no instalador público:** `dag_confs/Pesquisa_cnpj.yaml` (122 CNPJs) está versionado no repositório público e o `build.ps1` copia `dag_confs/` para o instalador; `paths._seed_routines_if_empty` copia a rotina no primeiro uso. Uma instalação limpa mostra "CNPJs monitorados: 122". A release `v1.0.0` já publicada contém o arquivo.
+- **Avisos da Visão geral:** o aviso "Portal INLABS indisponível" e o "Integrações pendentes" não podem ser fechados (o de integrações só recolhe).
+- **SMTP:** não há como desligar o envio de e-mail; o SMTP sem configuração sempre aparece como pendência (`dags.py::api_integrations_status`, `smtp_configured`) e no assistente de integrações.
+
+**Tarefas**
+1. **Status do arquivamento manual:** depois de **Baixar Dia** / **Baixar Mês**, a tela mostra "em andamento" e consulta `/api/pdf_archive/status` até o fim (com limite de tempo), atualizando o quadro com o resultado. Confirmar com teste que o status é gravado no disparo manual em segundo plano (com contexto da aplicação).
+2. **Máscara de data:** reescrever `maskDate()` para trabalhar só com os dígitos (no máximo 8) e montar `DD/MM/AAAA`, permitindo apagar tudo, colar uma data e digitar por cima de uma seleção sem embaralhar; validar a data antes de enviar. Vale para todos os campos que usam `maskDate`.
+3. **Seletor de mês:** mostrar o rótulo "Mês" e o mês atual selecionado (tipos de valor coerentes entre `x-model` e `<option value>`), também no tema escuro.
+4. **"Última sync":** sem registro de sincronização, mostrar "Nunca" (não usar a data do arquivo). Com registro, mostrar no fuso de Brasília. Mesma regra na Visão geral e no endpoint de indicadores.
+5. **Rotina com os CNPJs fora do instalador e do repositório:**
+   - o instalador não leva `dag_confs/Pesquisa_cnpj.yaml` (o `build.ps1` copia só o que for exemplo/modelo sem dados de cliente); o primeiro uso cria a rotina principal vazia, que o painel preenche pela sincronização (Sheets/GestãoClick);
+   - tirar `dag_confs/Pesquisa_cnpj.yaml` do versionamento (`git rm --cached` + `.gitignore`), mantendo os testes que dependem dele com uma fixture sintética;
+   - teste que falha se o stage do build contiver CNPJ real (ex.: qualquer `Pesquisa_cnpj*.yaml` fora de `examples_and_tests/`);
+   - **não** reescrever o histórico do git nem apagar a release `v1.0.0` sem pedido explícito do usuário: registrar no Registro que o arquivo continua no histórico e no instalador 1.0.0, com as opções (reescrever histórico, apagar o asset da release) para o usuário decidir.
+6. **Fechar os avisos da Visão geral:**
+   - botão "X" no aviso do INLABS e no "Integrações pendentes";
+   - o fechamento vale até o estado mudar: o aviso do INLABS volta se o estado do portal mudar (ex.: voltou e caiu de novo) e o de integrações volta se surgir uma pendência nova;
+   - guardar no servidor, por usuário (`Settings`), para valer também na janela própria e após reinstalar; o "Recolher" atual continua existindo.
+7. **Interruptor de SMTP (ligado/desligado):**
+   - em Configurações → Integrações, um interruptor "Enviar e-mails" (`smtp.enabled`, padrão ligado para instalações que já têm SMTP configurado);
+   - desligado: o SMTP sai da lista de pendências, do assistente de onboarding/integrações e do aviso "Integrações pendentes"; as rotinas continuam buscando e **gravando as menções** (regra 5 do `AGENTS.md`), o envio é pulado e o histórico registra "E-mail desativado" (não erro);
+   - ligado sem servidor configurado: continua como pendência, como hoje;
+   - os campos do SMTP ficam desabilitados enquanto o interruptor estiver desligado, sem apagar o que está salvo.
+8. Atualizar o manual do painel (`rodou_dashboard/docs/`, `MANUAL.md`) e o `README.md` onde citam esses comportamentos.
+
+**Fora de escopo:** os itens de dívida do design system (`docs/06_design_system.md`, seção 6.2), salvo o que for preciso para as tarefas acima.
+
+**Critério de aceite**
+- Testes offline para: status gravado no disparo manual em segundo plano; "Última sync" = "Nunca" sem registro e no fuso certo com registro; `smtp.enabled=false` tira o SMTP das pendências e do assistente, grava as menções e registra "E-mail desativado"; fechamento dos avisos persistido por usuário e reaberto quando o estado muda; build sem `Pesquisa_cnpj.yaml` com dados de cliente.
+- Testes de interface (no navegador ou na VM) cobrindo: Baixar Dia com o quadro de status atualizando sozinho; máscara de data apagando, colando e digitando por cima; seletor de mês com rótulo e mês atual; fechar e reabrir os avisos; interruptor do SMTP.
+- Instalação limpa na VM: "CNPJs monitorados: 0", "Última sync: Nunca", sem aviso de SMTP quando desligado.
+- Suíte `uv run pytest -m "not live"` passando; novembro/2026 pela contingência PDF continua com 26 menções de 16 empresas (com a rotina de teste da baseline).
+- Versão `1.2.0`.
+
+**Registro:** _(preencher)_
 ---
 
 ## Backlog
