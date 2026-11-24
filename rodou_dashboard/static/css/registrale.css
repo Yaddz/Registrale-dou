@@ -1,0 +1,442 @@
+/*
+ * Registrale — design system (tokens, base e componentes).
+ * Documentação: rodou_dashboard/docs/06_design_system.md
+ *
+ * Ordem do arquivo:
+ *   1. Tokens (variáveis CSS, claro e escuro)
+ *   2. Base
+ *   3. Componentes (.btn, .field, .card, .badge, .table, .switch, .toast, .status-dot)
+ *   4. Compatibilidade legada — remapeia classes Tailwind sem variante `dark:`
+ *      usadas nos templates antigos. Não estender: ao tocar um trecho, troque
+ *      pelas classes de componente e apague a regra correspondente aqui.
+ */
+
+/* ---------------------------------------------------------------- 1. Tokens */
+:root {
+    color-scheme: light;
+
+    /* Superfícies */
+    --bg: #f5f5f4;
+    --surface: #ffffff;
+    --surface-sunken: #fafaf9;
+    --surface-hover: #f5f5f4;
+    --overlay: rgb(28 25 23 / 0.45);
+
+    /* Bordas */
+    --border: #e7e5e4;
+    --border-strong: #d6d3d1;
+
+    /* Texto */
+    --text: #1c1917;
+    --text-secondary: #57534e;
+    --text-muted: #78716c;
+    --text-on-strong: #fafaf9;
+
+    /* Ação principal (tinta escura) */
+    --primary: #1c1917;
+    --primary-hover: #292524;
+
+    /* Destaque (azul tinta) */
+    --accent: #365d89;
+    --accent-hover: #2d4c70;
+    --accent-soft: #e1eaf3;
+    --accent-text: #2d4c70;
+
+    /* Estados */
+    --success: #1e7a50;
+    --success-soft: #effaf4;
+    --success-border: #b3e4c9;
+    --warning: #8d5016;
+    --warning-solid: #cf8a1d;
+    --warning-soft: #fdf8ec;
+    --warning-border: #f2d993;
+    --danger: #bf3a2e;
+    --danger-soft: #fdf3f2;
+    --danger-border: #f7ccc8;
+
+    /* Foco */
+    --focus-ring: 0 0 0 3px rgb(54 93 137 / 0.28);
+
+    /* Elevação: 1 = cartão/controle · 2 = menu/popover · 3 = modal/toast */
+    --shadow-1: 0 1px 2px rgb(28 25 23 / 0.05);
+    --shadow-2: 0 4px 12px rgb(28 25 23 / 0.08), 0 1px 2px rgb(28 25 23 / 0.04);
+    --shadow-3: 0 16px 40px rgb(28 25 23 / 0.16), 0 2px 6px rgb(28 25 23 / 0.06);
+
+    /* Raios */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+
+    /* Tipografia */
+    --font-sans: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+    /* Controles */
+    --control-h: 2.25rem;     /* 36px */
+    --control-h-sm: 1.875rem; /* 30px */
+}
+
+html.dark {
+    color-scheme: dark;
+
+    --bg: #121110;
+    --surface: #1c1917;
+    --surface-sunken: #161413;
+    --surface-hover: #262321;
+    --overlay: rgb(0 0 0 / 0.6);
+
+    --border: #2e2a27;
+    --border-strong: #44403c;
+
+    --text: #f5f5f4;
+    --text-secondary: #d6d3d1;
+    --text-muted: #a8a29e;
+    --text-on-strong: #1c1917;
+
+    --primary: #f5f5f4;
+    --primary-hover: #ffffff;
+
+    --accent: #97b4d3;
+    --accent-hover: #c3d4e7;
+    --accent-soft: rgb(72 116 163 / 0.18);
+    --accent-text: #c3d4e7;
+
+    --success: #7fcfa6;
+    --success-soft: rgb(42 150 99 / 0.14);
+    --success-border: rgb(75 179 128 / 0.35);
+    --warning: #eac05a;
+    --warning-solid: #cf8a1d;
+    --warning-soft: rgb(207 138 29 / 0.14);
+    --warning-border: rgb(226 167 51 / 0.35);
+    --danger: #f0a8a1;
+    --danger-soft: rgb(214 79 67 / 0.14);
+    --danger-border: rgb(229 119 109 / 0.35);
+
+    --focus-ring: 0 0 0 3px rgb(151 180 211 / 0.35);
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-2: 0 6px 16px rgb(0 0 0 / 0.35);
+    --shadow-3: 0 20px 48px rgb(0 0 0 / 0.5);
+}
+
+/* ------------------------------------------------------------------ 2. Base */
+body {
+    font-family: var(--font-sans);
+    background-color: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "tnum" 0;
+}
+[x-cloak] { display: none !important; }
+
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Números alinhados em tabelas e indicadores */
+table, .tabular { font-variant-numeric: tabular-nums; }
+
+/* Scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* O realce amarelo dos e-mails não aparece no painel */
+.highlight, mark {
+    background-color: transparent !important;
+    color: inherit !important;
+    font-weight: inherit !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+}
+
+/* Flatpickr */
+.flatpickr-calendar {
+    z-index: 99999 !important;
+    box-shadow: var(--shadow-3) !important;
+    border-radius: var(--radius-lg) !important;
+    font-family: var(--font-sans) !important;
+}
+
+/* ----------------------------------------------------------- 3. Componentes */
+
+/* Botão ------------------------------------------------------------------- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: var(--control-h);
+    padding: 0 0.875rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;   /* 13px */
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s, color .15s;
+}
+.btn svg, .btn [data-lucide] { width: 1rem; height: 1rem; flex-shrink: 0; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+
+.btn-primary { background: var(--primary); color: var(--text-on-strong); }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+.btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-1); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-hover); }
+
+.btn-ghost { background: transparent; color: var(--text-secondary); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+
+.btn-danger { background: var(--surface); color: var(--danger); border-color: var(--danger-border); }
+.btn-danger:hover:not(:disabled) { background: var(--danger-soft); }
+
+.btn-sm { height: var(--control-h-sm); padding: 0 0.625rem; font-size: 0.75rem; }
+.btn-icon { width: var(--control-h); padding: 0; }
+.btn-icon.btn-sm { width: var(--control-h-sm); }
+
+/* Campo ------------------------------------------------------------------- */
+.field-label {
+    display: block;
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+.field-hint { margin-top: 0.375rem; font-size: 0.75rem; color: var(--text-muted); }
+.input {
+    width: 100%;
+    height: var(--control-h);
+    padding: 0 0.75rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    transition: border-color .15s, box-shadow .15s;
+}
+.input::placeholder { color: var(--text-muted); }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+
+/* Cartão ------------------------------------------------------------------ */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-1);
+}
+.card-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+.card-title { font-size: 0.9375rem; font-weight: 600; color: var(--text); }
+.card-body { padding: 1.25rem; }
+
+/* Etiqueta ---------------------------------------------------------------- */
+.badge {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    height: 1.25rem; padding: 0 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-sunken);
+    color: var(--text-secondary);
+    font-size: 0.6875rem; font-weight: 500; white-space: nowrap;
+}
+.badge-accent  { background: var(--accent-soft);  color: var(--accent-text); border-color: transparent; }
+.badge-success { background: var(--success-soft); color: var(--success); border-color: var(--success-border); }
+.badge-warning { background: var(--warning-soft); color: var(--warning); border-color: var(--warning-border); }
+.badge-danger  { background: var(--danger-soft);  color: var(--danger);  border-color: var(--danger-border); }
+
+/* Aviso (callout) --------------------------------------------------------
+ * Superfície neutra com faixa lateral de 3px na cor do estado. Substitui as
+ * antigas caixas de fundo colorido translúcido (bg-amber-50, bg-blue-50…).
+ * Texto fica neutro; só ícones e a faixa carregam a cor. */
+.callout {
+    --callout-tone: var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: inset 3px 0 0 var(--callout-tone), var(--shadow-1);
+}
+.callout-info    { --callout-tone: var(--accent); }
+.callout-success { --callout-tone: var(--success); }
+.callout-warning { --callout-tone: var(--warning-solid); }
+.callout-danger  { --callout-tone: var(--danger); }
+.callout-info    :is(svg, i).callout-icon { color: var(--accent); }
+.callout-success :is(svg, i).callout-icon { color: var(--success); }
+.callout-warning :is(svg, i).callout-icon { color: var(--warning-solid); }
+.callout-danger  :is(svg, i).callout-icon { color: var(--danger); }
+
+/* Recolhível: cabeçalho clicável + seta que gira */
+.callout-toggle { display: flex; align-items: center; gap: 0.625rem; width: 100%; text-align: left; cursor: pointer; }
+.callout-chevron { margin-left: auto; color: var(--text-muted); transition: transform .15s; flex-shrink: 0; }
+.callout-chevron.is-open { transform: rotate(180deg); }
+
+/* Texto colorido herdado dos templates antigos vira neutro dentro do aviso;
+ * ícones (svg) mantêm a cor do estado. */
+html .callout :is(p, span, li, div, label, small, a)[class*="text-amber-"],
+html .callout :is(p, span, li, div, label, small, a)[class*="text-emerald-"],
+html .callout :is(p, span, li, div, label, small, a)[class*="text-blue-"],
+html .callout :is(p, span, li, div, label, small, a)[class*="text-red-"],
+html .callout :is(p, span, li, div, label, small, a)[class*="text-rose-"],
+html .callout :is(p, span, li, div, label, small, a)[class*="text-purple-"] { color: var(--text-secondary) !important; }
+html .callout :is(h3, h4, h5, strong, b)[class*="text-"] { color: var(--text) !important; }
+html .callout .bg-white { background-color: var(--surface-sunken) !important; }
+
+/* Tabela ------------------------------------------------------------------ */
+.table { width: 100%; font-size: 0.8125rem; }
+.table th {
+    padding: 0.625rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted);
+    background: var(--surface-sunken);
+    border-bottom: 1px solid var(--border);
+}
+.table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.table tbody tr:hover { background: var(--surface-hover); }
+
+/* Indicador de status (ponto) ------------------------------------------- */
+.status-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; flex-shrink: 0; background: var(--text-muted); }
+.status-dot-success { background: var(--success); }
+.status-dot-accent  { background: var(--accent); }
+.status-dot-warning { background: var(--warning-solid); }
+.status-dot-danger  { background: var(--danger); }
+
+/* Chave liga/desliga (antigo .dash-switch) ------------------------------- */
+.dash-switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; user-select: none; vertical-align: middle; }
+.dash-switch-track {
+    position: relative;
+    width: 2.25rem; height: 1.25rem;
+    background: var(--border-strong);
+    border-radius: 999px;
+    transition: background-color .15s;
+}
+.dash-switch-track.dash-switch-sm { width: 2rem; height: 1.125rem; }
+.dash-switch-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 1rem; height: 1rem;
+    background: #fff;
+    border-radius: 999px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .2);
+    transition: transform .15s;
+}
+.dash-switch-track.dash-switch-sm .dash-switch-thumb { width: 0.875rem; height: 0.875rem; }
+.dash-switch-input:checked + .dash-switch-track { background: var(--success); }
+html.dark .dash-switch-input:checked + .dash-switch-track { background: #2a9663; }
+.dash-switch-input:checked + .dash-switch-track .dash-switch-thumb { transform: translateX(1rem); }
+.dash-switch-input:checked + .dash-switch-track.dash-switch-sm .dash-switch-thumb { transform: translateX(0.875rem); }
+.dash-switch-input:focus-visible + .dash-switch-track { box-shadow: var(--focus-ring); }
+
+/* Toast ------------------------------------------------------------------- */
+.toast {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    min-width: 320px; max-width: 28rem;
+    padding: 0.875rem 1rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
+}
+.toast-title { font-size: 0.8125rem; font-weight: 600; }
+.toast-message { font-size: 0.8125rem; color: var(--text-secondary); white-space: pre-line; line-height: 1.45; }
+.toast-success { border-left-color: var(--success); }
+.toast-success .toast-icon { color: var(--success); }
+.toast-info { border-left-color: var(--accent); }
+.toast-info .toast-icon { color: var(--accent); }
+.toast-warning { border-left-color: var(--warning-solid); }
+.toast-warning .toast-icon { color: var(--warning-solid); }
+.toast-error { border-left-color: var(--danger); }
+.toast-error .toast-icon { color: var(--danger); }
+
+/* Marca ------------------------------------------------------------------- */
+.brand-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem;
+    border-radius: var(--radius-lg);
+    background: var(--primary); color: var(--text-on-strong);
+    font-family: var(--font-mono); font-weight: 600; font-size: 0.9375rem;
+}
+
+/* ------------------------------------------------- 4. Compatibilidade legada */
+/* Classes Tailwind sem variante dark: nos templates antigos. */
+
+/* Superfícies */
+.bg-white { background-color: var(--surface); }
+html.dark .bg-white:not([class*="dark:bg-"]) { background-color: var(--surface) !important; border-color: var(--border) !important; }
+html.dark .bg-slate-50:not([class*="dark:bg-"]),
+html.dark .bg-slate-100:not([class*="dark:bg-"]) { background-color: var(--surface-sunken) !important; border-color: var(--border) !important; }
+html.dark [class*="bg-slate-50/"] { background-color: rgb(22 20 19 / 0.6) !important; }
+html.dark .bg-slate-200 { background-color: var(--border-strong) !important; }
+html.dark .bg-slate-300 { background-color: #57534e !important; }
+
+/* Botões escuros viram claros no modo escuro */
+html.dark button.bg-slate-900, html.dark a.bg-slate-900,
+html.dark button.bg-stone-900, html.dark a.bg-stone-900 {
+    background-color: var(--primary) !important;
+    color: var(--text-on-strong) !important;
+}
+html.dark button.bg-slate-900:hover, html.dark a.bg-slate-900:hover,
+html.dark button.bg-stone-900:hover, html.dark a.bg-stone-900:hover { background-color: var(--primary-hover) !important; }
+html.dark button.bg-slate-900 svg, html.dark a.bg-slate-900 svg { color: var(--text-on-strong) !important; }
+
+/* Painéis e tooltips escuros */
+html.dark div.bg-slate-900:not([class*="dark:bg-"]) { background-color: var(--surface-hover) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
+
+/* Texto */
+.text-slate-400:not([class*="dark:text-"]) { color: var(--text-muted); }
+html.dark .text-slate-900:not([class*="dark:text-"]),
+html.dark .text-slate-800:not([class*="dark:text-"]) { color: var(--text) !important; }
+html.dark .text-slate-700:not([class*="dark:text-"]) { color: var(--text-secondary) !important; }
+html.dark .text-slate-600:not([class*="dark:text-"]),
+html.dark .text-slate-500:not([class*="dark:text-"]),
+html.dark .text-slate-400:not([class*="dark:text-"]) { color: var(--text-muted) !important; }
+html.dark .text-blue-900, html.dark .text-blue-800,
+html.dark .text-blue-700, html.dark .text-blue-600 { color: var(--accent) !important; }
+html.dark .hover\:text-blue-800:hover { color: var(--accent-hover) !important; }
+
+/* Bordas */
+html.dark .border-slate-50:not([class*="dark:border-"]),
+html.dark .border-slate-100:not([class*="dark:border-"]),
+html.dark .border-slate-200:not([class*="dark:border-"]) { border-color: var(--border) !important; }
+html.dark .border-white { border-color: var(--surface) !important; }
+html.dark th, html.dark td, html.dark hr { border-color: var(--border) !important; }
+html.dark tr:hover { background-color: var(--surface-hover) !important; }
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--border) !important; }
+html.dark .border-t-slate-900 { border-color: var(--text) !important; }
+
+/* Formulários */
+html.dark input, html.dark select, html.dark textarea { background-color: var(--surface-sunken) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
+html.dark input:disabled, html.dark select:disabled, html.dark textarea:disabled { background-color: var(--surface-hover) !important; color: var(--text-muted) !important; }
+
+/* Fundos de estado (claro → translúcido no escuro) */
+html.dark .bg-emerald-50, html.dark .bg-emerald-100 { background-color: var(--success-soft) !important; border-color: var(--success-border) !important; color: var(--success) !important; }
+html.dark .text-emerald-500, html.dark .text-emerald-600, html.dark .text-emerald-700,
+html.dark .text-emerald-800, html.dark .text-emerald-900 { color: var(--success) !important; }
+html.dark .border-emerald-100, html.dark .border-emerald-200, html.dark .border-emerald-300 { border-color: var(--success-border) !important; }
+
+html.dark .bg-red-50, html.dark .bg-red-100 { background-color: var(--danger-soft) !important; border-color: var(--danger-border) !important; color: var(--danger) !important; }
+html.dark .text-red-600, html.dark .text-red-700, html.dark .text-red-800 { color: var(--danger) !important; }
+html.dark .border-red-100, html.dark .border-red-200, html.dark .border-red-300 { border-color: var(--danger-border) !important; }
+
+html.dark .bg-amber-50, html.dark .bg-amber-100 { background-color: var(--warning-soft) !important; border-color: var(--warning-border) !important; color: var(--warning) !important; }
+html.dark .text-amber-700, html.dark .text-amber-800, html.dark .text-amber-900 { color: var(--warning) !important; }
+html.dark .border-amber-100, html.dark .border-amber-200 { border-color: var(--warning-border) !important; }
+
+html.dark .bg-blue-50, html.dark .bg-blue-100 { background-color: var(--accent-soft) !important; border-color: rgb(151 180 211 / 0.3) !important; color: var(--accent-text) !important; }
+html.dark .border-blue-100, html.dark .border-blue-200 { border-color: rgb(151 180 211 / 0.3) !important; }
+
+/* Painéis internos dentro de caixas de estado */
+html.dark .bg-emerald-50 .bg-white,
+html.dark .bg-blue-50 .bg-white,
+html.dark .bg-amber-50 .bg-white { background-color: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
+
+/* Overlays de modal */
+html.dark [class*="backdrop-blur"] { background-color: var(--overlay) !important; }

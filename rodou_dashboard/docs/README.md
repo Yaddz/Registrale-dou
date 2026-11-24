@@ -47,6 +47,11 @@ A documentação está dividida nos seguintes módulos:
    - Execução local (Waitress) e empacotamento Windows (Inno Setup)
    - Execução dos testes automatizados
 
+6. [**06. Design System do Painel**](06_design_system.md)
+   - Tokens (cor, tipografia, raio, elevação) e classes de componente
+   - Padrões de tela e regras de conteúdo
+   - Auditoria visual de novembro/2026 e dívida pendente
+
 ---
 
 ## 🚀 Resumo Rápido
