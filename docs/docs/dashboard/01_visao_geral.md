@@ -15,12 +15,12 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
                                            ▼
                     ┌──────────────────────────────────────────────┐
                     │            Flask Web Application             │
-                    │          (Gunicorn WSGI / Port 5000)         │
+                    │          (waitress WSGI / Port 5000)         │
                     └──────┬───────────────┬────────────────┬──────┘
                            │               │                │
             ┌──────────────▼──────┐ ┌──────▼──────┐ ┌───────▼──────────────┐
             │   SQLite Database   │ │ YAML Configs│ │ Background Workers   │
-            │ (/data/dashboard.db)│ │(Airflow DAG)│ │ - Mentions Watcher   │
+            │ (database.db)      │ │(LocalExecutor)│ │ - Mentions Watcher  │
             │ - Users, Companies  │ │- Pesquisa_  │ │ - Sheets Scheduler   │
             │ - Mentions, History │ │  cnpj_*.yaml│ └──────────────────────┘
             │ - Settings,Template │ └─────────────┘
@@ -34,7 +34,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
        │ • Google Sheets API v4        │
        │ • PostgreSQL INLABS (Matérias)│
        │ • Servidor SMTP (E-mails)     │
-       │ • Apache Airflow (Execução)   │
+       │ • LocalExecutor + APScheduler   │
        └───────────────────────────────┘
 ```
 
@@ -49,10 +49,11 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
 | **Sessão** | Flask-Session (Filesystem) | Gerenciamento de sessões com expiração de 30 min |
 | **ORM & DB Local** | Flask-SQLAlchemy / SQLite | Persistência rápida de empresas, menções, configurações e usuários |
 | **DB Histórico DOU** | PostgreSQL (`pg8000`) | Leitura de artigos e matérias capturadas do INLABS |
-| **Servidor WSGI** | Gunicorn (2 workers + 5.000 max-requests) | Execução concorrente estável com reciclagem para processos longos em background |
+| **Servidor WSGI** | waitress (1 processo, várias threads) | Roda no Windows e mantém um único agendador (sem tarefas duplicadas entre workers) |
 | **Frontend Reativo** | Alpine.js | Estado reativo no cliente sem necessidade de build |
 | **Estilização** | Tailwind CSS (via CDN) | Interface moderna, responsiva e com suporte a modais |
 | **Exportações** | ReportLab + Pandas + OpenPyXL | Geração de PDFs diagramados e planilhas Excel nativas |
+| **Feriados** | Algoritmo Computus de Butcher | Cálculo dinâmico de feriados nacionais fixos e móveis para identificar dias úteis com circulação do DOU |
 
 ---
 
@@ -97,7 +98,14 @@ O banco de dados SQLite principal fica localizado no volume persistente `/data/d
    * `detalhes` (TEXT) — Descrição detalhada da execução (ex: número de registros importados)
    * **Método de Classe `SyncHistory.log_event(evento, detalhes, max_history=50)`:** Método centralizado que registra o evento e gerencia automaticamente a rotação FIFO da tabela, mantendo no máximo os últimos 50 registros no banco de dados.
 
-5. **`settings` (`Settings`)**
+5. **`inlabs_download_log` (`InlabsDownloadLog`)**
+   * `id` (INTEGER, PK)
+   * `date_str` (VARCHAR(10), UNIQUE) — Data do DOU baixada (formato `YYYY-MM-DD`)
+   * `downloaded_at` (VARCHAR(50)) — Timestamp de quando o download foi finalizado
+   * `status` (VARCHAR(20), default `'success'`) — Status da operação de carga
+   * Esta tabela rastreia quais datas de edições do DOU foram baixadas com sucesso do portal INLABS para o banco PostgreSQL local, permitindo ao sistema identificar lacunas para buscas mensais.
+
+6. **`settings` (`Settings`)**
    * `id` (INTEGER, PK)
    * `key` (VARCHAR(100), UNIQUE) — Chave da configuração (padrão: `'global_settings'`)
    * `value` (TEXT) — JSON contendo credenciais e parâmetros:
@@ -106,7 +114,7 @@ O banco de dados SQLite principal fica localizado no volume persistente `/data/d
      * `inlabs`: Usuário e senha da Imprensa Nacional
      * `google_sheets`: URL da planilha, JSON de credenciais da Service Account, intervalo e mapeamento de colunas
 
-6. **`email_templates` (`EmailTemplate`)**
+7. **`email_templates` (`EmailTemplate`)**
    * `id` (INTEGER, PK)
    * `name` (VARCHAR(100)) — Nome do modelo (ex: `Padrão Registrale`)
    * `subject` (VARCHAR(200)) — Assunto padrão do e-mail
@@ -120,7 +128,7 @@ O banco de dados SQLite principal fica localizado no volume persistente `/data/d
 Para garantir alta performance e tempo de resposta instantâneo na interface web, o Dashboard utiliza threads de segundo plano (daemons) que são inicializadas na subida da aplicação (`create_app`):
 
 ### 1. Mentions Watcher (`start_mentions_watcher()`)
-* Monitora o diretório de dados em busca de novos resultados gerados pelas tarefas de busca do Airflow.
+* Monitora a execução local (`JobRun`) em busca de novos resultados gerados pelas rotinas de busca.
 * Ao identificar novas detecções, extrai as informações estruturadas (data, empresa, CNPJ, seção, trecho limpo e link da publicação), insere de forma atômica no banco SQLite (`Mention`) e registra o evento em `SyncHistory`.
 * Permite que o dashboard exiba alertas sonoros e notificações em tempo real sem precisar reiniciar a aplicação.
 
@@ -130,5 +138,5 @@ Para garantir alta performance e tempo de resposta instantâneo na interface web
 
 ### 3. Limpeza Segura de DAGs Órfãs (`cleanup_orphaned_temp_dags()`)
 * Função executada periodicamente na listagem de rotinas (`get_routines`) e no boot da aplicação para manutenção preventiva do ambiente.
-* **Proteção contra Remoção Prematura:** Antes de excluir qualquer arquivo YAML temporário (`temp_*.yaml`) ou desregistrar a DAG do Airflow, a função consulta a API REST do Airflow (`GET /api/v1/dags/{dag_id}/dagRuns`). Caso a DAG possua execuções com status `running` ou `queued`, a limpeza é imediatamente ignorada para garantir que buscas mensais históricas ou ad-hoc em lote não sejam interrompidas.
+* **Execução em Memória:** Buscas ad-hoc e mensais são executadas diretamente em memória pelo `LocalExecutor`, evitando arquivos YAML temporários órfãos em disco.
 * **Janela de Tolerância:** Utiliza janela de segurança de 1 hora (`max_age_seconds=3600`) para expurgar apenas arquivos verdadeiramente abandonados ou sem execuções ativas, mantendo o ambiente de execução limpo sem afetar buscas de longa duração.

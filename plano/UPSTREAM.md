@@ -56,3 +56,4 @@ Lista de caminhos do upstream removidos por decisão do projeto (re-removidos au
 - `dag_load_inlabs/`
 - `tests/dag_generator_test.py`, `tests/dag_generator_invalid_yaml_test.py`, `tests/test_dag_loading.py`, `tests/test_e2e_dag_execution.py`
 - `.github/workflows/ci-tests.yml`, `.github/workflows/docker_build_and_publish.yml`
+- `.env.example` (configuração do Airflow/Docker) e `requirements-uninstall.txt` (imagem Docker), removidos na revisão do Sprint 8

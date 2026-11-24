@@ -80,6 +80,25 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 ### `POST /api/google_sheets/sync`
 * **Descrição:** Executa a sincronização da planilha Google Sheets para o banco SQLite e atualiza os YAMLs.
 
+### `POST /api/companies/toggle_origin_monitoring`
+* **Descrição:** Ativa ou desativa em lote o monitoramento (`status`) de todas as empresas de uma origem específica.
+* **Payload (JSON):**
+```json
+{
+  "origin": "gestaoclick",
+  "active": true
+}
+```
+
+### `POST /api/companies/unmonitor_by_origin`
+* **Descrição:** Desmarca o monitoramento (`status=False`) de empresas pertencentes a origens específicas.
+* **Payload (JSON):**
+```json
+{
+  "origins": ["gestaoclick", "google_sheets"]
+}
+```
+
 ---
 
 ## ⚙️ 3. Rotinas e Execuções (`dags_bp`)
@@ -110,20 +129,41 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 * **Descrição:** Exclui uma rotina personalizada.
 
 ### `POST /api/routines/trigger/<path:file>`
-* **Descrição:** Dispara a execução imediata de uma rotina, opcionalmente com uma data específica.
+* **Descrição:** Dispara a execução imediata de uma rotina, opcionalmente com uma data específica (passada ou presente).
 * **Payload (JSON):**
 ```json
 {
-  "logical_date": "2026-08-15"
+  "logical_date": "25/08/2026"
 }
 ```
+* **Formatos de Data Suportados:** Aceita tanto `DD/MM/AAAA` (padrão brasileiro) quanto `AAAA-MM-DD` (ISO). Se omitido ou vazio, executa para a data de hoje. O backend normaliza automaticamente para `YYYY-MM-DD`.
 
 ### `GET /api/routines/monthly_inlabs_check`
-* **Descrição:** Verifica se há dias sem matérias baixadas no INLABS para um determinado mês/ano.
-* **Query Params:** `?month=8&year=2026`
+* **Descrição:** Verifica se há dias sem matérias baixadas no INLABS para um determinado mês/ano, segregando dias baixáveis (janela de 120 dias) e dias históricos (API DOU).
+* **Query Params:** `?month=8&year=2026&routine=Pesquisa_cnpj.yaml`
+* **Resposta de Sucesso (200):**
+```json
+{
+  "status": "ok",
+  "scenario": "mixed",
+  "uses_inlabs": true,
+  "total_weekdays": 21,
+  "inlabs_count": 10,
+  "missing_count": 11,
+  "downloadable_count": 5,
+  "api_dou_count": 6,
+  "downloadable_inlabs_days": ["2026-08-01"],
+  "api_dou_days": ["2026-08-15"]
+}
+```
+* **Valores possíveis de `scenario`:**
+  * `"complete"`: Todos os dias do mês já estão no banco de dados.
+  * `"download_only"`: Dias faltantes estão todos dentro da janela de 120 dias do INLABS.
+  * `"all_api_dou"`: Todos os dias faltantes estão fora da janela de 120 dias (pesquisa total via API DOU).
+  * `"mixed"`: Cenário misto com dias baixáveis no INLABS e dias históricos via API DOU.
 
 ### `POST /api/routines/download_missing_inlabs`
-* **Descrição:** Dispara o download das matérias do INLABS para os dias ausentes identificados.
+* **Descrição:** Dispara o download das matérias do INLABS para os dias ausentes identificados dentro da janela de 120 dias.
 
 ### `POST /api/routines/trigger_monthly`
 * **Descrição:** Dispara a execução das buscas para todos os dias do mês selecionado.
@@ -142,8 +182,97 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
   * `"inlabs_only"`: Executa buscas somente para os dias com dados já disponíveis no PostgreSQL.
   * `"api_dou_only"`: Executa todas as buscas diretamente via API Oficial do DOU (para meses fora da janela de 120 dias).
 
+### `GET /api/system/integrations_status` / `GET /api/system/main_dag_status`
+* **Descrição:** Retorna o diagnóstico completo de todas as 4 integrações do sistema para o Assistente de Configuração (Setup Wizard) e o alerta do painel.
+* **Resposta de Sucesso (200):**
+```json
+{
+  "status": "ok",
+  "is_configured": true,
+  "all_configured": false,
+  "pending_count": 1,
+  "next_pending": {
+    "id": "google_sheets",
+    "name": "Google Sheets",
+    "title": "Planilha Google Sheets",
+    "description": "Conecte a planilha com credenciais de serviço para sincronização automática de empresas."
+  },
+  "integrations": [
+    {
+      "id": "main_dag",
+      "name": "Rotina Principal",
+      "is_configured": true,
+      "missing_fields": []
+    },
+    {
+      "id": "smtp",
+      "name": "Servidor SMTP",
+      "is_configured": true,
+      "missing_fields": []
+    },
+    {
+      "id": "google_sheets",
+      "name": "Google Sheets",
+      "is_configured": false,
+      "missing_fields": ["credentials_json"]
+    },
+    {
+      "id": "inlabs",
+      "name": "Acesso INLABS",
+      "is_configured": true,
+      "missing_fields": []
+    }
+  ],
+  "main_dag": {
+    "emails": ["alerta@empresa.com"],
+    "subject": "[Registrale] Relatório Diário",
+    "schedule": "0 8 * * MON-FRI",
+    "is_configured": true
+  },
+  "smtp_configured": true,
+  "smtp": {
+    "server": "smtp.gmail.com",
+    "port": "587",
+    "user": "alerta@empresa.com",
+    "from_email": "alerta@empresa.com",
+    "has_password": true
+  }
+}
+```
+
+### `POST /api/system/configure_main_dag`
+* **Descrição:** Configura atomicamente os e-mails de destino, assunto, agendamento (cron) da rotina principal e servidor SMTP. Requer perfil `master`.
+* **Payload (JSON):**
+```json
+{
+  "emails": ["email1@empresa.com", "diretoria@empresa.com"],
+  "subject": "[Registrale] Relatório Diário de Publicações do DOU",
+  "schedule": "0 8 * * MON-FRI",
+  "active": true,
+  "smtp": {
+    "server": "smtp.gmail.com",
+    "port": "587",
+    "user": "seu-email@gmail.com",
+    "password": "app-password-16-chars",
+    "from_email": "notificacoes@empresa.com"
+  }
+}
+```
+* **Validações:**
+  * Pelo menos um e-mail de destino é obrigatório.
+  * Cada e-mail é validado contra regex `^[\w\.-]+@[\w\.-]+\.\w+$`.
+  * Se a senha SMTP não for informada, a senha anterior é preservada.
+  * Senhas de App do Gmail têm espaços removidos automaticamente.
+* **Resposta de Sucesso (200):**
+```json
+{
+  "status": "success",
+  "message": "Rotina principal configurada com sucesso!"
+}
+```
+
 ### `POST /api/routines/cleanup_temp`
-* **Descrição:** Força a limpeza manual imediata de arquivos YAML temporários (`temp_*.yaml`), desregistra DAGs órfãs na API do Airflow e remove pastas de logs temporárias (com `force_all=True`).
+* **Descrição:** Mantida por compatibilidade de rota; no modo local não há DAGs temporárias em disco.
 * **Resposta de Sucesso (200):**
 ```json
 {
@@ -228,11 +357,63 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 ### `GET /api/status`
 * **Descrição:** Retorna o status geral do painel, KPIs de menções, horários de sincronização e últimos eventos do histórico.
 
-### `POST /api/sync`
-* **Descrição:** Dispara a sincronização manual de clientes com a API do GestãoClick em background.
+### `GET /api/settings`
+* **Descrição:** Retorna as configurações globais consolidadas do sistema (`global_settings`). Requer perfil `master`.
+* **Resposta de Sucesso (200):**
+```json
+{
+  "status": "ok",
+  "settings": {
+    "smtp": {
+      "server": "smtp.gmail.com",
+      "port": "587",
+      "user": "notificacoes@empresa.com",
+      "from_email": "notificacoes@empresa.com"
+    },
+    "google_sheets": {
+      "spreadsheet_url": "https://docs.google.com/spreadsheets/d/.../edit",
+      "sheet_name": "Clientes",
+      "auto_sync": true
+    },
+    "api_keys": {
+      "gestaoclick_base_url": "https://api.gestaoclick.com/franquias"
+    },
+    "inlabs": {
+      "user": "usuario_inlabs"
+    }
+  }
+}
+```
 
 ### `POST /api/save_settings`
-* **Descrição:** Salva as configurações globais do sistema (`Settings`).
+* **Descrição:** Salva as configurações globais do sistema (`Settings`). Preserva senhas preexistentes quando o campo for enviado em branco, higieniza espaços em senhas de app do Gmail e atualiza o `.env` local. Requer perfil `master`.
+
+### `POST /api/sync`
+* **Descrição:** Dispara a sincronização manual de clientes com a API do GestãoClick em background. Valida previamente as credenciais (`gestaoclick_access_token` e `gestaoclick_secret_token`), retornando HTTP 400 com mensagem explicativa caso não estejam cadastradas.
+
+### `POST /api/google_sheets/test`
+* **Descrição:** Valida a conexão com a planilha do Google Sheets e credenciais da Service Account retornando o título, abas e prévia das primeiras linhas.
+* **Payload (JSON):**
+```json
+{
+  "spreadsheet_url": "https://docs.google.com/spreadsheets/d/.../edit",
+  "credentials_json": "{ ... }",
+  "sheet_name": "Página1"
+}
+```
+
+### `POST /api/google_sheets/sync`
+* **Descrição:** Executa a sincronização imediata dos dados da planilha do Google Sheets. Quando a flag `delete_obsolete` estiver ativa, expurga do banco e das DAGs empresas com origem `Google Sheets` que não constem mais na planilha.
+* **Payload (Opcional - JSON):**
+```json
+{
+  "google_sheets": {
+    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/.../edit",
+    "credentials_json": "{ ... }",
+    "delete_obsolete": true
+  }
+}
+```
 
 ### `GET /api/users` / `POST /api/users` / `DELETE /api/users`
 * **Descrição:** Gerencia os usuários internos do painel.

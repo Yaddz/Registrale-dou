@@ -584,7 +584,7 @@ def api_configure_main_dag():
 @dags_bp.route('/routines/toggle/<path:file>', methods=['POST'])
 @login_required
 def toggle_routine_route(file):
-    """Ativa ou desativa uma rotina de busca no YAML e no Airflow."""
+    """Ativa ou desativa uma rotina de busca no YAML e no agendador local."""
     if session['user']['role'] != 'master':
         return jsonify({"status": "error", "message": "Acesso negado."}), 403
         
@@ -715,7 +715,7 @@ def delete_routine(file):
 @dags_bp.route('/routines/cleanup_temp', methods=['POST'])
 @login_required
 def cleanup_temp_dags_route():
-    """Endpoint para forçar a limpeza imediata de arquivos e DAGs temporárias do disco e do Airflow."""
+    """Endpoint para forçar a limpeza imediata de rotinas temporárias do disco."""
     try:
         from ..services.dag_config_service import cleanup_orphaned_temp_dags
         cleaned = cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=True)

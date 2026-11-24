@@ -51,7 +51,7 @@ A documentação está dividida nos seguintes módulos:
 
 ## 🚀 Resumo Rápido
 
-* **Backend:** Python 3.10+, Flask, SQLAlchemy, Gunicorn.
+* **Backend:** Python 3.11, Flask, SQLAlchemy, waitress.
 * **Frontend:** Alpine.js, Tailwind CSS (CDN), Lucide Icons.
 * **Bancos de Dados:** SQLite (banco de aplicação local `/data/dashboard.db`) + PostgreSQL (banco INLABS `/data/dou_inlabs`).
 * **Sincronização:** APScheduler + Workers em background (Google Sheets Scheduler e Mentions Watcher).

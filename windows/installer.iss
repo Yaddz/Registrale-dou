@@ -2,7 +2,7 @@
 ; Compilado por windows/build.ps1 via ISCC.exe /DAppVersion=x.y.z
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "1.0.0"
 #endif
 
 #ifndef StageDir
@@ -50,6 +50,20 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos e inicialização:"
 Name: "startupicon"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Atalhos e inicialização:"
 
+[InstallDelete]
+; Atualização limpa: remove o programa da versão anterior antes de copiar o novo,
+; para não sobrar arquivo que a versão nova removeu. Os dados ficam em
+; {localappdata}\Registrale e não são tocados.
+Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\site-packages"
+Type: filesandordirs; Name: "{app}\python"
+
+[UninstallDelete]
+; Remove também o que o app criou em tempo de execução (ex.: __pycache__).
+Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\site-packages"
+Type: filesandordirs; Name: "{app}\python"
+
 [Files]
 Source: "{#StageDir}\python\*"; DestDir: "{app}\python"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\site-packages\*"; DestDir: "{app}\site-packages"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -90,11 +104,13 @@ begin
     DataDir := ExpandConstant('{localappdata}\Registrale');
     if DirExists(DataDir) then
     begin
-      Choice := MsgBox(
+      { SuppressibleMsgBox: na desinstalação silenciosa responde Não (preserva os dados). }
+      Choice := SuppressibleMsgBox(
         'Deseja remover também os dados locais do Registrale-DOU (banco de empresas, menções, configurações e logs em ' + DataDir + ')?' + #13#10 + #13#10 +
         'Clique em Não (recomendado) para preservar seus dados para uma futura reinstalação.',
         mbConfirmation,
-        MB_YESNO or MB_DEFBUTTON2
+        MB_YESNO or MB_DEFBUTTON2,
+        IDNO
       );
       if Choice = IDYES then
       begin

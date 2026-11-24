@@ -329,6 +329,33 @@ class TestWindowsLauncherAndArtifacts:
         assert "{userstartup}\\{#AppName}" in iss_text
         assert "CurUninstallStepChanged" in iss_text
 
+    def test_installer_upgrade_and_uninstall_are_clean_and_silent(self):
+        """Atualização não deixa arquivos antigos e a desinstalação silenciosa não trava."""
+        import re
+
+        iss_text = (Path(__file__).resolve().parents[2] / "windows" / "installer.iss").read_text(encoding="utf-8-sig")
+
+        def section(name: str) -> str:
+            m = re.search(rf"^\[{name}\]\s*$(.*?)(?=^\[|\Z)", iss_text, re.M | re.S)
+            assert m, f"seção [{name}] ausente"
+            return m.group(1)
+
+        for name in ("InstallDelete", "UninstallDelete"):
+            body = section(name)
+            for folder in ("app", "site-packages", "python"):
+                assert f'Type: filesandordirs; Name: "{{app}}\\{folder}"' in body, (name, folder)
+            # Os dados do analista nunca podem estar nessas listas.
+            assert "localappdata}\\Registrale\"" not in body and "pgdata" not in body
+
+        code = section("Code")
+        assert re.search(r"\bMsgBox\(", code) is None, "use SuppressibleMsgBox para não travar /VERYSILENT"
+        assert re.search(r"SuppressibleMsgBox\([^;]*IDNO\s*\)", code, re.S), "o padrão silencioso deve preservar os dados"
+
+    def test_packaging_build_and_ci_files(self):
+        root = Path(__file__).resolve().parents[2]
+        ps1 = root / "windows" / "build.ps1"
+        yml = root / ".github" / "workflows" / "windows-build.yml"
+
         ps1_text = ps1.read_text(encoding="utf-8")
         assert "009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b" in ps1_text
         assert "Registrale-Setup-" in ps1_text

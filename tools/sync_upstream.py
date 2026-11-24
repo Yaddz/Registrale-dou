@@ -42,6 +42,8 @@ REMOVED_PATHS: tuple[str, ...] = (
     "tests/test_e2e_dag_execution.py",
     ".github/workflows/ci-tests.yml",
     ".github/workflows/docker_build_and_publish.yml",
+    ".env.example",
+    "requirements-uninstall.txt",
 )
 
 

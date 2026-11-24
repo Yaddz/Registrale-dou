@@ -15,7 +15,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
                                            ▼
                     ┌──────────────────────────────────────────────┐
                     │            Flask Web Application             │
-                    │          (Gunicorn WSGI / Port 5000)         │
+                    │          (waitress WSGI / Port 5000)         │
                     └──────┬───────────────┬────────────────┬──────┘
                            │               │                │
             ┌──────────────▼──────┐ ┌──────▼──────┐ ┌───────▼──────────────┐
@@ -49,7 +49,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
 | **Sessão** | Flask-Session (Filesystem) | Gerenciamento de sessões com expiração de 30 min |
 | **ORM & DB Local** | Flask-SQLAlchemy / SQLite | Persistência rápida de empresas, menções, configurações e usuários |
 | **DB Histórico DOU** | PostgreSQL (`pg8000`) | Leitura de artigos e matérias capturadas do INLABS |
-| **Servidor WSGI** | Gunicorn (2 workers + 5.000 max-requests) | Execução concorrente estável com reciclagem para processos longos em background |
+| **Servidor WSGI** | waitress (1 processo, várias threads) | Roda no Windows e mantém um único agendador (sem tarefas duplicadas entre workers) |
 | **Frontend Reativo** | Alpine.js | Estado reativo no cliente sem necessidade de build |
 | **Estilização** | Tailwind CSS (via CDN) | Interface moderna, responsiva e com suporte a modais |
 | **Exportações** | ReportLab + Pandas + OpenPyXL | Geração de PDFs diagramados e planilhas Excel nativas |

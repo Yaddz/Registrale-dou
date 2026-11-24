@@ -604,6 +604,23 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 - **Pendências:**
   - **Build e checklist do instalador Windows (Sprint 6) a partir de `main`:** não executado nesta sessão porque o container `windows-registrale` expõe apenas RDP (`3389`) e noVNC (`8006`), sem shell remoto (SSH/WinRM) disponível; validar via workflow `.github/workflows/windows-build.yml` ou interativamente na VM Windows (fazendo backup de `%LOCALAPPDATA%\Registrale` antes).
   - **Revisão independente:** executar `plano/prompts/revisao.md` para o Sprint 8.
+- **Revisão independente (24/11/2026), veredito: Sprint 8 reprovado (correções pequenas):**
+  - Validações executadas:
+    - Linux: `uv run pytest -m "not live" -q` → `613 passed, 3 deselected`; `_build_default_searchers()` fora do pytest → `['DOESP', 'DOU', 'INLABS', 'INLABS_FALLBACK', 'QD']`; `git diff baseline-docker -- src/` só remove `src/dou_dag_generator.py`.
+    - VM Windows 10 (`windows-registrale`), cópia de `main` (`d15d410`): `613 passed`; `build.ps1 -SkipPostgresDownload` → `Registrale-Setup-0.1.0.exe` (62.548.996 bytes, SHA-256 `78d3dfb5...f9f6`); instalação por cima com atalhos; `/login` HTTP 200 em 4,23 s; RAM em repouso 119,2 MB; e2e no Python instalado (`Pesquisa_cnpj.yaml`, 23/11/2026, fallback PDF) → `WIN_E2E_OK=True`, 4 menções, 39,7 s, raízes `05785287, 07021336, 09217325, 24684423`; desinstalação e reinstalação preservaram `database.db` (114.688 bytes).
+  - **Bloqueador:** a atualização por cima deixa arquivos removidos da versão nova: `app\rodou_dashboard\app\services\airflow_service.py` continuou instalado, e depois da desinstalação a pasta `{app}\app` não foi removida. Falha o checklist do Sprint 6 (atualização e desinstalação limpas). Correção: `[InstallDelete]` e `[UninstallDelete]` de `{app}\app` e `{app}\site-packages` no `windows/installer.iss` (os dados ficam em `%LOCALAPPDATA%\Registrale`, fora dessas pastas).
+  - **Importantes:**
+    - A desinstalação silenciosa (`/VERYSILENT /SUPPRESSMSGBOXES`) para na pergunta "Deseja remover também os dados?" (`installer.iss`, `CurUninstallStepChanged`, `MsgBox`), preexistente do Sprint 6. Trocar por `SuppressibleMsgBox(..., IDNO)`.
+    - Versão: a tag é `v1.0.0`, mas `pyproject.toml` diz `0.1.0`, então o app e o instalador se apresentam como 0.1.0 e o verificador de atualização compara a versão errada com as Releases.
+    - O critério do `grep` não fecha: `docs/docs/dashboard/*.md` (nosso, publicado pelo `gh_pages.yml`) ainda descreve deploy com Docker e Gunicorn; `.env.example` (configuração do Airflow, com chave Fernet de exemplo) e `requirements-uninstall.txt` (imagem Docker) vêm do upstream e continuam no repositório. Incluir em `REMOVED_PATHS` (ou substituir o `.env.example` por um do modo local) e atualizar ou remover os manuais duplicados em `docs/docs/dashboard/`.
+  - **Sugestões:** o Registro do Sprint 8 tinha sido copiado também para a seção do Sprint 9 (corrigido na revisão: Sprint 9 voltou a "_(preencher)_"); docstrings de `routes/dags.py` (rotinas e limpeza) ainda citam o Airflow; a branch `feature/modo-local` já está em `main` e pode ser removida (com confirmação); a senha SMTP continua gravada em `.env` em texto puro (preexistente, ver Backlog); `main` está 163 commits à frente de `origin/main` e a tag não foi enviada; o Postgres portátil segue fora do instalador (`-SkipPostgresDownload`).
+- **Correções da revisão (24/11/2026), veredito após correções: Sprint 8 aprovado:**
+  - `windows/installer.iss`: `[InstallDelete]` e `[UninstallDelete]` de `{app}\app`, `{app}\site-packages` e `{app}\python` (os dados em `%LOCALAPPDATA%\Registrale` ficam fora); pergunta da desinstalação com `SuppressibleMsgBox(..., IDNO)`, que preserva os dados no modo silencioso. Teste novo `test_installer_upgrade_and_uninstall_are_clean_and_silent`.
+  - Versão 1.0.0 em `pyproject.toml`, `uv.lock`, `runtime/version.py` (padrão) e `installer.iss` (padrão).
+  - Removidos `.env.example` e `requirements-uninstall.txt` (incluídos em `REMOVED_PATHS` e `plano/UPSTREAM.md`); manuais publicados em `docs/docs/dashboard/` sincronizados com `rodou_dashboard/docs/`; Gunicorn trocado por waitress nos manuais; docstrings de `routes/dags.py` sem Airflow.
+  - Exceções aceitas do `grep`: documentação do upstream em `docs/docs/` (instalação do Ro-DOU original), exemplos de `dag_confs/examples_and_tests/`, nomes legados `AIRFLOW__SMTP__*` (leitura de `.env` antigo) e a importação de banco do Docker no primeiro uso.
+  - Validações: Linux `uv run pytest -m "not live" -q` → `615 passed, 3 deselected`; smoke fora do pytest OK. VM Windows 10, instalação de `Registrale-Setup-1.0.0.exe` (62.549.052 bytes, SHA-256 `b62a5e4c...dbe2b`) **por cima da 0.1.0 que tinha arquivos órfãos**: `airflow_service.py` removido, versão instalada `1.0.0`, `/login` HTTP 200 em 7,26 s, RAM 126,3 MB, e2e `WIN_E2E_OK=True` (4 menções, 46,7 s); desinstalação silenciosa terminou sozinha em 9 s, removendo `app`, `python` e `site-packages` e preservando `database.db` (114.688 bytes); reinstalação OK.
+  - Pendências: a tag `v1.0.0` aponta para `d15d410`, anterior às correções (mover só com autorização); push de `main` e da tag; Postgres portátil fora do instalador (`-SkipPostgresDownload`).
 ---
 
 ## Sprint 9: Pasta dos PDFs no onboarding, janela própria e ícone
@@ -656,33 +673,7 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 - O `.exe`, os atalhos, a bandeja e a janela mostram o ícone do site.
 - Novembro/2026 continua com 26 menções de 16 empresas pela contingência PDF em cada layout (pode ser com os PDFs já baixados).
 
-**Registro:**
-- **O que foi feito:**
-  - Remoção definitiva de Docker, Airflow e Kubernetes: `Dockerfile`, `docker-compose.yml`, `docker-compose.override.yml`, `.dockerignore`, `Makefile`, `Makefile.backup`, `generate-Makefile.sh`, `instalar.bat`, `rodou_dashboard/Dockerfile`, `docs/Dockerfile`, `docs/docker-compose.yml`, `helm/`, `src/dou_dag_generator.py`, `dag_load_inlabs/`, `.github/workflows/ci-tests.yml`, `.github/workflows/docker_build_and_publish.yml` e os testes exclusivos do Airflow (`tests/dag_generator_test.py`, `tests/dag_generator_invalid_yaml_test.py`, `tests/test_dag_loading.py`, `tests/test_e2e_dag_execution.py`).
-  - `dag_load_inlabs/sql/init-db.sql` movido para `rodou_dashboard/app/runtime/sql/init-db.sql`, com atualização de `rodou_dashboard/app/runtime/pg_portable.py::_load_init_sql_statements` e `windows/build.ps1`.
-  - Mantidos `src/utils/open_search/` (importado por `src/hooks/inlabs_hook.py`), `compat/airflow_shim/`, `compat/bootstrap.py`, alias `ro_dou_src` em `runtime/runner.py` e contingência INLABS (`PDF integral → API do DOU`, `inlabs_fallback`).
-  - Removidos `rodou_dashboard/app/services/airflow_service.py`, `AirflowExecutor`, `get_executor_mode()`, `REGISTRALE_EXECUTOR` e todos os ramos Airflow em `executor.py`, `paths.py`, `server.py`, `inlabs_service.py`, `dag_config_service.py`, `__init__.py`, `routes/admin.py`, `routes/dags.py`, `templates/index.html` e `windows/launcher.pyw`.
-  - Atualizados `tests/conftest.py`, `tests/parsers_test.py`, `rodou_dashboard/tests/conftest.py` (isolamento de `REGISTRALE_DATA_DIR`), `rodou_dashboard/tests/test_dashboard.py` e `tests/local/*.py` (remoção de `REGISTRALE_EXECUTOR` e mocks do Airflow).
-  - Atualizados `plano/UPSTREAM.md` e `tools/sync_upstream.py` (`REMOVED_PATHS` com os 20 caminhos removidos).
-  - Limpeza de git e Podman (autorizada pelo usuário): removidos worktree `Registrale-dou-sync`, branch `upstream-sync`, stash `backup-pre-merge`, 13 containers antigos (`sync-*` e modo Docker; mantido `windows-registrale`) e 11 imagens antigas de Airflow/projeto.
-  - Reescritos `README.md` e `AGENTS.md` para o estado pós-migração, atualizado `.gitignore` (`dist/`, `vendor/`), e atualizados `MANUAL.md` e `rodou_dashboard/docs/05_guia_operacional_e_deploy.md`.
-- **Decisões tomadas:**
-  - Mantido o label de importação `Arquivo database.db (Docker)` em `templates/index.html` e `import_docker_database()` em `runtime/migrator.py` para permitir migração de bancos legados no onboarding.
-  - Mantidas as variáveis legadas `AIRFLOW__SMTP__SMTP_*` apenas como fallback de leitura de `.env` em `email_service.py` e gravação compatível em `admin.py`/`dags.py`.
-  - `src/` não recebeu novos patches locais (apenas remoção de `src/dou_dag_generator.py`, já registrada em `plano/UPSTREAM.md`).
-- **Arquivos criados/alterados:**
-  - Criado: `rodou_dashboard/app/runtime/sql/init-db.sql`.
-  - Removidos: artefatos Docker/Airflow/Helm/CI e testes `@pytest.mark.airflow` listados acima + `airflow_service.py`.
-  - Alterados: `README.md`, `AGENTS.md`, `MANUAL.md`, `.gitignore`, `plano/UPSTREAM.md`, `plano/PLANO.md`, `tools/sync_upstream.py`, `.github/workflows/windows-build.yml`, `windows/build.ps1`, `windows/launcher.pyw`, `rodou_dashboard/docs/05_guia_operacional_e_deploy.md`, `rodou_dashboard/templates/index.html`, `rodou_dashboard/app/__init__.py`, `rodou_dashboard/app/routes/{admin,dags}.py`, `rodou_dashboard/app/runtime/{executor,paths,pg_portable,server}.py`, `rodou_dashboard/app/services/{dag_config_service,inlabs_service}.py`, `tests/{conftest,parsers_test}.py`, `tests/local/*.py`, `rodou_dashboard/tests/{conftest,test_dashboard}.py`.
-- **Validações:**
-  - `uv run pytest tests/local/test_pdf_search.py -m "not live" -q` → `18 passed, 1 deselected`.
-  - `uv run pytest -m "not live" -q` → `613 passed, 3 deselected`.
-  - Smoke fora do pytest (`_build_default_searchers()` + `uv run registrale --port 5099` + `GET /login`) → `['DOESP', 'DOU', 'INLABS', 'INLABS_FALLBACK', 'QD']` e `HTTP 200`.
-  - `uv run python tools/sync_upstream.py --repo-root /tmp/registrale-sync-s8` (worktree temporária a partir de `a7f8117`) → `Merge exit code: 0`, `Conflitos pendentes (0)`, `613 passed, 3 deselected`.
-  - `grep -rni "docker\|airflow\|helm\|make run"` → retorna apenas o shim (`compat/`), `ro_dou_src`, `src/` do upstream, `CHANGELOG.md`, referências de importação/migração legada e `plano/UPSTREAM.md`.
-- **Pendências:**
-  - **Build e checklist do instalador Windows (Sprint 6) a partir de `main`:** não executado nesta sessão porque o container `windows-registrale` expõe apenas RDP (`3389`) e noVNC (`8006`), sem shell remoto (SSH/WinRM) disponível; validar via workflow `.github/workflows/windows-build.yml` ou interativamente na VM Windows (fazendo backup de `%LOCALAPPDATA%\Registrale` antes).
-  - **Revisão independente:** executar `plano/prompts/revisao.md` para o Sprint 8.
+**Registro:** _(preencher)_
 ---
 
 ## Backlog

@@ -34,6 +34,7 @@ A integração com o Google Sheets permite que equipes operacionais mantenham um
   * **Modo Colunas (`columns`):** Cabeçalhos dispostos verticalmente na coluna A com dados distribuídos nas colunas B, C, D...
 * **Mapeamento de Colunas Personalizado:** O operador pode configurar os nomes exatos das colunas (ex: coluna da Razão Social = `Nome do Cliente` ou `Empresa`, coluna do CNPJ = `CNPJ / CPF` ou `Documento`).
 * **Sincronização Automática (Scheduler Daemon):** O Dashboard executa um worker em background que sincroniza a planilha periodicamente (a cada 15 min, 30 min, 1h, 2h, 6h, 12h ou diariamente).
+* **Apagar Registros Obsoletos (`delete_obsolete`):** Switch configurável que, quando ativado, exclui automaticamente do banco e das DAGs empresas com origem `Google Sheets` que foram deletadas da planilha na última sincronização (mantendo protegidas empresas manuais e do ERP).
 * **Teste de Conexão com Amostra:** Antes de salvar, o usuário pode clicar em *Testar Conexão e Prévia* para visualizar o título da planilha, abas disponíveis e uma tabela com as primeiras linhas lidas.
 
 ---
@@ -58,7 +59,10 @@ Responsável pelo envio de alertas imediatos quando uma empresa monitorada é me
 
 ### Recursos:
 * Suporte a servidores SMTP padrão, TLS e SSL (porta 587 ou 465).
-* Suporte a autenticação com usuário e senha ou chaves de aplicativo (ex: Gmail, Microsoft 365, Amazon SES, SendGrid).
+* Suporte a autenticação com usuário e senha ou chaves de aplicativo (ex: Gmail/Google Workspace, Microsoft 365, Amazon SES, SendGrid).
+* **Higienização Automática de Credenciais:** Remove automaticamente espaços inseridos por conveniência visual em Senhas de Aplicativo do Google (`abcd efgh ijkl mnop`).
+* **Preservação Inteligente de Senhas:** Atualizações de configurações que deixem o campo de senha vazio mantêm a senha salva previamente no banco de dados, evitando perda acidental de credenciais.
+* **Persistência local:** O salvamento de SMTP grava automaticamente as configurações no SQLite e no arquivo `.env` local.
 * **Renderização Dinâmica de Templates:** Substitui variáveis no corpo HTML do e-mail:
   * `{empresa}`: Razão Social da empresa
   * `{cnpj}`: CNPJ da empresa
@@ -66,4 +70,4 @@ Responsável pelo envio de alertas imediatos quando uma empresa monitorada é me
   * `{data}`: Data oficial da publicação
   * `{trecho}`: Trecho de texto onde o termo foi identificado
   * `{link}`: Link direto para o ato oficial no site da Imprensa Nacional
-* **Teste de Conexão Imediato:** Botão no painel que envia um e-mail de teste para qualquer endereço especificado, com diagnóstico detalhado de erros em caso de falha de autenticação ou porta.
+* **Teste de Conexão Imediato:** Disponível tanto na aba de Configurações quanto no modal do assistente (`/api/test_smtp`), enviando um e-mail de teste para o destinatário informado com diagnóstico detalhado de erros e suporte a fallback de credenciais salvas no banco.

@@ -1,6 +1,6 @@
 # 05. Guia Operacional, Configuração e Deploy
 
-Este guia orienta como configurar, executar localmente, realizar o build Docker e manter o **Ro-DOU Dashboard** em ambiente de produção.
+Este guia orienta como configurar, executar localmente, gerar o instalador Windows e manter o **Ro-DOU Dashboard**.
 
 ---
 
@@ -64,86 +64,67 @@ O painel estará acessível em: `http://localhost:5000`
 
 ---
 
-## 🐳 3. Deploy com Docker e Gunicorn
+## 🖥️ 3. Execução Local e Empacotamento Windows
 
-O arquivo `Dockerfile` já está otimizado para ambiente de produção com Python 3.10-slim e Gunicorn:
+O painel roda em servidor WSGI **Waitress** (multi-thread em processo único) com agendador **APScheduler** e executor local (`LocalExecutor`).
 
-### Construir a Imagem Docker:
+### Execução em Desenvolvimento (`uv`)
 ```bash
-docker build -t registrale/rodou-dashboard:latest .
+uv sync --group dev
+uv run registrale
 ```
 
-### Executar o Container:
-```bash
-docker run -d \
-  --name rodou_dashboard \
-  --restart unless-stopped \
-  -p 5000:5000 \
-  -v /caminho/no/host/data:/data \
-  -v /caminho/no/host/dag_confs:/app/dag_confs \
-  --env-file .env \
-  registrale/rodou-dashboard:latest
+### Build do Instalador Windows (`Inno Setup`)
+```powershell
+.\windows\build.ps1
 ```
-
-### Parâmetros do Gunicorn configurados no Dockerfile:
-* `-w 2`: 2 workers simultâneos para balanceamento de carga.
-* `--max-requests 5000`: Reciclagem automática do worker a cada 5.000 requisições para evitar vazamentos de memória sem interromper pesquisas longas em background.
-* `--max-requests-jitter 500`: Jitter aleatório para evitar que múltiplos workers reiniciem no mesmo instante.
-* `--timeout 120`: Timeout de 120 segundos para operações de sincronização em massa.
+O instalador (`dist/Registrale-Setup-<versão>.exe`) instala o Python 3.11 *embeddable* e o aplicativo em `%LOCALAPPDATA%\Programs\Registrale`, mantendo dados, logs e rotinas em `%LOCALAPPDATA%\Registrale`.
 
 ---
 
 ## 🧪 4. Execução dos Testes Automatizados
 
-A suíte de testes do dashboard utiliza `pytest` e cobre autenticação, APIs de empresas, rotinas, templates e integração com Google Sheets:
-
 ```bash
-python -m pytest tests -v
-```
-
-Para rodar com relatório de warnings detalhados:
-```bash
-python -m pytest tests --disable-warnings
+# Execução completa da suíte offline (núcleo + painel):
+uv run pytest -m "not live" -q
 ```
 
 ---
 
-## 🛡️ 5. Backup e Manutenção do Banco SQLite
+## 🛠️ 5. Diretórios de Dados e Logs no Windows
 
-O banco SQLite `/data/dashboard.db` opera em modo WAL (*Write-Ahead Logging*).
+| Conteúdo | Caminho padrão |
+|---|---|
+| Programa e launcher de bandeja | `%LOCALAPPDATA%\Programs\Registrale` |
+| Banco SQLite (`database.db`), logs e rotinas YAML | `%LOCALAPPDATA%\Registrale` |
+| PDFs integrais do DOU | `Documentos\Registrale\DOU` |
+
+---
+
+## 🛡️ 6. Backup e Solução de Problemas Comuns
+
+O banco SQLite (`%LOCALAPPDATA%\Registrale\database.db`) opera em modo WAL (*Write-Ahead Logging*).
 
 ### Procedimento Seguro de Backup:
-Para realizar o backup do banco sem interromper a execução do painel:
-
 ```bash
-# Utilizando o comando sqlite3 online backup
-sqlite3 /data/dashboard.db ".backup '/data/backups/dashboard_backup_$(date +%Y%m%d_%H%M%S).db'"
+sqlite3 "%LOCALAPPDATA%\Registrale\database.db" ".backup database_backup.db"
 ```
+
+### Conflito de Porta 5000:
+Se a porta `5000` estiver ocupada por outro serviço, inicie em uma porta alternativa:
+```bash
+uv run registrale --port 5001
+```
+
+### Bloqueio de Concorrência no SQLite (*Database is locked*):
+O painel configura automaticamente `WAL` e `busy_timeout=5000` na inicialização. Caso execute scripts externos diretamente contra `database.db`, não mantenha transações abertas em modo exclusivo.
 
 ---
 
-## 🔧 6. Solução de Problemas Comuns (Troubleshooting)
+## ⚙️ 7. Configuração Inicial Obrigatória
 
-### A. Erro ao conectar ao daemon do Docker no Windows:
-```
-unable to get image '...': error during connect: Get "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/...": open //./pipe/dockerDesktopLinuxEngine: O sistema não pode encontrar o arquivo especificado.
-```
-* **Causa:** O aplicativo **Docker Desktop** não está aberto ou o serviço de virtualização WSL2 ainda não concluiu a inicialização no Windows.
-* **Solução:**
-  1. Abra o **Docker Desktop** pelo Menu Iniciar do Windows (`C:\Program Files\Docker\Docker\Docker Desktop.exe`).
-  2. Aguarde o ícone do Docker na bandeja do sistema ficar verde (*"Engine running"*).
-  3. Execute novamente o comando `docker compose up -d` ou `docker build`.
-  4. Caso o Docker Desktop trave na inicialização, reinicie o subsistema WSL no PowerShell (como Administrador): `wsl --shutdown`.
+No primeiro deploy, o administrador deve realizar as seguintes configurações iniciais obrigatórias (exibidas via banner de alerta amarelo na tela inicial do dashboard):
 
-### B. Conflito de Porta 5000:
-* Se a porta `5000` estiver ocupada por outro serviço, inicie em uma porta alternativa mapeada:
-```bash
-docker run -d -p 5001:5000 ... registrale/rodou-dashboard:latest
-```
-ou em execução local:
-```bash
-python -m flask run --host=0.0.0.0 --port=5001
-```
-
-### C. Bloqueio de Concorrência no SQLite (*Database is locked*):
-* O Ro-DOU Dashboard configura automaticamente os modos `WAL` e `busy_timeout=5000` na inicialização do Flask. Caso execute scripts externos de manutenção diretamente contra o arquivo `/data/dashboard.db`, certifique-se de não manter transações abertas em modo exclusivo.
+1. **Rotina Principal**: E-mails de destino, assunto e agendamento via modal na tela inicial.
+2. **Servidor SMTP**: Configurado dentro do mesmo modal ou na aba de configurações.
+3. **Credenciais INLABS**: Usuário e senha do portal da Imprensa Nacional.
