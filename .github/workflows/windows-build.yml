@@ -63,7 +63,9 @@ jobs:
 
       - name: Build Windows installer
         shell: pwsh
-        run: .\windows\build.ps1
+        # PostgreSQL portátil fica fora até haver um SHA-256 confiável do pacote (ver PLANO.md, Sprint 8).
+        # Sem ele o INLABS local não roda; a busca usa a contingência PDF integral -> API do DOU.
+        run: .\windows\build.ps1 -SkipPostgresDownload
 
       - name: Upload installer artifact and SHA-256
         uses: actions/upload-artifact@v4
