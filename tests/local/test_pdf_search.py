@@ -302,7 +302,6 @@ def test_history_and_settings_and_status_ui_for_inlabs_fallback(tmp_path, monkey
     from app.models import JobRun, SyncHistory, db
     from app.routes.dags import watch_dag_and_update_mentions
 
-    monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
     monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("REGISTRALE_DB_PATH", str(tmp_path / "data" / "database.db"))
 

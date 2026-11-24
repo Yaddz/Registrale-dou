@@ -49,7 +49,6 @@ class _FakeResponse:
 
 @pytest.fixture()
 def app_ctx(tmp_path, monkeypatch):
-    monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
     monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("REGISTRALE_PDF_DIR", str(tmp_path / "pdfs"))
     app = create_app()

@@ -123,7 +123,6 @@ class TestMigrator:
     def test_import_docker_database_with_backup_and_idempotency(self, tmp_path, monkeypatch):
         from rodou_dashboard.app.runtime.migrator import import_docker_database
 
-        monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
         monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "local_data"))
 
         src_db = tmp_path / "docker_database.db"
@@ -264,7 +263,6 @@ class TestAdminRoutesSprint6:
     def test_first_run_and_updates_endpoints(self, tmp_path, monkeypatch):
         from rodou_dashboard.app import create_app
 
-        monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
         monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "data"))
         monkeypatch.setenv("REGISTRALE_DB_PATH", str(tmp_path / "data" / "database.db"))
 

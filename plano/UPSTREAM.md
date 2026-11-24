@@ -39,10 +39,8 @@ Todo patch local em arquivo do upstream deve ser pequeno, comentado em portuguê
 | `src/hooks/inlabs_hook.py` | Identificação por raiz de CNPJ nos resultados do INLABS e proteção contra `None` / apóstrofo em termos | Preservar chamadas a `utils.cnpj` (`cnpj_root`, `extract_cnpj_matches`) e tratamento seguro de strings. |
 | `src/hooks/inlabs_hook_sql_mode.py` | Busca SQL no PostgreSQL usando padrão de raiz de CNPJ (`company_sql_pattern`) | Importa `cnpj_root` e `company_sql_pattern` de `utils.cnpj` e aplica na montagem das queries SQL. |
 | `src/schemas.py` | Tolerância a listas vazias/nulas geradas pelo painel no YAML e `report` opcional em `DAGConfig` | Preservar `_drop_empty_items`, os `@field_validator(..., mode="before")` em `SearchConfig`/`ReportConfig` e `report: Optional[ReportConfig]` com `default_factory=ReportConfig`. |
-| `src/dou_dag_generator.py` | Tolerância a YAML inválido sem travar as demais DAGs e suporte a DAGs temporárias sem agenda | Preservar apenas enquanto o modo Docker existir; **será removido no Sprint 8**. |
-| `dag_load_inlabs/ro_dou_inlabs_load_pg_dag.py` | Detecção de página de "Manutenção Programada" do INLABS e ajustes de carga/Datasets | Preservar apenas enquanto o modo Docker existir; lógica portada para `rodou_dashboard/app/runtime/inlabs_loader.py` no Sprint 4 e arquivo **removido no Sprint 8**. |
 
-> Nota do Sprint 1: `src/` não foi alterado neste sprint (`git diff baseline-docker -- src/` vazio). A execução fora do Airflow ocorre via `compat/airflow_shim/` e `compat/bootstrap.py`.
+> Nota: `src/dou_dag_generator.py` e `dag_load_inlabs/ro_dou_inlabs_load_pg_dag.py` foram removidos no Sprint 8 (lógica portada para `rodou_dashboard/app/runtime/runner.py` e `inlabs_loader.py`; `init-db.sql` movido para `rodou_dashboard/app/runtime/sql/init-db.sql`). `src/utils/open_search/` foi mantido porque `src/hooks/inlabs_hook.py` do upstream o importa.
 
 ---
 
@@ -50,4 +48,11 @@ Todo patch local em arquivo do upstream deve ser pequeno, comentado em portuguê
 
 Lista de caminhos do upstream removidos por decisão do projeto (re-removidos automaticamente pelo `tools/sync_upstream.py` após cada merge):
 
-- _(vazia até o Sprint 8 — os modos Docker e local convivem até a aprovação do Sprint 7)_
+- `Dockerfile`, `docker-compose.yml`, `docker-compose.override.yml`, `.dockerignore`
+- `Makefile`, `Makefile.backup`, `generate-Makefile.sh`, `instalar.bat`
+- `rodou_dashboard/Dockerfile`, `docs/Dockerfile`, `docs/docker-compose.yml`
+- `helm/`
+- `src/dou_dag_generator.py`
+- `dag_load_inlabs/`
+- `tests/dag_generator_test.py`, `tests/dag_generator_invalid_yaml_test.py`, `tests/test_dag_loading.py`, `tests/test_e2e_dag_execution.py`
+- `.github/workflows/ci-tests.yml`, `.github/workflows/docker_build_and_publish.yml`

@@ -577,7 +577,32 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 - Um ensaio de sync com o upstream passa.
 - Nenhuma branch, worktree ou stash obsoleta.
 
-**Registro:** _(preencher)_
+**Registro:**
+- **O que foi feito:**
+  - Remoção definitiva de Docker, Airflow e Kubernetes: `Dockerfile`, `docker-compose.yml`, `docker-compose.override.yml`, `.dockerignore`, `Makefile`, `Makefile.backup`, `generate-Makefile.sh`, `instalar.bat`, `rodou_dashboard/Dockerfile`, `docs/Dockerfile`, `docs/docker-compose.yml`, `helm/`, `src/dou_dag_generator.py`, `dag_load_inlabs/`, `.github/workflows/ci-tests.yml`, `.github/workflows/docker_build_and_publish.yml` e os testes exclusivos do Airflow (`tests/dag_generator_test.py`, `tests/dag_generator_invalid_yaml_test.py`, `tests/test_dag_loading.py`, `tests/test_e2e_dag_execution.py`).
+  - `dag_load_inlabs/sql/init-db.sql` movido para `rodou_dashboard/app/runtime/sql/init-db.sql`, com atualização de `rodou_dashboard/app/runtime/pg_portable.py::_load_init_sql_statements` e `windows/build.ps1`.
+  - Mantidos `src/utils/open_search/` (importado por `src/hooks/inlabs_hook.py`), `compat/airflow_shim/`, `compat/bootstrap.py`, alias `ro_dou_src` em `runtime/runner.py` e contingência INLABS (`PDF integral → API do DOU`, `inlabs_fallback`).
+  - Removidos `rodou_dashboard/app/services/airflow_service.py`, `AirflowExecutor`, `get_executor_mode()`, `REGISTRALE_EXECUTOR` e todos os ramos Airflow em `executor.py`, `paths.py`, `server.py`, `inlabs_service.py`, `dag_config_service.py`, `__init__.py`, `routes/admin.py`, `routes/dags.py`, `templates/index.html` e `windows/launcher.pyw`.
+  - Atualizados `tests/conftest.py`, `tests/parsers_test.py`, `rodou_dashboard/tests/conftest.py` (isolamento de `REGISTRALE_DATA_DIR`), `rodou_dashboard/tests/test_dashboard.py` e `tests/local/*.py` (remoção de `REGISTRALE_EXECUTOR` e mocks do Airflow).
+  - Atualizados `plano/UPSTREAM.md` e `tools/sync_upstream.py` (`REMOVED_PATHS` com os 20 caminhos removidos).
+  - Limpeza de git e Podman (autorizada pelo usuário): removidos worktree `Registrale-dou-sync`, branch `upstream-sync`, stash `backup-pre-merge`, 13 containers antigos (`sync-*` e modo Docker; mantido `windows-registrale`) e 11 imagens antigas de Airflow/projeto.
+  - Reescritos `README.md` e `AGENTS.md` para o estado pós-migração, atualizado `.gitignore` (`dist/`, `vendor/`), e atualizados `MANUAL.md` e `rodou_dashboard/docs/05_guia_operacional_e_deploy.md`.
+- **Decisões tomadas:**
+  - Mantido o label de importação `Arquivo database.db (Docker)` em `templates/index.html` e `import_docker_database()` em `runtime/migrator.py` para permitir migração de bancos legados no onboarding.
+  - Mantidas as variáveis legadas `AIRFLOW__SMTP__SMTP_*` apenas como fallback de leitura de `.env` em `email_service.py` e gravação compatível em `admin.py`/`dags.py`.
+  - `src/` não recebeu novos patches locais (apenas remoção de `src/dou_dag_generator.py`, já registrada em `plano/UPSTREAM.md`).
+- **Arquivos criados/alterados:**
+  - Criado: `rodou_dashboard/app/runtime/sql/init-db.sql`.
+  - Removidos: artefatos Docker/Airflow/Helm/CI e testes `@pytest.mark.airflow` listados acima + `airflow_service.py`.
+  - Alterados: `README.md`, `AGENTS.md`, `MANUAL.md`, `.gitignore`, `plano/UPSTREAM.md`, `plano/PLANO.md`, `tools/sync_upstream.py`, `.github/workflows/windows-build.yml`, `windows/build.ps1`, `windows/launcher.pyw`, `rodou_dashboard/docs/05_guia_operacional_e_deploy.md`, `rodou_dashboard/templates/index.html`, `rodou_dashboard/app/__init__.py`, `rodou_dashboard/app/routes/{admin,dags}.py`, `rodou_dashboard/app/runtime/{executor,paths,pg_portable,server}.py`, `rodou_dashboard/app/services/{dag_config_service,inlabs_service}.py`, `tests/{conftest,parsers_test}.py`, `tests/local/*.py`, `rodou_dashboard/tests/{conftest,test_dashboard}.py`.
+- **Validações:**
+  - `uv run pytest tests/local/test_pdf_search.py -m "not live" -q` → `18 passed, 1 deselected`.
+  - `uv run pytest -m "not live" -q` → `613 passed, 3 deselected`.
+  - Smoke fora do pytest (`_build_default_searchers()` + `uv run registrale --port 5099` + `GET /login`) → `['DOESP', 'DOU', 'INLABS', 'INLABS_FALLBACK', 'QD']` e `HTTP 200`.
+  - `grep -rni "docker\|airflow\|helm\|make run"` → retorna apenas o shim (`compat/`), `ro_dou_src`, `src/` do upstream, `CHANGELOG.md`, referências de importação/migração legada e `plano/UPSTREAM.md`.
+- **Pendências:**
+  - **Build e checklist do instalador Windows (Sprint 6) a partir de `main`:** não executado nesta sessão porque o container `windows-registrale` expõe apenas RDP (`3389`) e noVNC (`8006`), sem shell remoto (SSH/WinRM) disponível; validar via workflow `.github/workflows/windows-build.yml` ou interativamente na VM Windows (fazendo backup de `%LOCALAPPDATA%\Registrale` antes).
+  - **Revisão independente:** executar `plano/prompts/revisao.md` para o Sprint 8.
 ---
 
 ## Sprint 9: Pasta dos PDFs no onboarding, janela própria e ícone
@@ -630,7 +655,32 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
 - O `.exe`, os atalhos, a bandeja e a janela mostram o ícone do site.
 - Novembro/2026 continua com 26 menções de 16 empresas pela contingência PDF em cada layout (pode ser com os PDFs já baixados).
 
-**Registro:** _(preencher)_
+**Registro:**
+- **O que foi feito:**
+  - Remoção definitiva de Docker, Airflow e Kubernetes: `Dockerfile`, `docker-compose.yml`, `docker-compose.override.yml`, `.dockerignore`, `Makefile`, `Makefile.backup`, `generate-Makefile.sh`, `instalar.bat`, `rodou_dashboard/Dockerfile`, `docs/Dockerfile`, `docs/docker-compose.yml`, `helm/`, `src/dou_dag_generator.py`, `dag_load_inlabs/`, `.github/workflows/ci-tests.yml`, `.github/workflows/docker_build_and_publish.yml` e os testes exclusivos do Airflow (`tests/dag_generator_test.py`, `tests/dag_generator_invalid_yaml_test.py`, `tests/test_dag_loading.py`, `tests/test_e2e_dag_execution.py`).
+  - `dag_load_inlabs/sql/init-db.sql` movido para `rodou_dashboard/app/runtime/sql/init-db.sql`, com atualização de `rodou_dashboard/app/runtime/pg_portable.py::_load_init_sql_statements` e `windows/build.ps1`.
+  - Mantidos `src/utils/open_search/` (importado por `src/hooks/inlabs_hook.py`), `compat/airflow_shim/`, `compat/bootstrap.py`, alias `ro_dou_src` em `runtime/runner.py` e contingência INLABS (`PDF integral → API do DOU`, `inlabs_fallback`).
+  - Removidos `rodou_dashboard/app/services/airflow_service.py`, `AirflowExecutor`, `get_executor_mode()`, `REGISTRALE_EXECUTOR` e todos os ramos Airflow em `executor.py`, `paths.py`, `server.py`, `inlabs_service.py`, `dag_config_service.py`, `__init__.py`, `routes/admin.py`, `routes/dags.py`, `templates/index.html` e `windows/launcher.pyw`.
+  - Atualizados `tests/conftest.py`, `tests/parsers_test.py`, `rodou_dashboard/tests/conftest.py` (isolamento de `REGISTRALE_DATA_DIR`), `rodou_dashboard/tests/test_dashboard.py` e `tests/local/*.py` (remoção de `REGISTRALE_EXECUTOR` e mocks do Airflow).
+  - Atualizados `plano/UPSTREAM.md` e `tools/sync_upstream.py` (`REMOVED_PATHS` com os 20 caminhos removidos).
+  - Limpeza de git e Podman (autorizada pelo usuário): removidos worktree `Registrale-dou-sync`, branch `upstream-sync`, stash `backup-pre-merge`, 13 containers antigos (`sync-*` e modo Docker; mantido `windows-registrale`) e 11 imagens antigas de Airflow/projeto.
+  - Reescritos `README.md` e `AGENTS.md` para o estado pós-migração, atualizado `.gitignore` (`dist/`, `vendor/`), e atualizados `MANUAL.md` e `rodou_dashboard/docs/05_guia_operacional_e_deploy.md`.
+- **Decisões tomadas:**
+  - Mantido o label de importação `Arquivo database.db (Docker)` em `templates/index.html` e `import_docker_database()` em `runtime/migrator.py` para permitir migração de bancos legados no onboarding.
+  - Mantidas as variáveis legadas `AIRFLOW__SMTP__SMTP_*` apenas como fallback de leitura de `.env` em `email_service.py` e gravação compatível em `admin.py`/`dags.py`.
+  - `src/` não recebeu novos patches locais (apenas remoção de `src/dou_dag_generator.py`, já registrada em `plano/UPSTREAM.md`).
+- **Arquivos criados/alterados:**
+  - Criado: `rodou_dashboard/app/runtime/sql/init-db.sql`.
+  - Removidos: artefatos Docker/Airflow/Helm/CI e testes `@pytest.mark.airflow` listados acima + `airflow_service.py`.
+  - Alterados: `README.md`, `AGENTS.md`, `MANUAL.md`, `.gitignore`, `plano/UPSTREAM.md`, `plano/PLANO.md`, `tools/sync_upstream.py`, `.github/workflows/windows-build.yml`, `windows/build.ps1`, `windows/launcher.pyw`, `rodou_dashboard/docs/05_guia_operacional_e_deploy.md`, `rodou_dashboard/templates/index.html`, `rodou_dashboard/app/__init__.py`, `rodou_dashboard/app/routes/{admin,dags}.py`, `rodou_dashboard/app/runtime/{executor,paths,pg_portable,server}.py`, `rodou_dashboard/app/services/{dag_config_service,inlabs_service}.py`, `tests/{conftest,parsers_test}.py`, `tests/local/*.py`, `rodou_dashboard/tests/{conftest,test_dashboard}.py`.
+- **Validações:**
+  - `uv run pytest tests/local/test_pdf_search.py -m "not live" -q` → `18 passed, 1 deselected`.
+  - `uv run pytest -m "not live" -q` → `613 passed, 3 deselected`.
+  - Smoke fora do pytest (`_build_default_searchers()` + `uv run registrale --port 5099` + `GET /login`) → `['DOESP', 'DOU', 'INLABS', 'INLABS_FALLBACK', 'QD']` e `HTTP 200`.
+  - `grep -rni "docker\|airflow\|helm\|make run"` → retorna apenas o shim (`compat/`), `ro_dou_src`, `src/` do upstream, `CHANGELOG.md`, referências de importação/migração legada e `plano/UPSTREAM.md`.
+- **Pendências:**
+  - **Build e checklist do instalador Windows (Sprint 6) a partir de `main`:** não executado nesta sessão porque o container `windows-registrale` expõe apenas RDP (`3389`) e noVNC (`8006`), sem shell remoto (SSH/WinRM) disponível; validar via workflow `.github/workflows/windows-build.yml` ou interativamente na VM Windows (fazendo backup de `%LOCALAPPDATA%\Registrale` antes).
+  - **Revisão independente:** executar `plano/prompts/revisao.md` para o Sprint 8.
 ---
 
 ## Backlog

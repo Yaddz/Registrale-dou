@@ -36,7 +36,6 @@ def local_env(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "database.db"
-    monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
     monkeypatch.setenv("REGISTRALE_DATA_DIR", str(data_dir))
     monkeypatch.setenv("REGISTRALE_DB_PATH", str(db_path))
     monkeypatch.setenv("REGISTRALE_SCHEDULER_DB_PATH", str(data_dir / "scheduler_jobs.db"))

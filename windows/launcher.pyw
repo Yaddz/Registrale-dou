@@ -173,7 +173,6 @@ class RegistraleTrayController:
                 return True
             cmd = build_server_command(host=self.host, port=self.port)
             env = os.environ.copy()
-            env["REGISTRALE_EXECUTOR"] = "local"
             env.setdefault("PYTHONUTF8", "1")
             kwargs: dict[str, Any] = {
                 "cwd": str(APP_ROOT),
@@ -292,7 +291,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    os.environ.setdefault("REGISTRALE_EXECUTOR", "local")
     _configure_launcher_logging()
     args = _parse_args(argv)
     controller = RegistraleTrayController(

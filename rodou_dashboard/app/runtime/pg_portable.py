@@ -116,8 +116,8 @@ def _write_pg_config_sqlite(db_path: Path, payload: Dict[str, Any]) -> None:
 
 
 def _load_init_sql_statements() -> list[str]:
-    """Lê `dag_load_inlabs/sql/init-db.sql` filtrando comandos meta do `psql`."""
-    sql_path = get_base_dir() / "dag_load_inlabs" / "sql" / "init-db.sql"
+    """Lê `runtime/sql/init-db.sql` filtrando comandos meta do `psql`."""
+    sql_path = Path(__file__).resolve().parent / "sql" / "init-db.sql"
     if sql_path.is_file():
         raw = sql_path.read_text(encoding="utf-8")
         lines = []

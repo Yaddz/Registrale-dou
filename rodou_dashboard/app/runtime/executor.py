@@ -1,7 +1,6 @@
 """Camada de abstração de execução de rotinas (`Executor`).
 
-Define a interface `Executor` e suas duas implementações:
-- `AirflowExecutor`: encapsula as chamadas HTTP/CLI ao Airflow 3 (modo Docker).
+Define a interface `Executor` e sua implementação local:
 - `LocalExecutor`: executa `runtime.runner.run_routine` em `ThreadPoolExecutor`
   e persiste estado e resultados na tabela SQLite `job_runs`.
 """
@@ -102,216 +101,6 @@ class Executor(ABC):
 
     def sync_connection(self, conn_id: str, payload: Dict[str, Any]) -> None:
         """Sincroniza uma conexão no orquestrador externo, se aplicável."""
-
-
-class AirflowExecutor(Executor):
-    """Implementação que delega para a API REST / CLI do Airflow."""
-
-    def trigger(
-        self,
-        routine: Union[str, Path, Dict[str, Any]],
-        date: Optional[str] = None,
-        **conf: Any,
-    ) -> str:
-        from ..services.airflow_service import trigger_airflow_dag
-
-        dag_id = routine if isinstance(routine, str) else str(routine)
-        ok, msg, run_info = trigger_airflow_dag(dag_id, logical_date=date, **conf)
-        if not ok:
-            raise RuntimeError(msg)
-        if isinstance(run_info, dict) and run_info.get("dag_run_id"):
-            return str(run_info["dag_run_id"])
-        return f"manual__{dag_id}"
-
-    def status(self, run_id: str, routine: Optional[str] = None) -> str:
-        import requests
-        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-
-        if not routine or not run_id:
-            return "unknown"
-        try:
-            did_q = urllib.parse.quote(str(routine), safe="")
-            rid_q = urllib.parse.quote(str(run_id), safe="")
-            url = f"{get_airflow_url()}/api/v2/dags/{did_q}/dagRuns/{rid_q}"
-            res = requests.get(url, auth=get_airflow_auth(), timeout=8)
-            if res.status_code == 200:
-                return str(res.json().get("state") or "unknown")
-        except Exception as exc:
-            logger.warning("Erro ao consultar status Airflow (%s/%s): %s", routine, run_id, exc)
-        return "unknown"
-
-    def wait(
-        self,
-        run_ids: List[str],
-        timeout: int = 1800,
-        routine: Optional[str] = None,
-    ) -> Tuple[bool, Dict[str, str]]:
-        from ..services.airflow_service import wait_for_specific_dag_runs
-
-        return wait_for_specific_dag_runs(routine or "", run_ids, max_wait=timeout)
-
-    def result(self, run_id: str, routine: Optional[str] = None) -> List[Dict[str, Any]]:
-        import requests
-        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-        from ..services.dag_config_service import LOGS_DIR
-
-        results_raw_list: List[Dict[str, Any]] = []
-        airflow_url = get_airflow_url()
-        auth = get_airflow_auth()
-
-        if routine and run_id:
-            try:
-                ti_url = f"{airflow_url}/api/v2/dags/{routine}/dagRuns/{run_id}/taskInstances"
-                res_ti = requests.get(ti_url, auth=auth, timeout=10)
-                if res_ti.status_code == 200:
-                    task_instances = res_ti.json().get("task_instances", [])
-                    search_tasks = [
-                        ti["task_id"]
-                        for ti in task_instances
-                        if "exec_search" in ti.get("task_id", "") and ti.get("state") == "success"
-                    ]
-                    for tid in search_tasks:
-                        xcom_url = (
-                            f"{airflow_url}/api/v2/dags/{routine}/dagRuns/{run_id}"
-                            f"/taskInstances/{tid}/xcomEntries/return_value"
-                        )
-                        res_xc = requests.get(xcom_url, auth=auth, timeout=10)
-                        if res_xc.status_code == 200:
-                            xc_val = res_xc.json().get("value")
-                            if isinstance(xc_val, str):
-                                try:
-                                    xc_val = json.loads(xc_val)
-                                except Exception:
-                                    try:
-                                        xc_val = ast.literal_eval(xc_val)
-                                    except Exception:
-                                        pass
-                            if isinstance(xc_val, dict):
-                                results_raw_list.append(xc_val)
-            except Exception as exc:
-                logger.warning("Erro ao ler XCom Airflow (%s/%s): %s", routine, run_id, exc)
-
-        if not results_raw_list and routine and run_id:
-            try:
-                patterns = [
-                    os.path.join(
-                        LOGS_DIR,
-                        f"dag_id={routine}",
-                        f"run_id={run_id}",
-                        "task_id=exec_searchs.exec_search_*",
-                        "attempt=*.log",
-                    ),
-                    os.path.join(
-                        LOGS_DIR,
-                        f"dag_id={routine}",
-                        f"run_id={run_id}",
-                        "task_id=exec_search_*",
-                        "attempt=*.log",
-                    ),
-                ]
-                specific_logs = []
-                for pat in patterns:
-                    specific_logs = glob.glob(pat)
-                    if specific_logs:
-                        break
-                for log_path in specific_logs:
-                    try:
-                        with open(log_path, "rb") as f:
-                            content = f.read().decode("utf-8", errors="ignore")
-                        if "Done. Returned value was:" in content:
-                            part = content.split("Done. Returned value was:", 1)[1].strip()
-                            dict_match = re.search(
-                                r"^(\{.*?\})\s*(?=\n\[\d{4}-\d{2}-\d{2}|\Z)",
-                                part,
-                                re.DOTALL,
-                            )
-                            if dict_match:
-                                parsed = ast.literal_eval(dict_match.group(1))
-                                if isinstance(parsed, dict):
-                                    results_raw_list.append(parsed)
-                    except Exception:
-                        continue
-            except Exception:
-                pass
-
-        return results_raw_list
-
-    def pause(self, routine: str) -> Tuple[bool, str]:
-        from ..services.airflow_service import toggle_airflow_dag
-
-        return toggle_airflow_dag(routine, is_paused=True)
-
-    def unpause(self, routine: str) -> Tuple[bool, str]:
-        from ..services.airflow_service import toggle_airflow_dag
-
-        return toggle_airflow_dag(routine, is_paused=False)
-
-    def last_runs(self, routine: str, limit: int = 30) -> List[Dict[str, Any]]:
-        import requests
-        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-
-        try:
-            did_q = urllib.parse.quote(str(routine), safe="")
-            url = f"{get_airflow_url()}/api/v2/dags/{did_q}/dagRuns?order_by=-run_after&limit={limit}"
-            res = requests.get(url, auth=get_airflow_auth(), timeout=8)
-            if res.status_code == 200:
-                runs = res.json().get("dag_runs", [])
-                return [
-                    {
-                        "run_id": r.get("dag_run_id"),
-                        "state": r.get("state"),
-                        "start_date": r.get("start_date"),
-                        "end_date": r.get("end_date"),
-                    }
-                    for r in runs
-                ]
-        except Exception as exc:
-            logger.warning("Erro ao listar dagRuns Airflow para %s: %s", routine, exc)
-        return []
-
-    def delete_routine(self, routine: str) -> None:
-        import requests
-        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-
-        try:
-            did_q = urllib.parse.quote(str(routine), safe="")
-            requests.delete(
-                f"{get_airflow_url()}/api/v2/dags/{did_q}",
-                auth=get_airflow_auth(),
-                timeout=5,
-            )
-        except Exception as exc:
-            logger.warning("Erro ao remover DAG %s do Airflow: %s", routine, exc)
-
-    def sync_connection(self, conn_id: str, payload: Dict[str, Any]) -> None:
-        import requests
-        from ..services.airflow_service import get_airflow_auth, get_airflow_url
-
-        airflow_url = get_airflow_url()
-        auth = get_airflow_auth()
-        try:
-            res = requests.get(
-                f"{airflow_url}/api/v2/connections/{conn_id}",
-                auth=auth,
-                timeout=5,
-            )
-            if res.status_code == 200:
-                update_mask = ",".join(k for k in payload.keys() if k != "connection_id")
-                requests.patch(
-                    f"{airflow_url}/api/v2/connections/{conn_id}?update_mask={update_mask}",
-                    json=payload,
-                    auth=auth,
-                    timeout=5,
-                )
-            else:
-                requests.post(
-                    f"{airflow_url}/api/v2/connections",
-                    json=payload,
-                    auth=auth,
-                    timeout=5,
-                )
-        except Exception as exc:
-            logger.error("Falha ao sincronizar conexão %s no Airflow: %s", conn_id, exc)
 
 
 class LocalExecutor(Executor):
@@ -599,20 +388,12 @@ _EXECUTOR_LOCK = threading.Lock()
 _LOCAL_EXECUTOR_INSTANCE: Optional[LocalExecutor] = None
 
 
-def get_executor_mode() -> str:
-    """Retorna 'local' ou 'airflow' conforme REGISTRALE_EXECUTOR."""
-    mode = os.getenv("REGISTRALE_EXECUTOR", "airflow").strip().lower()
-    return "local" if mode == "local" else "airflow"
-
-
 def get_executor(app: Any = None) -> Executor:
-    """Retorna o Executor configurado por `REGISTRALE_EXECUTOR`."""
+    """Retorna a instância singleton de `LocalExecutor`."""
     global _LOCAL_EXECUTOR_INSTANCE
-    if get_executor_mode() == "local":
-        with _EXECUTOR_LOCK:
-            if _LOCAL_EXECUTOR_INSTANCE is None:
-                _LOCAL_EXECUTOR_INSTANCE = LocalExecutor(app=app)
-            elif app is not None and _LOCAL_EXECUTOR_INSTANCE._app is not app:
-                _LOCAL_EXECUTOR_INSTANCE._app = app
-            return _LOCAL_EXECUTOR_INSTANCE
-    return AirflowExecutor()
+    with _EXECUTOR_LOCK:
+        if _LOCAL_EXECUTOR_INSTANCE is None:
+            _LOCAL_EXECUTOR_INSTANCE = LocalExecutor(app=app)
+        elif app is not None and _LOCAL_EXECUTOR_INSTANCE._app is not app:
+            _LOCAL_EXECUTOR_INSTANCE._app = app
+        return _LOCAL_EXECUTOR_INSTANCE

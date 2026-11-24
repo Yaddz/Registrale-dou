@@ -10,8 +10,7 @@ from datetime import datetime, timezone, timedelta
 from .auth import login_required
 from ..models import db, Mention, Company, SyncHistory
 from ..services.dag_config_service import get_routines, get_dag_confs_path, touch_dag_generator
-from ..services.airflow_service import trigger_airflow_dag, get_airflow_auth
-from ..runtime.executor import get_executor, get_executor_mode, normalize_date_str
+from ..runtime.executor import get_executor, normalize_date_str
 
 # Assumindo a mesma estrutura
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -54,37 +53,30 @@ def add_history_event(evento, detalhes):
     SyncHistory.log_event(evento, detalhes)
 
 def _fallback_sources():
-    """Fonte das buscas sem INLABS.
-
-    No modo local devolve ``["INLABS"]``: o runner percebe que o banco não tem o
-    dia e usa o PDF integral confirmado na API do DOU (``runtime/pdf_search.py``).
-    No modo Airflow (ou com ``inlabs_fallback = api``) mantém a API do DOU.
-    """
-    if get_executor_mode() == "local":
-        try:
-            from ..runtime.pdf_search import FALLBACK_PDF, get_fallback_mode
-            if get_fallback_mode() == FALLBACK_PDF:
-                return ["INLABS"]
-        except Exception:
-            pass
+    """Fonte das buscas sem INLABS conforme ``inlabs_fallback``."""
+    try:
+        from ..runtime.pdf_search import FALLBACK_PDF, get_fallback_mode
+        if get_fallback_mode() == FALLBACK_PDF:
+            return ["INLABS"]
+    except Exception:
+        pass
     return ["DOU"]
 
 
 def _describe_local_fallback_source() -> str:
-    """Rótulo legível da fonte de contingência ativa no modo local."""
-    if get_executor_mode() == "local":
-        try:
-            from ..runtime.pdf_search import FALLBACK_PDF, get_fallback_mode
-            if get_fallback_mode() == FALLBACK_PDF:
-                return "PDF integral + API do DOU"
-        except Exception:
-            pass
+    """Rótulo legível da fonte de contingência ativa."""
+    try:
+        from ..runtime.pdf_search import FALLBACK_PDF, get_fallback_mode
+        if get_fallback_mode() == FALLBACK_PDF:
+            return "PDF integral + API do DOU"
+    except Exception:
+        pass
     return "API Oficial do DOU"
 
 
 def _extract_sources_used_from_runs(run_ids) -> str:
     """Extrai os rótulos ``source_used`` gravados nos ``JobRun`` locais."""
-    if not run_ids or get_executor_mode() != "local":
+    if not run_ids:
         return ""
     try:
         from ..models import JobRun
@@ -737,15 +729,13 @@ def cleanup_temp_dags_route():
 
 
 def _dispatch_routine(dag_id, logical_date=None, yaml_dict=None):
-    """Dispara uma rotina pelo Executor ativo (preservando monkeypatch de trigger_airflow_dag)."""
-    if get_executor_mode() == "local":
-        try:
-            target = yaml_dict if yaml_dict is not None else dag_id
-            run_id = get_executor().trigger(target, date=logical_date)
-            return True, f"Rotina {dag_id} disparada localmente.", {"dag_id": dag_id, "dag_run_id": run_id}
-        except Exception as exc:
-            return False, str(exc), {"dag_id": dag_id, "dag_run_id": None}
-    return trigger_airflow_dag(dag_id, logical_date)
+    """Dispara uma rotina pelo Executor local."""
+    try:
+        target = yaml_dict if yaml_dict is not None else dag_id
+        run_id = get_executor().trigger(target, date=logical_date)
+        return True, f"Rotina {dag_id} disparada localmente.", {"dag_id": dag_id, "dag_run_id": run_id}
+    except Exception as exc:
+        return False, str(exc), {"dag_id": dag_id, "dag_run_id": None}
 
 
 def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None):
@@ -764,64 +754,12 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
         else:
             normalized_runs.append({"dag_id": str(r), "dag_run_id": None})
 
-    if get_executor_mode() == "local":
-        run_ids = [item["dag_run_id"] for item in normalized_runs if item.get("dag_run_id")]
-        if run_ids:
-            with app_context:
-                get_executor().wait(run_ids, timeout=1800)
-        airflow_url = None
-        auth = None
-    else:
-        import requests
-        import urllib.parse
-        from ..services.airflow_service import get_airflow_url, get_airflow_auth
-
-        airflow_url = get_airflow_url()
-        auth = get_airflow_auth()
-
-        time.sleep(3)
-        max_wait = 1800  # 30 min
-        start = time.time()
-
-        # 1. Aguarda conclusão de todos os DAG runs disparados
-        while (time.time() - start) < max_wait:
-            all_done = True
-            for item in normalized_runs:
-                did = item.get('dag_id')
-                run_id = item.get('dag_run_id')
-
-                try:
-                    did_quoted = urllib.parse.quote(str(did), safe='')
-                    if run_id:
-                        run_id_quoted = urllib.parse.quote(str(run_id), safe='')
-                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns/{run_id_quoted}"
-                        res = requests.get(url, auth=auth, timeout=5)
-                        if res.status_code == 200:
-                            st = res.json().get('state')
-                            if st in ('running', 'queued') or not st:
-                                all_done = False
-                                break
-                        else:
-                            all_done = False
-                            break
-                    else:
-                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns?order_by=-run_after&limit=10"
-                        res = requests.get(url, auth=auth, timeout=5)
-                        if res.status_code == 200:
-                            runs = res.json().get('dag_runs', [])
-                            active = [run for run in runs if run.get('state') in ('running', 'queued')]
-                            if active:
-                                all_done = False
-                                break
-                except Exception:
-                    all_done = False
-                    break
-
-            if all_done:
-                break
-            time.sleep(3)
-
-        time.sleep(2)
+    run_ids = [item["dag_run_id"] for item in normalized_runs if item.get("dag_run_id")]
+    if run_ids:
+        with app_context:
+            get_executor().wait(run_ids, timeout=1800)
+    airflow_url = None
+    auth = None
     with app_context:
         try:
             # 2. Formatar data de referência
@@ -901,11 +839,10 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
             logging.info(f"[Watcher {routine_name}] relevant_mentions={len(relevant_mentions)}, emails={emails}")
 
             source_tag = ""
-            if get_executor_mode() == "local":
-                run_ids = [item.get("dag_run_id") for item in normalized_runs if item.get("dag_run_id")]
-                sources_label = _extract_sources_used_from_runs(run_ids)
-                if sources_label:
-                    source_tag = f" [Fonte: {sources_label}]"
+            run_ids = [item.get("dag_run_id") for item in normalized_runs if item.get("dag_run_id")]
+            sources_label = _extract_sources_used_from_runs(run_ids)
+            if sources_label:
+                source_tag = f" [Fonte: {sources_label}]"
 
             # 5. Envio do E-mail Formatado
             email_sent = False
@@ -1018,7 +955,6 @@ def trigger_routine(file):
     if is_inlabs and logical_date:
         from ..services.inlabs_service import is_date_loaded, record_inlabs_download_success, enforce_inlabs_retention_limit
         from ..services.holiday_service import is_within_inlabs_retention_window
-        from ..services.airflow_service import wait_for_specific_dag_runs, wait_for_dag_discovery
 
         already_loaded, articles_found = is_date_loaded(logical_date)
         app_ctx = current_app._get_current_object().app_context()
@@ -1045,7 +981,6 @@ def trigger_routine(file):
         # Busca via API Oficial do DOU (usada para datas fora da janela de 120 dias
         # do INLABS e como fallback quando o portal INLABS está fora do ar).
         def run_adhoc_dou_search(app_context_obj, source_file, target_date, r_emails, r_subject, r_terms):
-            temp_yaml_path = None
             temp_dag_id = None
             with app_context_obj:
                 try:
@@ -1093,19 +1028,7 @@ def trigger_routine(file):
                         }
                     }
 
-                    if get_executor_mode() == "local":
-                        ok, msg, run_info = _dispatch_routine(temp_dag_id, target_date, yaml_dict=temp_yaml)
-                    else:
-                        temp_yaml_path = os.path.join(dag_confs_path, f"{temp_dag_id}.yaml")
-                        with open(temp_yaml_path, 'w', encoding='utf-8') as f:
-                            yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
-
-                        import time
-                        time.sleep(2)
-
-                        wait_for_dag_discovery(temp_dag_id, max_wait=120)
-
-                        ok, msg, run_info = trigger_airflow_dag(temp_dag_id, target_date)
+                    ok, msg, run_info = _dispatch_routine(temp_dag_id, target_date, yaml_dict=temp_yaml)
                     if ok:
                         watch_dag_and_update_mentions(
                             app_context_obj,
@@ -1119,28 +1042,6 @@ def trigger_routine(file):
                         )
                 except Exception as e:
                     logging.error(f"Erro na busca ad-hoc API DOU para {target_date}: {e}")
-                finally:
-                    if get_executor_mode() != "local":
-                        from ..services.dag_config_service import cleanup_orphaned_temp_dags
-                        if temp_yaml_path and os.path.exists(temp_yaml_path):
-                            try:
-                                os.remove(temp_yaml_path)
-                            except Exception:
-                                pass
-                        if temp_dag_id:
-                            get_executor().delete_routine(temp_dag_id)
-                            try:
-                                import shutil
-                                log_dir = os.path.join(BASE_DIR, "mnt", "airflow-logs", f"dag_id={temp_dag_id}")
-                                if os.path.exists(log_dir):
-                                    shutil.rmtree(log_dir, ignore_errors=True)
-                            except Exception:
-                                pass
-                        touch_dag_generator()
-                        try:
-                            cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
-                        except Exception:
-                            pass
 
         # Helper para verificar se o INLABS local está pronto (Postgres portátil/URL + credenciais)
         def _local_inlabs_ready():
@@ -1162,9 +1063,9 @@ def trigger_routine(file):
                 return False
             return True
 
-        # No modo local, se o INLABS local não estiver pronto (sem Postgres portátil
+        # Se o INLABS local não estiver pronto (sem Postgres portátil
         # ou sem credenciais), pesquisa via contingência configurada (PDF integral ou API do DOU).
-        if get_executor_mode() == "local" and not _local_inlabs_ready():
+        if not _local_inlabs_ready():
             src_label = _describe_local_fallback_source()
             add_history_event(f"Busca Individual ({src_label})", f"Modo local: pesquisando {logical_date} via {src_label}...")
             threading.Thread(
@@ -1199,28 +1100,18 @@ def trigger_routine(file):
             return jsonify({"status": "success", "source_used": src_label, "message": f"Data anterior a 120 dias. Busca iniciada via {src_label}!"})
 
         def run_inlabs_then_search(app_context_obj, target_dag_id, target_date, filename, r_emails, r_subject, r_terms):
-            from ..services.airflow_service import trigger_airflow_dag, wait_for_specific_dag_runs
             from ..services.inlabs_service import record_inlabs_download_success, enforce_inlabs_retention_limit
 
             with app_context_obj:
                 enforce_inlabs_retention_limit(max_days=120, protected_dates=[target_date])
 
-            if get_executor_mode() == "local":
-                exec_inst = get_executor()
-                inlabs_run_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=target_date)
-                load_state = None
-                if inlabs_run_id:
-                    _, states = exec_inst.wait([inlabs_run_id], timeout=900)
-                    load_state = states.get(inlabs_run_id)
-                msg_inlabs = load_state or ""
-            else:
-                ok_inlabs, msg_inlabs, inlabs_run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", target_date)
-                inlabs_run_id = inlabs_run_info.get("dag_run_id") if isinstance(inlabs_run_info, dict) else None
-                
-                load_state = None
-                if inlabs_run_id:
-                    _, states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", [inlabs_run_id], max_wait=900)
-                    load_state = states.get(inlabs_run_id)
+            exec_inst = get_executor()
+            inlabs_run_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=target_date)
+            load_state = None
+            if inlabs_run_id:
+                _, states = exec_inst.wait([inlabs_run_id], timeout=900)
+                load_state = states.get(inlabs_run_id)
+            msg_inlabs = load_state or ""
 
             from ..services.inlabs_service import is_date_loaded
             with app_context_obj:
@@ -1463,10 +1354,9 @@ def api_monthly_inlabs_check():
 @dags_bp.route('/routines/download_missing_inlabs', methods=['POST'])
 @login_required
 def api_download_missing_inlabs():
-    """Dispara o download no INLABS (DAG ro-dou_inlabs_load_pg) para os dias faltantes dentro da janela de 120 dias."""
+    """Dispara o download no INLABS (ro-dou_inlabs_load_pg) para os dias faltantes dentro da janela de 120 dias."""
     from ..services.holiday_service import get_business_days_for_month, is_within_inlabs_retention_window
     from ..services.inlabs_service import get_downloaded_dates, enforce_inlabs_retention_limit, record_inlabs_download_success
-    from ..services.airflow_service import trigger_airflow_dag, wait_for_specific_dag_runs
 
     data = request.get_json() or {}
     days = data.get('days', [])
@@ -1487,32 +1377,31 @@ def api_download_missing_inlabs():
     if not downloadable_days:
         return jsonify({"status": "ok", "message": "Nenhum dia disponível para download no portal INLABS (fora da janela de 120 dias). A busca será realizada via API DOU."})
 
-    if get_executor_mode() == "local":
-        if not os.getenv("INLABS_DB_URL"):
-            try:
-                from ..runtime.pg_portable import get_portable_postgres
-                pg = get_portable_postgres()
-                if pg.get_connection_info() is None or not pg.is_running():
-                    return jsonify({
-                        "status": "ok",
-                        "message": "PostgreSQL portátil INLABS indisponível no momento. A busca utilizará a API Oficial do DOU.",
-                        "days": downloadable_days,
-                    })
-            except Exception:
+    if not os.getenv("INLABS_DB_URL"):
+        try:
+            from ..runtime.pg_portable import get_portable_postgres
+            pg = get_portable_postgres()
+            if pg.get_connection_info() is None or not pg.is_running():
                 return jsonify({
                     "status": "ok",
                     "message": "PostgreSQL portátil INLABS indisponível no momento. A busca utilizará a API Oficial do DOU.",
                     "days": downloadable_days,
                 })
-
-        from ..services.inlabs_service import check_inlabs_portal_status
-        portal_ok, portal_msg = check_inlabs_portal_status()
-        if not portal_ok:
+        except Exception:
             return jsonify({
                 "status": "ok",
-                "message": f"{portal_msg}. A busca utilizará a API Oficial do DOU.",
+                "message": "PostgreSQL portátil INLABS indisponível no momento. A busca utilizará a API Oficial do DOU.",
                 "days": downloadable_days,
             })
+
+    from ..services.inlabs_service import check_inlabs_portal_status
+    portal_ok, portal_msg = check_inlabs_portal_status()
+    if not portal_ok:
+        return jsonify({
+            "status": "ok",
+            "message": f"{portal_msg}. A busca utilizará a API Oficial do DOU.",
+            "days": downloadable_days,
+        })
 
     import threading
     def run_downloads(app_context, target_days):
@@ -1526,26 +1415,16 @@ def api_download_missing_inlabs():
             sucessos = 0
             run_ids = []
             date_by_run = {}
-            is_local = (get_executor_mode() == "local")
-            exec_inst = get_executor() if is_local else None
+            exec_inst = get_executor()
             for d_str in target_days:
-                if is_local:
-                    try:
-                        r_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=d_str)
-                        if r_id:
-                            run_ids.append(r_id)
-                            date_by_run[r_id] = d_str
-                            sucessos += 1
-                    except Exception as exc:
-                        logging.warning("Falha ao disparar carga INLABS local (%s): %s", d_str, exc)
-                else:
-                    ok, msg, run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", d_str)
-                    if ok and isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                        r_id = run_info.get("dag_run_id")
+                try:
+                    r_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=d_str)
+                    if r_id:
                         run_ids.append(r_id)
                         date_by_run[r_id] = d_str
                         sucessos += 1
-                    time.sleep(0.05)
+                except Exception as exc:
+                    logging.warning("Falha ao disparar carga INLABS local (%s): %s", d_str, exc)
                 
             try:
                 hist = SyncHistory(
@@ -1559,10 +1438,7 @@ def api_download_missing_inlabs():
 
             if run_ids:
                 max_wait_sec = max(1800, 300 * len(run_ids))
-                if is_local:
-                    finished_all, run_states = exec_inst.wait(run_ids, timeout=max_wait_sec)
-                else:
-                    finished_all, run_states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", run_ids, max_wait=max_wait_sec)
+                finished_all, run_states = exec_inst.wait(run_ids, timeout=max_wait_sec)
                 for r_id, st in run_states.items():
                     if st == 'success' and r_id in date_by_run:
                         record_inlabs_download_success(date_by_run[r_id])
@@ -1620,69 +1496,12 @@ def api_trigger_monthly():
         import glob
         import logging
         from ..services.holiday_service import get_business_days_for_month, is_within_inlabs_retention_window
-        from ..services.airflow_service import wait_for_specific_dag_runs
         from ..services.inlabs_service import get_downloaded_dates, enforce_inlabs_retention_limit, record_inlabs_download_success
         from ..models import db, Settings
 
-        is_local_mode = (get_executor_mode() == "local")
         confs_path = get_dag_confs_path()
-        if is_local_mode:
-            airflow_url = None
-            auth = None
-        else:
-            from ..services.airflow_service import get_airflow_url, get_airflow_auth
-            import urllib.parse
-            airflow_url = get_airflow_url()
-            auth = get_airflow_auth()
-        
-        def wait_for_dags(dags_list, max_wait=1200):
-            import time as _time
-            start = _time.time()
-            _time.sleep(5)
-            consecutive_errors = 0
-            while (_time.time() - start) < max_wait:
-                all_done = True
-                for did in set(dags_list):
-                    try:
-                        did_quoted = urllib.parse.quote(str(did), safe='')
-                        url = f"{airflow_url}/api/v2/dags/{did_quoted}/dagRuns?order_by=-run_after&limit=30"
-                        r = requests.get(url, auth=auth, timeout=5)
-                        if r.status_code == 200:
-                            consecutive_errors = 0
-                            runs = r.json().get('dag_runs', [])
-                            active = [run for run in runs if run.get('state') in ('running', 'queued')]
-                            if active:
-                                all_done = False
-                                break
-                        else:
-                            consecutive_errors += 1
-                            if consecutive_errors > 8:
-                                all_done = True
-                                break
-                    except Exception:
-                        consecutive_errors += 1
-                        if consecutive_errors > 8:
-                            all_done = True
-                            break
-                if all_done:
-                    break
-                _time.sleep(4)
-                
-        def wait_for_dag_discovery(dag_id, max_wait=120):
-            import time as _time
-            elapsed = 0
-            interval = 5
-            while elapsed < max_wait:
-                try:
-                    url = f"{airflow_url}/api/v2/dags/{dag_id}"
-                    r = requests.get(url, auth=auth, timeout=5)
-                    if r.status_code == 200:
-                        return True
-                except:
-                    pass
-                _time.sleep(interval)
-                elapsed += interval
-            return False
+        airflow_url = None
+        auth = None
                 
         # Calcular dias úteis do mês (excluindo feriados e finais de semana) em ordem cronológica
         weekdays = get_business_days_for_month(year, month, cap_today=True)
@@ -1711,7 +1530,7 @@ def api_trigger_monthly():
         if mode in ('download_and_search', 'full') and missing_days:
             downloadable_missing = [d for d in missing_days if is_within_inlabs_retention_window(d, 120)]
 
-            if is_local_mode and downloadable_missing and not os.getenv("INLABS_DB_URL"):
+            if downloadable_missing and not os.getenv("INLABS_DB_URL"):
                 local_pg_ok = False
                 try:
                     from ..runtime.pg_portable import get_portable_postgres
@@ -1745,38 +1564,23 @@ def api_trigger_monthly():
                 
                 triggered_load_run_ids = []
                 date_by_run = {}
-                exec_inst = get_executor() if is_local_mode else None
+                exec_inst = get_executor()
                 for d_str in downloadable_missing:
-                    if is_local_mode:
-                        try:
-                            with app_context:
-                                r_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=d_str)
-                            if r_id:
-                                triggered_load_run_ids.append(r_id)
-                                date_by_run[r_id] = d_str
-                        except Exception as exc:
-                            logging.warning("Falha ao disparar carga INLABS local (%s): %s", d_str, exc)
-                    else:
-                        ok, msg, run_info = trigger_airflow_dag("ro-dou_inlabs_load_pg", d_str)
-                        if ok and isinstance(run_info, dict) and run_info.get("dag_run_id"):
-                            r_id = run_info.get("dag_run_id")
+                    try:
+                        with app_context:
+                            r_id = exec_inst.trigger("ro-dou_inlabs_load_pg", date=d_str)
+                        if r_id:
                             triggered_load_run_ids.append(r_id)
                             date_by_run[r_id] = d_str
-                        time.sleep(0.05)
-                    
+                    except Exception as exc:
+                        logging.warning("Falha ao disparar carga INLABS local (%s): %s", d_str, exc)
+
                 if triggered_load_run_ids:
                     max_wait_sec = max(1800, 300 * len(triggered_load_run_ids))
-                    if is_local_mode:
-                        with app_context:
-                            finished_all, run_states = exec_inst.wait(
-                                triggered_load_run_ids, timeout=max_wait_sec
-                            )
-                    else:
-                        # max_active_runs=1 na DAG de carga: os dias rodam em fila, então o
-                        # tempo de espera precisa crescer com a quantidade de dias.
-                        finished_all, run_states = wait_for_specific_dag_runs(
-                            "ro-dou_inlabs_load_pg", triggered_load_run_ids,
-                            max_wait=max_wait_sec)
+                    with app_context:
+                        finished_all, run_states = exec_inst.wait(
+                            triggered_load_run_ids, timeout=max_wait_sec
+                        )
                     
                     with app_context:
                         for r_id, st in run_states.items():
@@ -1853,16 +1657,12 @@ def api_trigger_monthly():
                                 if isinstance(run_info, dict) and run_info.get("dag_run_id"):
                                     all_triggered_runs.append(run_info)
                                     inlabs_run_ids.append(run_info["dag_run_id"])
-                            if not is_local_mode:
-                                time.sleep(0.08)
                     except Exception as e:
                         logging.error(f"Erro ao disparar rotina INLABS {p_file}: {e}")
 
-            if is_local_mode and inlabs_run_ids:
+            if inlabs_run_ids:
                 with app_context:
                     get_executor().wait(inlabs_run_ids, timeout=1200)
-            elif triggered_inlabs_dags:
-                wait_for_dags(triggered_inlabs_dags)
 
         # ─── FASE 2: DAG Temporária para dias sem INLABS (modo 'full', 'download_and_search' ou 'api_dou_only') ───
         temp_dag_id = None
@@ -1933,18 +1733,6 @@ def api_trigger_monthly():
                         }
                     }
                     
-                    if not is_local_mode:
-                        temp_yaml_path = os.path.join(confs_path, f"{temp_dag_id}.yaml")
-                        with open(temp_yaml_path, 'w', encoding='utf-8') as f:
-                            yaml.safe_dump(temp_yaml, f, allow_unicode=True, sort_keys=False)
-
-                        # Força o Airflow a reler os YAMLs alterando a data do gerador python
-                        touch_dag_generator()
-
-                        dag_found = wait_for_dag_discovery(temp_dag_id)
-                        if not dag_found:
-                            logging.warning(f"Airflow não descobriu a DAG temporária {temp_dag_id} em 120s.")
-
                     triggered_dou_dags = []
                     dou_run_ids = []
                     with app_context:
@@ -1956,7 +1744,7 @@ def api_trigger_monthly():
                         ok, msg, run_info = _dispatch_routine(
                             temp_dag_id,
                             date_str,
-                            yaml_dict=temp_yaml if is_local_mode else None,
+                            yaml_dict=temp_yaml,
                         )
                         if ok:
                             if temp_dag_id not in triggered_dou_dags:
@@ -1964,14 +1752,10 @@ def api_trigger_monthly():
                             if isinstance(run_info, dict) and run_info.get("dag_run_id"):
                                 all_triggered_runs.append(run_info)
                                 dou_run_ids.append(run_info["dag_run_id"])
-                        if not is_local_mode:
-                            time.sleep(0.05)
 
-                    if is_local_mode and dou_run_ids:
+                    if dou_run_ids:
                         with app_context:
                             get_executor().wait(dou_run_ids, timeout=max(1800, 300 * len(dou_run_ids)))
-                    elif triggered_dou_dags:
-                        wait_for_dags(triggered_dou_dags, max_wait=1800)
                         
             except Exception as e:
                 logging.error(f"Erro ao criar/executar DAG temporária API-DOU: {e}")
@@ -1981,9 +1765,6 @@ def api_trigger_monthly():
             from ..services.mention_service import clear_mentions_cache
             from ..models import db, Settings, Mention, Company
             try:
-                if not is_local_mode:
-                    time.sleep(3)
-                
                 companies = Company.query.with_entities(Company.cnpj_norm, Company.nome, Company.cnpj).all()
                 cnpj_map = {c.cnpj_norm: c.nome for c in companies if c.cnpj_norm}
                 cnpj_map.update({c.cnpj: c.nome for c in companies if c.cnpj})
@@ -2050,14 +1831,13 @@ def api_trigger_monthly():
                 emails = [e.strip() for e in emails if e and str(e).strip()]
                 
                 monthly_source_tag = ""
-                if is_local_mode:
-                    monthly_run_ids = [
-                        r_info.get("dag_run_id") for r_info in all_triggered_runs
-                        if isinstance(r_info, dict) and r_info.get("dag_run_id")
-                    ]
-                    monthly_sources_label = _extract_sources_used_from_runs(monthly_run_ids)
-                    if monthly_sources_label:
-                        monthly_source_tag = f" [Fonte: {monthly_sources_label}]"
+                monthly_run_ids = [
+                    r_info.get("dag_run_id") for r_info in all_triggered_runs
+                    if isinstance(r_info, dict) and r_info.get("dag_run_id")
+                ]
+                monthly_sources_label = _extract_sources_used_from_runs(monthly_run_ids)
+                if monthly_sources_label:
+                    monthly_source_tag = f" [Fonte: {monthly_sources_label}]"
 
                 if not emails:
                     add_history_event("Busca Mensal Concluída", f"Busca finalizada ({len(relevant_monthly_mentions)} menções em {month}/{year}){monthly_source_tag}, mas nenhum destinatário de e-mail configurado.")
@@ -2090,30 +1870,6 @@ def api_trigger_monthly():
             except Exception as e:
                 logging.error(f"Erro ao consolidar busca mensal: {e}")
                 add_history_event("Erro (Busca Mensal)", str(e))
-            finally:
-                if not is_local_mode:
-                    # ─── LIMPEZA DA DAG TEMPORÁRIA (Executada APÓS extração das menções na FASE 3) ───
-                    from ..services.dag_config_service import cleanup_orphaned_temp_dags
-                    if temp_yaml_path and os.path.exists(temp_yaml_path):
-                        try:
-                            os.remove(temp_yaml_path)
-                        except Exception:
-                            pass
-                    if temp_dag_id:
-                        get_executor().delete_routine(temp_dag_id)
-                        try:
-                            import shutil
-                            from ..runtime.paths import get_logs_dir
-                            log_dir = os.path.join(str(get_logs_dir(create=False)), f"dag_id={temp_dag_id}")
-                            if os.path.exists(log_dir):
-                                shutil.rmtree(log_dir, ignore_errors=True)
-                        except Exception:
-                            pass
-                    touch_dag_generator()
-                    try:
-                        cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
-                    except Exception:
-                        pass
 
     app_context = current_app._get_current_object().app_context()
     threading.Thread(target=run_monthly_search_in_background, args=(app_context, routines, month, year, mode), daemon=True).start()

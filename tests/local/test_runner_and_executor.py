@@ -24,7 +24,7 @@ if str(DASHBOARD_DIR) not in sys.path:
 from app import create_app
 from app.models import JobRun, Mention, db
 from app.routes.dags import extract_mentions_from_results
-from app.runtime.executor import LocalExecutor, get_executor, get_executor_mode, normalize_date_str
+from app.runtime.executor import LocalExecutor, get_executor, normalize_date_str
 from app.runtime.runner import run_routine
 from app.services.dag_config_service import get_last_search_time
 
@@ -240,7 +240,6 @@ class TestRunnerOffline:
 
 class TestLocalExecutor:
     def test_ciclo_completo_job_runs_e_last_search_time(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
         app = _make_app(tmp_path)
 
         with open(FIXTURES_DIR / "run_result_2026-11-23.json", "r", encoding="utf-8") as f:
@@ -355,9 +354,7 @@ class TestDashboardLocalMode:
         assert normalize_date_str("2026-11-23T12:00:00") == "2026-11-23"
 
     def test_rotas_painel_modo_local_sem_arquivos_temporarios(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
-        assert get_executor_mode() == "local"
-
+        monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "registrale_data"))
         app = _make_app(tmp_path)
         executor = get_executor(app)
         assert isinstance(executor, LocalExecutor)
@@ -434,7 +431,7 @@ class TestDashboardLocalMode:
         executor_mod._LOCAL_EXECUTOR_INSTANCE = None
 
     def test_trigger_individual_modo_local_sem_airflow(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
+        monkeypatch.setenv("REGISTRALE_DATA_DIR", str(tmp_path / "registrale_data"))
         app = _make_app(tmp_path)
         executor = get_executor(app)
 

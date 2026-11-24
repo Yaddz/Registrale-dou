@@ -85,10 +85,11 @@ Thumbs.db
 *.swp
 *.swo
 
-# Distribution & Build
+# Distribution, Build & Vendor (Windows)
 build/
 develop-eggs/
 dist/
+vendor/
 downloads/
 eggs/
 .eggs/

@@ -111,12 +111,11 @@ def create_app(config=None):
     # Configuração base
     app.secret_key = os.getenv("SECRET_KEY", "rodou-secret-key-123")
 
-    from .runtime.executor import get_executor_mode
     from .runtime.paths import get_data_dir, get_db_path, get_sessions_dir
 
     DATA_DIR = str(get_data_dir(create=True))
     db_path = get_db_path()
-    if get_executor_mode() == "local" and not os.environ.get("REGISTRALE_DB_PATH"):
+    if not os.environ.get("REGISTRALE_DB_PATH"):
         os.environ["REGISTRALE_DB_PATH"] = str(db_path)
 
     # Carrega variáveis persistidas no diretório de dados (.env)
@@ -204,14 +203,7 @@ def create_app(config=None):
     except Exception as e:
         app.logger.warning(f"Erro ao limpar DAGs temporárias na inicialização: {e}")
 
-    # Inicializar scheduler em background para Google Sheets no modo legado (Airflow/gunicorn)
     # No modo local, a sincronização do Google Sheets roda como job único no APScheduler.
-    if not app.config.get('TESTING') and get_executor_mode() != 'local':
-        try:
-            from .services.sheets_service import start_sheets_scheduler
-            start_sheets_scheduler(app)
-        except Exception as e:
-            app.logger.error(f"Erro ao iniciar scheduler do Google Sheets: {e}")
 
     @app.after_request
     def add_header(response):

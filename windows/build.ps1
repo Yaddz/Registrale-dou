@@ -5,7 +5,7 @@
 .DESCRIPTION
     1. Baixa o Python 3.11 embeddable (versão fixa com verificação SHA-256).
     2. Exporta dependências travadas do `uv.lock` (grupo `windows`) e instala em `site-packages/`.
-    3. Copia a aplicação (`rodou_dashboard/`, `src/`, `compat/`, `dag_confs/`, `dag_load_inlabs/sql/`, `windows/`) e o PostgreSQL 17 portátil.
+    3. Copia a aplicação (`rodou_dashboard/`, `src/`, `compat/`, `dag_confs/`, `windows/`) e o PostgreSQL 17 portátil.
     4. Gera `dist/Registrale-Setup-<versão>.exe` via Inno Setup e grava o arquivo `.sha256`.
 #>
 
@@ -119,14 +119,6 @@ foreach ($Dir in $DirsToCopy) {
 
 # Remove pastas de testes, caches e artefatos locais do pacote final
 Get-ChildItem -Path $AppStage -Include "__pycache__",".pytest_cache","tests" -Directory -Recurse | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-
-# SQL de inicialização do INLABS (usado por pg_portable.py)
-$InlabsSqlSrc = Join-Path $RepoRoot "dag_load_inlabs\sql\init-db.sql"
-if (Test-Path $InlabsSqlSrc) {
-    $InlabsSqlDst = Join-Path $AppStage "dag_load_inlabs\sql"
-    New-Item -ItemType Directory -Force -Path $InlabsSqlDst | Out-Null
-    Copy-Item -Path $InlabsSqlSrc -Destination $InlabsSqlDst -Force
-}
 
 Copy-Item -Path (Join-Path $RepoRoot "pyproject.toml") -Destination $AppStage -Force
 Set-Content -Path (Join-Path $AppStage "VERSION") -Value $Version -Encoding UTF8

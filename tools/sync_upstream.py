@@ -20,8 +20,29 @@ OURS_FILES: tuple[str, ...] = (
     "README.md",
 )
 
-# Caminhos do upstream removidos pelo projeto (preenchido no Sprint 8).
-REMOVED_PATHS: tuple[str, ...] = ()
+# Caminhos do upstream removidos pelo projeto (re-removidos automaticamente após merge).
+REMOVED_PATHS: tuple[str, ...] = (
+    "Dockerfile",
+    "docker-compose.yml",
+    "docker-compose.override.yml",
+    ".dockerignore",
+    "Makefile",
+    "Makefile.backup",
+    "generate-Makefile.sh",
+    "instalar.bat",
+    "rodou_dashboard/Dockerfile",
+    "docs/Dockerfile",
+    "docs/docker-compose.yml",
+    "helm",
+    "src/dou_dag_generator.py",
+    "dag_load_inlabs",
+    "tests/dag_generator_test.py",
+    "tests/dag_generator_invalid_yaml_test.py",
+    "tests/test_dag_loading.py",
+    "tests/test_e2e_dag_execution.py",
+    ".github/workflows/ci-tests.yml",
+    ".github/workflows/docker_build_and_publish.yml",
+)
 
 
 def _run_git(repo_root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -69,7 +90,7 @@ def _reremove_paths(repo_root: Path, paths: tuple[str, ...]) -> list[str]:
 
 def _run_local_tests(repo_root: Path) -> tuple[int, str]:
     res = subprocess.run(
-        ["uv", "run", "pytest", "-m", "not live and not airflow", "-q"],
+        ["uv", "run", "pytest", "-m", "not live", "-q"],
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -118,7 +139,7 @@ def sync_upstream(
         return 1
 
     if run_tests:
-        print("\nRodando testes locais: uv run pytest -m 'not live and not airflow' -q")
+        print("\nRodando testes locais: uv run pytest -m 'not live' -q")
         code, test_out = _run_local_tests(repo_root)
         print(test_out)
         if code != 0:

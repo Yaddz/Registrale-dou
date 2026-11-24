@@ -13,16 +13,8 @@ def get_inlabs_postgres_engine():
     global _inlabs_engine, _inlabs_engine_url
     inlabs_db_url = os.getenv('INLABS_DB_URL')
     if not inlabs_db_url:
-        if os.getenv('REGISTRALE_EXECUTOR', 'airflow').strip().lower() == 'local':
-            try:
-                from ..runtime.pg_portable import get_portable_postgres
-                inlabs_db_url = get_portable_postgres().get_sqlalchemy_url(driver='psycopg')
-            except Exception:
-                inlabs_db_url = None
-        if not inlabs_db_url:
-            inlabs_db_url = 'postgresql+pg8000://airflow:airflow@postgres:5432/inlabs'
-    if 'localhost' in inlabs_db_url and os.path.exists('/.dockerenv'):
-        inlabs_db_url = inlabs_db_url.replace('localhost', 'postgres')
+        from ..runtime.pg_portable import get_portable_postgres
+        inlabs_db_url = get_portable_postgres().get_sqlalchemy_url(driver='psycopg')
     
     if _inlabs_engine is None or _inlabs_engine_url != inlabs_db_url:
         _inlabs_engine_url = inlabs_db_url

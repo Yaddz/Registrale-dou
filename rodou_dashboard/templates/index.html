@@ -3235,7 +3235,7 @@
                                 <div class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/40 border border-slate-100 dark:border-stone-800 space-y-2">
                                     <strong class="text-slate-900 dark:text-stone-100 text-sm block">Rotina Principal (<code class="text-xs text-blue-600 dark:text-blue-400">Pesquisa_cnpj_sync</code>)</strong>
                                     <p class="text-slate-500 dark:text-stone-400 leading-relaxed">
-                                        Varre automaticamente todas as empresas ativas. O sistema divide a lista em <strong>blocos de até 1.500 CNPJs</strong> para garantir alto desempenho, processamento paralelo e resiliência no Airflow.
+                                        Varre automaticamente todas as empresas ativas. O sistema divide a lista em <strong>blocos de até 1.500 CNPJs</strong> para garantir alto desempenho e processamento paralelo.
                                     </p>
                                 </div>
                                 <div class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/40 border border-slate-100 dark:border-stone-800 space-y-2">
@@ -3271,7 +3271,7 @@
                                     <li>Clique em <strong>Salvar Configurações</strong>.</li>
                                 </ol>
                                 <div class="p-3 mt-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 text-[11px] text-blue-800 dark:text-blue-300">
-                                    💡 Todas as novas rotinas utilizam por padrão o <strong>INLABS</strong> como fonte e replicam automaticamente os e-mails da rotina principal. Qualquer alteração feita no painel sincroniza imediatamente com a DAG no Airflow.
+                                    💡 Todas as novas rotinas utilizam por padrão o <strong>INLABS</strong> como fonte e replicam automaticamente os e-mails da rotina principal. Qualquer alteração feita no painel atualiza imediatamente o agendador local.
                                 </div>
                             </div>
                         </div>
@@ -3465,7 +3465,7 @@
                             <div id="u-6-3" class="p-4 rounded-2xl bg-slate-50 dark:bg-stone-800/40 border border-slate-100 dark:border-stone-800 space-y-2 scroll-mt-8">
                                 <strong class="text-slate-900 dark:text-stone-100 flex items-center gap-1.5"><i data-lucide="send" class="w-4 h-4 text-blue-600"></i> 6.3. Servidor SMTP (E-mail)</strong>
                                 <p class="text-slate-500 dark:text-stone-400 leading-relaxed">
-                                    Configure servidor (ex: <code class="text-slate-800 dark:text-stone-200">smtp.gmail.com</code>), porta <code class="text-slate-800 dark:text-stone-200">587</code>, usuário e Senha de Aplicativo. O sistema preserva senhas salvas se o campo for mantido em branco e sincroniza automaticamente a conexão <code class="text-slate-800 dark:text-stone-200">smtp_default</code> no Airflow.
+                                    Configure servidor (ex: <code class="text-slate-800 dark:text-stone-200">smtp.gmail.com</code>), porta <code class="text-slate-800 dark:text-stone-200">587</code>, usuário e Senha de Aplicativo. O sistema preserva senhas salvas se o campo for mantido em branco.
                                 </p>
                             </div>
 

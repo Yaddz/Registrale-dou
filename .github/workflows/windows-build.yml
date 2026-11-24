@@ -28,7 +28,7 @@ jobs:
         run: uv sync --frozen --group dev --group windows
 
       - name: Run local test suite
-        run: uv run pytest -m "not live and not airflow" -q
+        run: uv run pytest -m "not live" -q
 
       - name: Smoke test outside pytest (imports + server /login)
         shell: pwsh

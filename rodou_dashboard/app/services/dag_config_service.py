@@ -33,26 +33,9 @@ def get_base_yaml_path():
     return os.path.join(dag_confs_path, "Pesquisa_cnpj.yaml")
 
 def touch_dag_generator():
-    """Atualiza o timestamp do gerador do Airflow ou recarrega o APScheduler no modo local."""
-    from ..runtime.executor import get_executor_mode
-    if get_executor_mode() == "local":
-        from ..runtime.scheduler import reload_scheduler_if_running
-        reload_scheduler_if_running()
-        return
-
-    candidates = [
-        os.path.join(BASE_DIR, "src", "dou_dag_generator.py"),
-        "/opt/airflow/dags/ro_dou_src/dou_dag_generator.py",
-        "/app/src/dou_dag_generator.py",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "src", "dou_dag_generator.py"))
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            try:
-                os.utime(p, None)
-                logger.info(f"Gerador de DAGs atualizado com sucesso: {p}")
-            except Exception as e:
-                logger.warning(f"Aviso ao atualizar mtime do gerador DAG {p}: {e}")
+    """Recarrega as rotinas no APScheduler."""
+    from ..runtime.scheduler import reload_scheduler_if_running
+    reload_scheduler_if_running()
 
 def get_monitored_cnpjs():
     global _cnpjs_cache
@@ -104,60 +87,22 @@ def get_last_search_time():
     if (now - _last_search_cache['time']) < 15 and _last_search_cache['data'] != 'N/A':
         return _last_search_cache['data']
 
-    from ..runtime.executor import get_executor_mode
-    if get_executor_mode() == "local":
-        try:
-            from ..models import JobRun
-            last_job = (
-                JobRun.query.filter(JobRun.status == "success")
-                .order_by(JobRun.fim.desc())
-                .first()
-            )
-            if last_job and (last_job.fim or last_job.inicio):
-                ts = last_job.fim or last_job.inicio
-                dt = datetime.fromisoformat(ts)
-                res = dt.strftime('%d/%m/%Y %H:%M')
-                _last_search_cache = {'time': now, 'data': res}
-                return res
-        except Exception:
-            pass
-        return "N/A"
-
-    if not os.path.exists(LOGS_DIR): return "N/A"
-    
-    # Varre apenas os 20 runs mais recentes de pesquisa_cnpj para alta performance
-    dag_dirs = glob.glob(os.path.join(LOGS_DIR, "dag_id=pesquisa_cnpj*"))
-    run_dirs = []
-    for d in dag_dirs:
-        try:
-            for r in os.listdir(d):
-                p = os.path.join(d, r)
-                if os.path.isdir(p):
-                    run_dirs.append(p)
-        except Exception:
-            pass
-    
-    if not run_dirs:
-        return "N/A"
-        
-    run_dirs.sort(key=os.path.getmtime, reverse=True)
-    recent_runs = run_dirs[:10]
-    
-    log_files = []
-    for r in recent_runs:
-        log_files.extend(glob.glob(os.path.join(r, "task_id=exec_searchs.exec_search_*", "attempt=*.log")))
-        if not log_files:
-            log_files.extend(glob.glob(os.path.join(r, "task_id=exec_search_*", "attempt=*.log")))
-            
-    if not log_files: 
-        return "N/A"
     try:
-        latest_log = max(log_files, key=os.path.getmtime)
-        res = datetime.fromtimestamp(os.path.getmtime(latest_log), timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
-        _last_search_cache = {'time': now, 'data': res}
-        return res
-    except:
-        return "N/A"
+        from ..models import JobRun
+        last_job = (
+            JobRun.query.filter(JobRun.status == "success")
+            .order_by(JobRun.fim.desc())
+            .first()
+        )
+        if last_job and (last_job.fim or last_job.inicio):
+            ts = last_job.fim or last_job.inicio
+            dt = datetime.fromisoformat(ts)
+            res = dt.strftime('%d/%m/%Y %H:%M')
+            _last_search_cache = {'time': now, 'data': res}
+            return res
+    except Exception:
+        pass
+    return "N/A"
 
 def get_next_search_time():
     now = datetime.now(timezone(timedelta(hours=-3)))
@@ -209,100 +154,8 @@ def get_next_search_time():
     return next_run.strftime('%d/%m/%Y %H:%M')
 
 def cleanup_orphaned_temp_dags(max_age_seconds=60, force_all=False):
-    """
-    Remove arquivos temporários de DAGs (temp_*.yaml e temp_*.yml) do disco,
-    desregistra as DAGs correspondentes na API do Airflow e limpa pastas de logs órfãs.
-    No modo local, não há DAGs temporárias em disco nem Airflow.
-    """
-    from ..runtime.executor import get_executor_mode
-    if get_executor_mode() == "local":
-        return 0
-
-    import shutil
-    import requests
-    from .airflow_service import get_airflow_auth, get_airflow_url
-    
-    dag_confs_path = get_dag_confs_path()
-    pattern_yaml = os.path.join(dag_confs_path, "*.yaml")
-    pattern_yml = os.path.join(dag_confs_path, "*.yml")
-    all_files = glob.glob(pattern_yaml) + glob.glob(pattern_yml)
-    
-    cleaned_count = 0
-    now = time.time()
-    
-    for f_path in all_files:
-        name = os.path.basename(f_path)
-        name_lower = name.lower()
-        if name_lower.startswith("temp_") or "temp_adhoc" in name_lower or "temp_monthly" in name_lower:
-            try:
-                mtime = os.path.getmtime(f_path)
-                if force_all or (now - mtime) >= max_age_seconds:
-                    # 1. Tentar ler o dag_id de dentro do yaml ou deduzir do nome
-                    dag_id = os.path.splitext(name)[0]
-                    try:
-                        with open(f_path, 'r', encoding='utf-8') as yf:
-                            ydata = yaml.safe_load(yf)
-                            if isinstance(ydata, dict) and 'dag' in ydata:
-                                dag_id = ydata['dag'].get('id', dag_id)
-                    except Exception:
-                        pass
-                    
-                    # 2. Verificar se a DAG possui execuções ativas ('running' ou 'queued') no Airflow.
-                    # Nunca apagar se ainda estiver em execução (a menos que force_all seja explicitamente True).
-                    if not force_all:
-                        try:
-                            auth = get_airflow_auth()
-                            airflow_url = get_airflow_url()
-                            import urllib.parse
-                            dag_id_quoted = urllib.parse.quote(str(dag_id), safe='')
-                            r_check = requests.get(
-                                f"{airflow_url}/api/v2/dags/{dag_id_quoted}/dagRuns?order_by=-run_after&limit=15",
-                                auth=auth,
-                                timeout=5
-                            )
-                            if r_check.status_code == 200:
-                                runs = r_check.json().get('dag_runs', [])
-                                has_active = any(run.get('state') in ('running', 'queued') for run in runs)
-                                if has_active:
-                                    logger.info(f"DAG temporária {dag_id} ainda possui execuções ativas no Airflow. Limpeza ignorada.")
-                                    continue
-                        except Exception:
-                            pass
-
-                    # 3. Excluir o arquivo YAML do disco
-                    try:
-                        if os.path.exists(f_path):
-                            os.remove(f_path)
-                            cleaned_count += 1
-                            logger.info(f"Arquivo YAML temporário removido do disco: {f_path}")
-                    except Exception as rm_err:
-                        logger.warning(f"Erro ao remover arquivo temporário {f_path}: {rm_err}")
-                        
-                    # 4. Desregistrar DAG do Airflow se disponível
-                    try:
-                        auth = get_airflow_auth()
-                        airflow_url = get_airflow_url()
-                        requests.delete(f"{airflow_url}/api/v2/dags/{dag_id}", auth=auth, timeout=5)
-                    except Exception:
-                        pass
-                        
-                    # 5. Remover pastas de logs temporárias em mnt/airflow-logs/dag_id=...
-                    try:
-                        temp_log_dir = os.path.join(LOGS_DIR, f"dag_id={dag_id}")
-                        if os.path.exists(temp_log_dir) and os.path.isdir(temp_log_dir):
-                            shutil.rmtree(temp_log_dir, ignore_errors=True)
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.warning(f"Erro ao processar limpeza da DAG temporária {f_path}: {e}")
-                
-    if cleaned_count > 0:
-        try:
-            generator_path = os.path.join(BASE_DIR, "src", "dou_dag_generator.py")
-        except Exception:
-            pass
-            
-    return cleaned_count
+    """No modo local não há DAGs temporárias em disco nem orquestrador externo."""
+    return 0
 
 _routines_cache = None
 _routines_cache_sig = None

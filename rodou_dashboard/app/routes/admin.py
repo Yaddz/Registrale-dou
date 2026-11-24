@@ -214,10 +214,8 @@ def save_settings():
         settings_record.set_value(merged_val)
         db.session.commit()
 
-        from ..runtime.executor import get_executor_mode
-        if get_executor_mode() == "local":
-            from ..runtime.scheduler import reload_scheduler_if_running
-            reload_scheduler_if_running()
+        from ..runtime.scheduler import reload_scheduler_if_running
+        reload_scheduler_if_running()
 
         return jsonify({"status": "success", "message": "Configurações salvas e aplicadas!", "settings": merged_val})
     except Exception as e:
@@ -468,7 +466,6 @@ def api_status():
             mtime = os.path.getmtime(yaml_files[0])
             last_sync = datetime.fromtimestamp(mtime, timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M')
 
-    from ..runtime.executor import get_executor_mode
     from ..runtime.pdf_search import FALLBACK_API, FALLBACK_OFF, FALLBACK_PDF, get_fallback_mode
     from ..services.inlabs_service import is_date_loaded
 
@@ -500,7 +497,7 @@ def api_status():
             "today_loaded": bool(today_loaded),
             "fallback_mode": fb_mode,
             "fallback_label": fb_labels.get(fb_mode, "PDF integral + API do DOU"),
-            "executor_mode": get_executor_mode(),
+            "executor_mode": "local",
         },
     })
 
@@ -701,10 +698,8 @@ def run_first_run_import():
         )
 
         try:
-            from ..runtime.executor import get_executor_mode
-            if get_executor_mode() == 'local':
-                from ..runtime.scheduler import reload_scheduler
-                reload_scheduler()
+            from ..runtime.scheduler import reload_scheduler
+            reload_scheduler()
         except Exception:
             pass
 

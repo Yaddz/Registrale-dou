@@ -38,7 +38,6 @@ def local_env(tmp_path, monkeypatch):
     logs_dir.mkdir(parents=True)
     sessions_dir.mkdir(parents=True)
 
-    monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
     monkeypatch.setenv("REGISTRALE_DATA_DIR", str(data_dir))
     monkeypatch.setenv("REGISTRALE_ROUTINES_DIR", str(routines_dir))
     monkeypatch.setenv("REGISTRALE_LOGS_DIR", str(logs_dir))
@@ -52,7 +51,6 @@ class TestPathsAndLock:
     def test_platformdirs_used_in_local_mode_without_override(self, tmp_path, monkeypatch):
         import platformdirs
 
-        monkeypatch.setenv("REGISTRALE_EXECUTOR", "local")
         monkeypatch.delenv("REGISTRALE_DATA_DIR", raising=False)
         monkeypatch.delenv("DATA_DIR", raising=False)
         fake_user_dir = tmp_path / "AppData" / "Local" / "Registrale"

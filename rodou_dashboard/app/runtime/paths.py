@@ -1,10 +1,8 @@
 """Resolução de diretórios por plataforma e variáveis de ambiente.
 
-No modo `local`, os dados persistentes ficam no diretório de dados do usuário
+Os dados persistentes ficam no diretório de dados do usuário
 (`platformdirs.user_data_dir("Registrale", appauthor=False)` — no Windows,
 `%LOCALAPPDATA%\\Registrale`), a menos que sobrescritos por variáveis de ambiente.
-No modo `airflow` (Docker), preserva o comportamento legado (`/data`, `BASE_DIR/data`,
-`BASE_DIR/dag_confs`, `BASE_DIR/mnt/airflow-logs`).
 """
 
 from __future__ import annotations
@@ -31,21 +29,13 @@ def get_base_dir() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _is_local_mode() -> bool:
-    return os.getenv("REGISTRALE_EXECUTOR", "airflow").strip().lower() == "local"
-
-
 def get_data_dir(create: bool = True) -> Path:
     """Retorna o diretório de dados persistentes (`database.db`, `logs/`, `rotinas/`, etc.)."""
-    env_dir = os.getenv("REGISTRALE_DATA_DIR")
-    if not env_dir and _is_local_mode():
-        env_dir = os.getenv("DATA_DIR")
+    env_dir = os.getenv("REGISTRALE_DATA_DIR") or os.getenv("DATA_DIR")
     if env_dir:
         path = Path(env_dir).expanduser().resolve()
-    elif _is_local_mode():
-        path = _default_local_user_data_dir()
     else:
-        path = get_base_dir() / "data"
+        path = _default_local_user_data_dir()
 
     if create:
         path.mkdir(parents=True, exist_ok=True)
@@ -77,11 +67,8 @@ def get_logs_dir(create: bool = True) -> Path:
     env_logs = os.getenv("REGISTRALE_LOGS_DIR") or os.getenv("LOGS_DIR")
     if env_logs:
         path = Path(env_logs).expanduser().resolve()
-    elif _is_local_mode():
-        path = get_data_dir(create=create) / "logs"
     else:
-        path = get_base_dir() / "mnt" / "airflow-logs"
-        create = False
+        path = get_data_dir(create=create) / "logs"
 
     if create:
         path.mkdir(parents=True, exist_ok=True)
@@ -133,7 +120,7 @@ def _seed_routines_if_empty(target_dir: Path) -> None:
 
 
 def get_routines_dir(create: bool = True) -> Path:
-    """Retorna o diretório de rotinas YAML (`rotinas/` no modo local, `dag_confs/` no Docker)."""
+    """Retorna o diretório de rotinas YAML (`rotinas/`)."""
     env_dir = os.getenv("REGISTRALE_ROUTINES_DIR") or os.getenv("DAG_CONFS_DIR")
     if env_dir:
         path = Path(env_dir).expanduser().resolve()
@@ -141,28 +128,11 @@ def get_routines_dir(create: bool = True) -> Path:
             path.mkdir(parents=True, exist_ok=True)
         return path
 
-    if _is_local_mode():
-        path = get_data_dir(create=create) / "rotinas"
-        if create:
-            path.mkdir(parents=True, exist_ok=True)
-            _seed_routines_if_empty(path)
-        return path
-
-    base_dir = get_base_dir()
-    candidates = [
-        base_dir / "dag_confs",
-        Path("dag_confs").resolve(),
-        Path("/app/dag_confs"),
-        Path("/dag_confs"),
-    ]
-    for candidate in candidates:
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-
-    default_path = base_dir / "dag_confs"
+    path = get_data_dir(create=create) / "rotinas"
     if create:
-        default_path.mkdir(parents=True, exist_ok=True)
-    return default_path
+        path.mkdir(parents=True, exist_ok=True)
+        _seed_routines_if_empty(path)
+    return path
 
 
 def get_sessions_dir(create: bool = True) -> Path:
@@ -170,12 +140,8 @@ def get_sessions_dir(create: bool = True) -> Path:
     env_dir = os.getenv("SESSION_FILE_DIR")
     if env_dir:
         path = Path(env_dir).expanduser().resolve()
-    elif _is_local_mode():
-        path = get_data_dir(create=create) / "flask_sessions"
-    elif Path("/flask_sessions").exists():
-        path = Path("/flask_sessions")
     else:
-        path = get_base_dir() / "flask_sessions"
+        path = get_data_dir(create=create) / "flask_sessions"
 
     if create:
         try:

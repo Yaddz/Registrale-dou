@@ -8,7 +8,7 @@ import types
 from pathlib import Path
 
 import pytest
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -44,8 +44,6 @@ if importlib.util.find_spec("dags") is None or importlib.util.find_spec("dags.ro
 
 os.environ.setdefault("RO_DOU__DAG_CONF_DIR", str(_REPO_ROOT / "dag_confs"))
 
-from dags.ro_dou_src.dou_dag_generator import (DouDigestDagGenerator,
-                                           SearchResult)
 from dags.ro_dou_src.parsers import YAMLParser
 from dags.ro_dou_src.searchers import DOUSearcher, INLABSSearcher
 from dags.ro_dou_src.hooks.inlabs_hook import INLABSHook
@@ -79,13 +77,9 @@ def pytest_unconfigure(config):
         else:
             os.environ[key] = value
 
-@pytest.fixture(scope='module')
-def dag_gen() -> DouDigestDagGenerator:
-    return DouDigestDagGenerator()
-
 @pytest.fixture()
 def yaml_parser()-> YAMLParser:
-    filepath = os.path.join(DouDigestDagGenerator().YAMLS_DIR,
+    filepath = os.path.join(str(_REPO_ROOT / "dag_confs"),
                             "examples_and_tests",
                             'basic_example.yaml')
     return YAMLParser(filepath=filepath)
@@ -424,7 +418,7 @@ def term_n_group():
 
 
 @pytest.fixture()
-def merge_results_samples() -> Tuple[SearchResult, SearchResult, SearchResult]:
+def merge_results_samples() -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     results_dou = {
         'grupo_1': {
             'term_1': {"single_department": [{'key1': 'result1'}, {'key2': 'result2'}, {'key3': 'resultn'}]},

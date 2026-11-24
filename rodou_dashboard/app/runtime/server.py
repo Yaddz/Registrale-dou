@@ -119,27 +119,25 @@ def main(argv: Optional[list[str]] = None) -> int:
             pass
 
     args = _parse_args(argv)
-    os.environ.setdefault("REGISTRALE_EXECUTOR", "local")
     os.environ.setdefault("REGISTRALE_DB_PATH", str(get_db_path()))
 
     log_file = configure_logging()
-    logger.info("Iniciando Registrale-DOU em modo local (log=%s)...", log_file)
+    logger.info("Iniciando Registrale-DOU (log=%s)...", log_file)
 
     try:
         with acquire_instance_lock():
             from waitress import serve
 
             from .. import create_app
-            from .executor import get_executor, get_executor_mode
+            from .executor import get_executor
             from .pg_portable import start_portable_postgres, stop_portable_postgres
             from .scheduler import init_scheduler, shutdown_scheduler
 
             app = create_app()
-            if get_executor_mode() == "local":
-                pg_port = start_portable_postgres()
-                if pg_port is not None:
-                    logger.info("PostgreSQL portátil INLABS ativo na porta %d.", pg_port)
-                init_scheduler(app, start=True)
+            pg_port = start_portable_postgres()
+            if pg_port is not None:
+                logger.info("PostgreSQL portátil INLABS ativo na porta %d.", pg_port)
+            init_scheduler(app, start=True)
 
             logger.info(
                 "Painel Registrale-DOU disponível em http://%s:%d (threads=%d)",
@@ -156,8 +154,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 executor = get_executor(app)
                 if hasattr(executor, "shutdown"):
                     executor.shutdown(wait=False)
-                if get_executor_mode() == "local":
-                    stop_portable_postgres()
+                stop_portable_postgres()
     except InstanceLockError as exc:
         logger.error("%s", exc)
         print(f"Erro: {exc}", file=sys.stderr)
