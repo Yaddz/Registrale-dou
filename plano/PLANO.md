@@ -542,7 +542,7 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
   - ~~Item 3~~ e ~~itens 4 e 5~~: aceitos pelo usuário como pendência em 24/11/2026 (registrado em `plano/HOMOLOGACAO.md`); validar INLABS quando o portal voltar e acompanhar os primeiros dias de uso real.
   - ~~Assinatura do termo~~: "Aprovado para remover Docker/Airflow" assinado em `plano/HOMOLOGACAO.md` em 24/11/2026 (Pedro, via chat).
   - ~~Revisão independente~~: Sprint 7 aprovado em 24/11/2026, sem bloqueadores.
-  - Pré-condições do Sprint 8 vindas da revisão: commit (ou tag) do estado homologado, a pedido do usuário, e novo ensaio de `tools/sync_upstream.py` com o `upstream/main` atual e com testes.
+  - ~~Pré-condições do Sprint 8 vindas da revisão~~: estado homologado commitado em `4f68dc6` (pedido do usuário, 24/11/2026) e ensaio de `tools/sync_upstream.py` refeito com testes → `640 passed` (`upstream/main` sem commits novos desde `4ebffba`).
 ---
 
 ## Sprint 8: Remoção de Docker/Airflow, limpeza do git e novo README
