@@ -599,6 +599,7 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
   - `uv run pytest tests/local/test_pdf_search.py -m "not live" -q` → `18 passed, 1 deselected`.
   - `uv run pytest -m "not live" -q` → `613 passed, 3 deselected`.
   - Smoke fora do pytest (`_build_default_searchers()` + `uv run registrale --port 5099` + `GET /login`) → `['DOESP', 'DOU', 'INLABS', 'INLABS_FALLBACK', 'QD']` e `HTTP 200`.
+  - `uv run python tools/sync_upstream.py --repo-root /tmp/registrale-sync-s8` (worktree temporária a partir de `a7f8117`) → `Merge exit code: 0`, `Conflitos pendentes (0)`, `613 passed, 3 deselected`.
   - `grep -rni "docker\|airflow\|helm\|make run"` → retorna apenas o shim (`compat/`), `ro_dou_src`, `src/` do upstream, `CHANGELOG.md`, referências de importação/migração legada e `plano/UPSTREAM.md`.
 - **Pendências:**
   - **Build e checklist do instalador Windows (Sprint 6) a partir de `main`:** não executado nesta sessão porque o container `windows-registrale` expõe apenas RDP (`3389`) e noVNC (`8006`), sem shell remoto (SSH/WinRM) disponível; validar via workflow `.github/workflows/windows-build.yml` ou interativamente na VM Windows (fazendo backup de `%LOCALAPPDATA%\Registrale` antes).
@@ -677,6 +678,7 @@ Gerada no Sprint 0 e usada nos Sprints 2 e 7:
   - `uv run pytest tests/local/test_pdf_search.py -m "not live" -q` → `18 passed, 1 deselected`.
   - `uv run pytest -m "not live" -q` → `613 passed, 3 deselected`.
   - Smoke fora do pytest (`_build_default_searchers()` + `uv run registrale --port 5099` + `GET /login`) → `['DOESP', 'DOU', 'INLABS', 'INLABS_FALLBACK', 'QD']` e `HTTP 200`.
+  - `uv run python tools/sync_upstream.py --repo-root /tmp/registrale-sync-s8` (worktree temporária a partir de `a7f8117`) → `Merge exit code: 0`, `Conflitos pendentes (0)`, `613 passed, 3 deselected`.
   - `grep -rni "docker\|airflow\|helm\|make run"` → retorna apenas o shim (`compat/`), `ro_dou_src`, `src/` do upstream, `CHANGELOG.md`, referências de importação/migração legada e `plano/UPSTREAM.md`.
 - **Pendências:**
   - **Build e checklist do instalador Windows (Sprint 6) a partir de `main`:** não executado nesta sessão porque o container `windows-registrale` expõe apenas RDP (`3389`) e noVNC (`8006`), sem shell remoto (SSH/WinRM) disponível; validar via workflow `.github/workflows/windows-build.yml` ou interativamente na VM Windows (fazendo backup de `%LOCALAPPDATA%\Registrale` antes).
