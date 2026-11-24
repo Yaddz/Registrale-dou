@@ -21,12 +21,9 @@ logging.basicConfig(level=logging.INFO)
 # Dinamicamente descobre o BASE_DIR baseado no app/services/sync_cnpj.py
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
-# Se estiver rodando dentro do docker, o BASE_DIR na verdade deveria ser / ou /app. 
-# Como mapeamos /data no docker, vamos tentar usar o BASE_DIR e fazer fallback para /data se existir.
-DATA_DIR = os.path.join(BASE_DIR, "data")
-if not os.path.exists(DATA_DIR) and os.path.exists("/data"):
-    DATA_DIR = "/data"
+from ..runtime.paths import get_data_dir, get_routines_dir
 
+DATA_DIR = str(get_data_dir(create=True))
 METADATA_FILE = os.path.join(DATA_DIR, "monitored_companies.json")
 
 def formatar_cnpj(cnpj_bruto: str):
@@ -163,6 +160,7 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
         logging.warning(f"Caminho original não encontrado: {caminho_arquivo}")
         nome_arquivo = os.path.basename(caminho_arquivo)
         tentativas = [
+            os.path.join(str(get_routines_dir()), nome_arquivo),
             os.path.join(BASE_DIR, "dag_confs", nome_arquivo),
             os.path.join("/dag_confs", nome_arquivo),
             os.path.join(DATA_DIR, "..", "dag_confs", nome_arquivo),

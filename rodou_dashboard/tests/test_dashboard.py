@@ -339,7 +339,19 @@ class TestNewOptimizedFeatures:
         assert resp.headers["Content-Type"] == "application/pdf"
         assert len(resp.data) > 1000
 
-    def test_download_missing_inlabs_endpoint(self, auth_client):
+    def test_download_missing_inlabs_endpoint(self, auth_client, monkeypatch):
+        from app.routes import dags
+        from app.services import inlabs_service
+
+        monkeypatch.setenv("INLABS_DB_URL", "sqlite:///:memory:")
+        monkeypatch.setattr(inlabs_service, "check_inlabs_portal_status", lambda: (True, "OK"))
+        class MockExec:
+            def trigger(self, *args, **kwargs):
+                return "run_inlabs"
+            def wait(self, run_ids, timeout=1800):
+                return True, {r: "success" for r in run_ids}
+        monkeypatch.setattr(dags, "get_executor", lambda: MockExec())
+
         resp = auth_client.post('/api/routines/download_missing_inlabs', json={
             'days': ['2026-08-01', '2026-08-02'],
             'month': 8,
@@ -415,7 +427,6 @@ class TestNewOptimizedFeatures:
         import yaml
         from app.services import dag_config_service
         from app.routes import dags
-        from app.services import airflow_service
         
         test_yaml = {
             "dag": {
@@ -430,7 +441,6 @@ class TestNewOptimizedFeatures:
             
         monkeypatch.setattr(dag_config_service, "get_dag_confs_path", lambda: str(tmp_path))
         monkeypatch.setattr(dags, "get_dag_confs_path", lambda: str(tmp_path))
-        monkeypatch.setattr(airflow_service, "toggle_airflow_dag", lambda *args, **kwargs: True)
         
         # Pausar rotina
         resp = auth_client.post('/api/routines/toggle/teste_toggle.yaml', json={"active": False})
@@ -519,26 +529,6 @@ class TestNewOptimizedFeatures:
             assert log.status == 'success'
             assert log.downloaded_at is not None
 
-    def test_wait_for_specific_dag_runs(self, monkeypatch):
-        import requests
-        from app.services.airflow_service import wait_for_specific_dag_runs
-        
-        class MockResponse:
-            def __init__(self, state):
-                self.status_code = 200
-                self._state = state
-            def json(self):
-                return {"state": self._state}
-                
-        def mock_get(url, **kwargs):
-            return MockResponse("success")
-            
-        monkeypatch.setattr(requests, "get", mock_get)
-        all_finished, states = wait_for_specific_dag_runs("ro-dou_inlabs_load_pg", ["run_1", "run_2"], max_wait=5, poll_interval=1)
-        assert all_finished is True
-        assert states.get("run_1") == "success"
-        assert states.get("run_2") == "success"
-
     def test_holiday_service_excludes_holidays_and_weekends(self):
         from app.services.holiday_service import get_business_days_for_month, is_business_day, is_within_inlabs_retention_window
         from datetime import date
@@ -592,11 +582,16 @@ class TestNewOptimizedFeatures:
         from app.routes import dags
         
         triggered_calls = []
-        def mock_trigger(dag_id, logical_date=None, **kwargs):
-            triggered_calls.append((dag_id, logical_date))
-            return True, "Triggered", {"dag_id": dag_id, "dag_run_id": f"run_{dag_id}_{logical_date}"}
+        class MockExec:
+            def trigger(self, routine, date=None, **kwargs):
+                triggered_calls.append((routine, date))
+                return f"run_{date}"
+            def wait(self, run_ids, timeout=1800):
+                return True, {r: "success" for r in run_ids}
+            def result(self, run_id, routine=None):
+                return []
             
-        monkeypatch.setattr(dags, "trigger_airflow_dag", mock_trigger)
+        monkeypatch.setattr(dags, "get_executor", lambda: MockExec())
         monkeypatch.setattr(dags, "fetch_mentions_from_dag_run", lambda *args, **kwargs: [])
         
         resp = auth_client.post('/api/routines/trigger_monthly', json={
@@ -612,11 +607,16 @@ class TestNewOptimizedFeatures:
         from app.routes import dags
         
         triggered_calls = []
-        def mock_trigger(dag_id, logical_date=None, **kwargs):
-            triggered_calls.append((dag_id, logical_date))
-            return True, "Triggered", {"dag_id": dag_id, "dag_run_id": f"run_{dag_id}_{logical_date}"}
+        class MockExec:
+            def trigger(self, routine, date=None, **kwargs):
+                triggered_calls.append((routine, date))
+                return f"run_{date}"
+            def wait(self, run_ids, timeout=1800):
+                return True, {r: "success" for r in run_ids}
+            def result(self, run_id, routine=None):
+                return []
             
-        monkeypatch.setattr(dags, "trigger_airflow_dag", mock_trigger)
+        monkeypatch.setattr(dags, "get_executor", lambda: MockExec())
         monkeypatch.setattr(dags, "fetch_mentions_from_dag_run", lambda *args, **kwargs: [])
         
         resp = auth_client.post('/api/routines/trigger_monthly', json={
@@ -655,11 +655,16 @@ class TestNewOptimizedFeatures:
         from app.routes import dags
         
         triggered_calls = []
-        def mock_trigger(dag_id, logical_date=None, **kwargs):
-            triggered_calls.append((dag_id, logical_date))
-            return True, "Triggered", {"dag_id": dag_id, "dag_run_id": f"run_{dag_id}_{logical_date}"}
+        class MockExec:
+            def trigger(self, routine, date=None, **kwargs):
+                triggered_calls.append((routine, date))
+                return f"run_{date}"
+            def wait(self, run_ids, timeout=1800):
+                return True, {r: "success" for r in run_ids}
+            def result(self, run_id, routine=None):
+                return []
             
-        monkeypatch.setattr(dags, "trigger_airflow_dag", mock_trigger)
+        monkeypatch.setattr(dags, "get_executor", lambda: MockExec())
         monkeypatch.setattr(dags, "fetch_mentions_from_dag_run", lambda *args, **kwargs: [])
         
         resp = auth_client.post('/api/routines/trigger/Pesquisa_cnpj.yaml', json={
@@ -668,18 +673,23 @@ class TestNewOptimizedFeatures:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data.get('status') == 'success'
-        assert any(k in data.get('message', '').lower() for k in ["disparada", "sucesso", "api oficial"])
+        assert any(k in data.get('message', '').lower() for k in ["disparada", "sucesso", "api oficial", "pdf"])
 
     def test_trigger_individual_routine_with_brazilian_date_format(self, auth_client, monkeypatch):
         from app.routes import dags
         from app.services import inlabs_service
         
         triggered_calls = []
-        def mock_trigger(dag_id, logical_date=None, **kwargs):
-            triggered_calls.append((dag_id, logical_date))
-            return True, "Triggered", {"dag_id": dag_id, "dag_run_id": f"run_{dag_id}_{logical_date}"}
+        class MockExec:
+            def trigger(self, routine, date=None, **kwargs):
+                triggered_calls.append((routine, date))
+                return f"run_{date}"
+            def wait(self, run_ids, timeout=1800):
+                return True, {r: "success" for r in run_ids}
+            def result(self, run_id, routine=None):
+                return []
             
-        monkeypatch.setattr(dags, "trigger_airflow_dag", mock_trigger)
+        monkeypatch.setattr(dags, "get_executor", lambda: MockExec())
         monkeypatch.setattr(dags, "fetch_mentions_from_dag_run", lambda *args, **kwargs: [])
         monkeypatch.setattr(inlabs_service, "is_date_loaded", lambda d: (True, 50))
         
@@ -693,52 +703,6 @@ class TestNewOptimizedFeatures:
         # Verifica que a data foi normalizada para YYYY-MM-DD
         assert len(triggered_calls) > 0
         assert triggered_calls[0][1] == "2026-01-15"
-
-    def test_cleanup_orphaned_temp_dags(self, app):
-        import os
-        from app.services.dag_config_service import get_dag_confs_path, cleanup_orphaned_temp_dags
-        dag_confs_path = get_dag_confs_path()
-        
-        # Cria um arquivo temporário de teste
-        temp_file = os.path.join(dag_confs_path, "temp_adhoc_dou_unittest.yaml")
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            f.write("dag:\n  id: temp_adhoc_dou_unittest\n  schedule: null\n")
-            
-        assert os.path.exists(temp_file)
-        cleaned = cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=True)
-        assert cleaned >= 1
-        assert not os.path.exists(temp_file)
-
-    def test_cleanup_temp_dags_skips_active_runs(self, app, monkeypatch):
-        import os
-        import requests
-        from app.services.dag_config_service import get_dag_confs_path, cleanup_orphaned_temp_dags
-        dag_confs_path = get_dag_confs_path()
-        
-        # Cria um arquivo temporário de teste
-        temp_file = os.path.join(dag_confs_path, "temp_active_dag_test.yaml")
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            f.write("dag:\n  id: temp_active_dag_test\n  schedule: null\n")
-            
-        assert os.path.exists(temp_file)
-        
-        # Simula resposta do Airflow indicando que há DAG run em execução (running)
-        class MockResponse:
-            status_code = 200
-            def json(self):
-                return {"dag_runs": [{"dag_run_id": "run_1", "state": "running"}]}
-                
-        monkeypatch.setattr(requests, "get", lambda *args, **kwargs: MockResponse())
-        
-        # Sem force_all, a DAG não deve ser removida pois tem execuções ativas
-        cleaned = cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=False)
-        assert cleaned == 0
-        assert os.path.exists(temp_file)
-        
-        # Limpeza forçada deve remover
-        cleaned_forced = cleanup_orphaned_temp_dags(max_age_seconds=0, force_all=True)
-        assert cleaned_forced >= 1
-        assert not os.path.exists(temp_file)
 
     def test_cleanup_temp_dags_endpoint(self, auth_client):
         resp = auth_client.post('/api/routines/cleanup_temp')

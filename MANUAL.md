@@ -418,24 +418,18 @@ Na sub-aba **Limpeza do Sistema**:
 
 ### 6.7. Como Atualizar ou Desinstalar o Sistema
 
-O Registrale-DOU inclui utilitários automatizados para manutenção e ciclo de vida do ambiente no Windows:
+O Registrale-DOU é instalado no Windows como aplicativo desktop (`Registrale-Setup-x.y.z.exe`), com dados preservados em `%LOCALAPPDATA%\Registrale`:
 
-#### 🔄 Como Atualizar o Sistema (`atualizar.bat`)
+#### 🔄 Como Atualizar o Sistema
 Para obter novas funcionalidades, melhorias de desempenho e correções de segurança:
-1. Abra a pasta do projeto no Windows Explorer.
-2. Dê um duplo clique no arquivo **`atualizar.bat`**.
-3. O script irá:
-   - Baixar as atualizações mais recentes do repositório Git (`git pull origin main`).
-   - Recompilar e reiniciar automaticamente os containers Docker com as novas versões (`docker compose up -d --build`).
-   - Abrir o Dashboard atualizado no navegador em `http://localhost:5000`.
+1. No painel, acesse **Configurações → Verificar atualizações** (ou baixe o novo `Registrale-Setup-x.y.z.exe`).
+2. Execute o instalador sobre a instalação atual.
+3. Os dados (`database.db`, rotinas YAML, configurações e PDFs arquivados) são preservados automaticamente.
 
-#### 🗑️ Como Desinstalar o Sistema (`desinstalar.bat`)
-Caso precise remover ou resetar a instalação:
-1. Dê um duplo clique no arquivo **`desinstalar.bat`**.
-2. O assistente apresentará um menu interativo com as opções:
-   - **Opção [1] — Desinstalação Completa:** Para e remove todos os containers e redes Docker, remove os volumes e imagens locais, destrava permissões do Windows e **exclui definitivamente todos os arquivos e a pasta do projeto** do computador.
-   - **Opção [2] — Limpeza de Dados (Reset):** Para e remove os containers e bancos de dados locais (`/data`, `/mnt`), logs e sessões temporárias, preservando o código-fonte para permitir uma nova instalação limpa executando `instalar.bat`.
-   - **Opção [3] — Cancelar:** Fecha o desinstalador sem alterar nada.
+#### 🗑️ Como Desinstalar o Sistema
+Caso precise remover a instalação:
+1. Abra **Configurações do Windows → Aplicativos** e selecione **Registrale-DOU** (ou execute `unins000.exe` em `%LOCALAPPDATA%\Programs\Registrale`).
+2. O desinstalador remove o programa e os atalhos, mantendo seus dados locais em `%LOCALAPPDATA%\Registrale` para eventual reinstalação.
 
 ---
 

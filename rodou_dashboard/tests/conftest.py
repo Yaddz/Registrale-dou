@@ -18,7 +18,8 @@ def preserve_dag_confs():
             f.write(initial_content)
 
 @pytest.fixture
-def app():
+def app(tmp_path, monkeypatch):
+    monkeypatch.setenv('REGISTRALE_DATA_DIR', str(tmp_path / 'registrale_data'))
     app = create_app({
         'TESTING': True,
         'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',

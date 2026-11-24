@@ -54,16 +54,35 @@ def extend_session():
 def index():
     is_master = session['user']['role'] == 'master'
     
-    settings = {"smtp":{}, "api_keys":{}, "google_sheets":{}, "inlabs":{}}
+    from ..runtime.paths import get_default_pdf_dir
+    from ..runtime.pdf_archiver import DEFAULT_SECTIONS
+
+    settings = {
+        "smtp": {},
+        "api_keys": {},
+        "google_sheets": {},
+        "inlabs": {},
+        "inlabs_fallback": "pdf",
+        "pdf_archive": {
+            "enabled": True,
+            "folder": str(get_default_pdf_dir(create=False)),
+            "sections": list(DEFAULT_SECTIONS),
+        },
+    }
     users_list = []
     
     if is_master:
         settings_record = Settings.query.filter_by(key='global_settings').first()
         if settings_record:
             db_settings = settings_record.get_value()
-            if "inlabs" not in db_settings:
-                db_settings["inlabs"] = {}
-            settings.update(db_settings)
+            if isinstance(db_settings, dict):
+                if "inlabs" not in db_settings:
+                    db_settings["inlabs"] = {}
+                for k, v in db_settings.items():
+                    if isinstance(v, dict) and isinstance(settings.get(k), dict):
+                        settings[k].update(v)
+                    else:
+                        settings[k] = v
         users_list = [{"username": u.username, "role": u.role} for u in User.query.all()]
         
     history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(50).all()]

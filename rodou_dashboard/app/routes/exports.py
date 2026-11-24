@@ -3,6 +3,7 @@ import os
 import io
 from .auth import login_required
 from .companies import get_companies_data
+from ..runtime.paths import get_data_dir
 import logging
 from datetime import datetime, timezone, timedelta
 from reportlab.pdfgen import canvas
@@ -11,8 +12,7 @@ from reportlab.lib import colors
 exports_bp = Blueprint('exports', __name__)
 logger = logging.getLogger(__name__)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-os.makedirs(DATA_DIR, exist_ok=True)
+DATA_DIR = str(get_data_dir(create=True))
 
 def get_local_now():
     """Retorna datetime atual ajustado para o horário oficial de Brasília (UTC-3)."""

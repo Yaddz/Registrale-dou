@@ -13,12 +13,30 @@ este script precisa rodar num ambiente com o Airflow instalado — na prática,
 dentro do container `airflow-webserver` (veja `make gerar-yml`).
 """
 import argparse
+import importlib.util
 import os
 import re
 import sys
 
 import yaml
 from pydantic import ValidationError
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+if (
+    importlib.util.find_spec("airflow") is None
+    and importlib.util.find_spec("compat") is not None
+    and importlib.util.find_spec("compat.bootstrap") is not None
+):
+    from compat.bootstrap import install_airflow_shim
+
+    install_airflow_shim()
 
 SRC_PATH = os.environ.get("RO_DOU_SRC_PATH", "/opt/airflow/dags/ro_dou_src")
 sys.path.insert(0, SRC_PATH)

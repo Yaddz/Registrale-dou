@@ -9,13 +9,15 @@ Leitura obrigatória:
 
 Verifique:
 - Cada item do critério de aceite foi cumprido **com evidência reproduzível**? Rode você mesmo os testes indicados no Registro.
-- Regressões nas regras de negócio: CNPJ por raiz, seções, menções gravadas antes do e-mail, fallback do INLABS, datas e baseline de novembro/2026 (26 menções, 16 empresas).
+- Regressões nas regras de negócio: CNPJ por raiz, seções, menções gravadas antes do e-mail, fallback do INLABS (nunca pesquisar banco vazio; PDF integral → API do DOU, regra 6 do `AGENTS.md`), datas e baseline de novembro/2026 (26 menções, 16 empresas).
 - Enquanto existirem os dois modos: o modo Docker (`REGISTRALE_EXECUTOR=airflow`) continua funcionando?
 - Compatibilidade com o upstream: houve mudança em `src/` ou `dag_load_inlabs/`? Está registrada em `plano/UPSTREAM.md` e é mínima?
 - Windows: caminhos, encoding, processos, portas, permissões e ausência de dependências só de Linux.
 - Concorrência e idempotência (agendador, threads, buscas repetidas e downloads), timeouts e retries, uso de memória e rede.
 - Segurança: segredos em log, diff ou navegador; path traversal; Zip Slip; HTML do DOU sem escape; downloads sem verificação.
 - Testes cobrem o comportamento novo e os caminhos de erro, de forma determinística e sem rede (exceto `live`).
+- O código roda **fora do pytest**: importe os módulos novos num `python -c` limpo ou suba `uv run registrale`. O `tests/conftest.py` cria aliases (`ro_dou_src`, `dags.ro_dou_src`) que escondem erros de importação.
+- Todos os caminhos de disparo (agendado, manual, avulso, mensal) tratam o INLABS fora do ar; não basta o caminho manual.
 
 Formato da resposta:
 1. **Bloqueadores** (impedem aceitar o sprint), depois **Importantes** e **Sugestões**. Cada achado com arquivo:linha, cenário concreto, impacto e correção recomendada.

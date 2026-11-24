@@ -11,15 +11,17 @@ _inlabs_engine_url = None
 def get_inlabs_postgres_engine():
     """Retorna uma engine singleton com pool de conexões para o PostgreSQL do INLABS."""
     global _inlabs_engine, _inlabs_engine_url
-    inlabs_db_url = os.getenv('INLABS_DB_URL', 'postgresql+pg8000://airflow:airflow@postgres:5432/inlabs')
-    if 'localhost' in inlabs_db_url and os.path.exists('/.dockerenv'):
-        inlabs_db_url = inlabs_db_url.replace('localhost', 'postgres')
+    inlabs_db_url = os.getenv('INLABS_DB_URL')
+    if not inlabs_db_url:
+        from ..runtime.pg_portable import get_portable_postgres
+        inlabs_db_url = get_portable_postgres().get_sqlalchemy_url(driver='psycopg')
     
     if _inlabs_engine is None or _inlabs_engine_url != inlabs_db_url:
         _inlabs_engine_url = inlabs_db_url
+        connect_args = {'connect_timeout': 5} if '+psycopg' in inlabs_db_url else {'timeout': 5}
         _inlabs_engine = create_engine(
             inlabs_db_url,
-            connect_args={'timeout': 5},
+            connect_args=connect_args,
             pool_size=5,
             max_overflow=10,
             pool_recycle=300

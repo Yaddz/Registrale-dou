@@ -92,6 +92,7 @@ class Mention(db.Model):
     detected_at = db.Column(db.String(100))
     trecho = db.Column(db.Text)
     link = db.Column(db.Text)
+    pdf_path = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         return {
@@ -103,7 +104,8 @@ class Mention(db.Model):
             "data": self.data,
             "detected_at": self.detected_at,
             "trecho": self.trecho,
-            "link": self.link
+            "link": self.link,
+            "pdf_path": self.pdf_path,
         }
 
 class Settings(db.Model):
@@ -127,3 +129,40 @@ class EmailTemplate(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     body_html = db.Column(db.Text, nullable=False)
+
+
+class JobRun(db.Model):
+    """Histórico de execuções locais de rotinas (substitui o XCom/dagRuns do Airflow)."""
+    __tablename__ = 'job_runs'
+    id = db.Column(db.String(128), primary_key=True)
+    rotina = db.Column(db.String(255), nullable=False, index=True)
+    data = db.Column(db.String(20), nullable=True, index=True)
+    status = db.Column(db.String(32), nullable=False, default='queued', index=True)
+    inicio = db.Column(db.String(50), nullable=True)
+    fim = db.Column(db.String(50), nullable=True)
+    erro = db.Column(db.Text, nullable=True)
+    resultado_json = db.Column(db.Text, nullable=True)
+
+    def get_resultado(self):
+        if not self.resultado_json:
+            return []
+        try:
+            data = json.loads(self.resultado_json)
+            return data if isinstance(data, list) else [data]
+        except Exception:
+            return []
+
+    def set_resultado(self, val):
+        self.resultado_json = json.dumps(val, ensure_ascii=False) if val is not None else None
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "rotina": self.rotina,
+            "data": self.data,
+            "status": self.status,
+            "inicio": self.inicio,
+            "fim": self.fim,
+            "erro": self.erro,
+        }
+

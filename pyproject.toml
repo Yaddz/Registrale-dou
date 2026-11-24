@@ -1,0 +1,81 @@
+[project]
+name = "registrale-dou"
+version = "0.1.0"
+description = "Monitoramento de publicações no Diário Oficial da União (DOU) por CNPJ"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pypdf>=7.1.1",
+]
+
+[project.scripts]
+registrale = "rodou_dashboard.app.runtime.server:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rodou_dashboard*", "compat*"]
+
+[dependency-groups]
+core = [
+    "requests>=2.32.2,<3.0",
+    "PyYAML>=6.0.1,<7.0",
+    "pydantic[email]>=2.0.0,<3.0",
+    "beautifulsoup4>=4.12.0,<5.0",
+    "lxml>=5.0.0,<7.0",
+    "unidecode>=1.2.0,<2.0",
+    "html2text>=2024.2.26",
+    "markdown>=3.6.0,<4.0",
+    "Jinja2>=3.1.4,<4.0",
+    "MarkupSafe>=2.1.0,<4.0",
+    "nh3>=0.3.7",
+    "apprise>=1.9.0,<2.0",
+    "structlog>=24.0.0",
+    "tenacity>=8.2.0",
+    "sqlparse>=0.5.0",
+    "opensearch-py>=3.1.0,<4.0",
+    "openai>=1.0.0",
+    "anthropic>=0.40.0",
+    "google-genai>=1.0.0",
+    "pandas>=2.0.0,<3.0",
+    "pg8000>=1.31.1,<2.0",
+    "psycopg[binary]>=3.1.0,<4.0",
+    "SQLAlchemy>=1.4.0,<2.0.0",
+]
+dashboard = [
+    { include-group = "core" },
+    "Flask>=2.2.0,<2.3.0",
+    "Werkzeug>=2.2.0,<2.3.0",
+    "Flask-Session>=0.4.0,<0.5.0",
+    "Flask-SQLAlchemy>=2.5.1,<3.0.0",
+    "python-dotenv>=1.0.1,<2.0",
+    "waitress>=3.0.0,<4.0",
+    "APScheduler>=3.10.4,<4.0",
+    "platformdirs>=4.2.0,<5.0",
+    "reportlab>=4.0.0,<5.0",
+    "openpyxl>=3.1.0,<4.0",
+    "google-api-python-client>=2.0.0,<3.0",
+    "google-auth>=2.0.0,<3.0",
+]
+windows = [
+    { include-group = "dashboard" },
+    "pystray>=0.19.5,<1.0",
+    "pillow>=10.0.0,<12.0",
+]
+dev = [
+    { include-group = "dashboard" },
+    "pytest>=7.2.1,<9.0",
+    "pytest-mock>=3.10.0,<4.0",
+    "mock>=5.0.1,<6.0",
+    "pendulum>=3.0.0,<4.0",
+    "ipdb>=0.13.13",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "rodou_dashboard/tests"]
+markers = [
+    "live: testes que acessam o DOU ou INLABS reais pela rede",
+    "airflow: testes que exigem Airflow real instalado",
+]

@@ -10,7 +10,8 @@ import pytest
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
-from dou_dag_generator import DouDigestDagGenerator, YAMLParser, DAGConfig
+from parsers import YAMLParser
+from schemas import DAGConfig
 
 
 @pytest.mark.parametrize(
@@ -800,7 +801,7 @@ from dou_dag_generator import DouDigestDagGenerator, YAMLParser, DAGConfig
 )
 def test_parse(filepath, result_tuple):
     filepath = os.path.join(
-        DouDigestDagGenerator().YAMLS_DIR, "examples_and_tests", filepath
+        parentdir, "dag_confs", "examples_and_tests", filepath
     )
     parsed = YAMLParser(filepath=filepath).parse()
 
