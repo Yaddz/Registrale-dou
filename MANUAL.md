@@ -179,7 +179,7 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 
 * **Rotina Principal do Sistema (`Pesquisa_cnpj_sync`):**
   * Varre automaticamente todas as empresas ativas cadastradas no sistema.
-  * O sistema divide a lista em blocos escaláveis de até **1.500 CNPJs** por bloco de busca para garantir alto desempenho e resiliência no Airflow.
+  * O sistema divide a lista em blocos escaláveis de até **1.500 CNPJs** por bloco de busca para garantir alto desempenho e processamento paralelo.
 * **Rotinas Personalizadas:**
   * Rotinas criadas por você para buscar termos específicos, palavras-chave de licitações, nomes de sócios ou monitorar atos de órgãos públicos específicos.
 
@@ -208,7 +208,7 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 9. Clique em **Salvar Configurações**.
 
 > [!NOTE]
-> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Qualquer alteração realizada e salva no painel é sincronizada **imediatamente** com a DAG do Airflow.
+> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Qualquer alteração realizada e salva no painel é aplicada **imediatamente** no agendador local.
 
 ---
 
@@ -361,7 +361,7 @@ Na sub-aba **Integrações Gerais** (ou pelo modal de configuração do Assisten
   > **Preservação Inteligente de Senhas:** Se você já salvou uma senha anteriormente, pode atualizar os outros campos (servidor, porta, remetente) deixando o campo de senha em branco. O sistema preservará a senha salva com segurança, sem apagá-la.
 * **E-mail de Envio (From):** E-mail que aparecerá no remetente das notificações (ex: `notificacoes@registrale.com.br`).
 * **Testar Envio:** Digite um e-mail de destino e clique em **Enviar Email de Teste** (ou use o botão de teste direto no modal da rotina principal). O teste valida a conexão TLS/SSL, autenticação e entrega da mensagem em tempo real.
-* **Sincronização com o Airflow:** Ao salvar, o sistema sincroniza os dados no arquivo `.env` e atualiza a conexão `smtp_default` no Airflow de forma automática e transparente.
+* **Persistência local:** Ao salvar, o sistema grava os dados no banco SQLite local e atualiza o arquivo `.env` de forma automática e transparente.
 
 ---
 
@@ -446,7 +446,7 @@ Caso precise remover a instalação:
 ---
 
 ### ❓ "Quanto tempo leva uma busca mensal histórica via API Oficial do DOU e como acompanhar?"
-**Resposta:** Como a API Oficial do DOU consulta a Imprensa Nacional termo a termo para cada dia útil do mês pesquisado, o processamento pode levar de 5 a 15 minutos dependendo da quantidade de empresas monitoradas. O sistema processa tudo de forma assíncrona e protegida em segundo plano no Airflow. Você pode acompanhar o andamento diretamente no **Histórico de Eventos** da barra lateral, que registrará o evento **"Busca Mensal Concluída"** assim que todos os dias forem consolidados, atualizando automaticamente os KPIs e a aba **Todas as Menções**.
+**Resposta:** Como a API Oficial do DOU consulta a Imprensa Nacional termo a termo para cada dia útil do mês pesquisado, o processamento pode levar de 5 a 15 minutos dependendo da quantidade de empresas monitoradas. O sistema processa tudo de forma assíncrona em segundo plano. Você pode acompanhar o andamento diretamente no **Histórico de Eventos** da barra lateral, que registrará o evento **"Busca Mensal Concluída"** assim que todos os dias forem consolidados, atualizando automaticamente os KPIs e a aba **Todas as Menções**.
 
 ---
 

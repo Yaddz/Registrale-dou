@@ -163,7 +163,7 @@ def extract_mentions_from_results(results_raw_list, cnpj_map=None):
     return extracted_mentions
 
 
-def fetch_mentions_from_dag_run(dag_id, dag_run_id, airflow_url=None, auth=None, cnpj_map=None):
+def fetch_mentions_from_dag_run(dag_id, dag_run_id, cnpj_map=None):
     """Extrai as menções de uma execução concluída usando a camada Executor."""
     raw_items = get_executor().result(dag_run_id, routine=dag_id)
     results_raw_list = []
@@ -758,8 +758,6 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
     if run_ids:
         with app_context:
             get_executor().wait(run_ids, timeout=1800)
-    airflow_url = None
-    auth = None
     with app_context:
         try:
             # 2. Formatar data de referência
@@ -784,7 +782,7 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 did = item.get('dag_id')
                 run_id = item.get('dag_run_id')
                 if did:
-                    run_res = fetch_mentions_from_dag_run(did, run_id, airflow_url, auth, cnpj_map=cnpj_map)
+                    run_res = fetch_mentions_from_dag_run(did, run_id, cnpj_map=cnpj_map)
                     direct_mentions.extend(run_res)
 
             # Se obteve menções diretas, insere/atualiza no banco SQLite para o Dashboard
@@ -1175,7 +1173,7 @@ def trigger_routine(file):
             except: continue
         
         if success_count > 0:
-            add_history_event("Busca Iniciada", f"Rotina {file} ({success_count} parte(s)) disparada via Airflow. Data Lógica: {logical_date or 'Atual'}")
+            add_history_event("Busca Iniciada", f"Rotina {file} ({success_count} parte(s)) disparada localmente. Data Lógica: {logical_date or 'Atual'}")
             app_ctx = current_app._get_current_object().app_context()
             first_trigger_time = triggered_runs[0].get("trigger_time") if triggered_runs else None
             threading.Thread(
@@ -1199,7 +1197,7 @@ def trigger_routine(file):
             
             ok, msg, run_info = _dispatch_routine(dag_id, logical_date)
             if ok:
-                add_history_event("Busca Iniciada", f"Rotina {file} disparada via Airflow. Data Lógica: {logical_date or 'Atual'}")
+                add_history_event("Busca Iniciada", f"Rotina {file} disparada localmente. Data Lógica: {logical_date or 'Atual'}")
                 app_ctx = current_app._get_current_object().app_context()
                 threading.Thread(
                     target=watch_dag_and_update_mentions, 
@@ -1209,7 +1207,7 @@ def trigger_routine(file):
                 return jsonify({"status": "success", "message": f"Busca {dag_id} iniciada!"})
             else:
                 add_history_event("Busca (Tentativa)", f"Tentativa de disparar {dag_id}: {msg}")
-                return jsonify({"status": "warning", "message": "Busca solicitada, mas houve erro no Airflow.", "details": msg})
+                return jsonify({"status": "warning", "message": "Busca solicitada, mas houve erro ao iniciar a execução.", "details": msg})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -1500,8 +1498,6 @@ def api_trigger_monthly():
         from ..models import db, Settings
 
         confs_path = get_dag_confs_path()
-        airflow_url = None
-        auth = None
                 
         # Calcular dias úteis do mês (excluindo feriados e finais de semana) em ordem cronológica
         weekdays = get_business_days_for_month(year, month, cap_today=True)
@@ -1777,7 +1773,7 @@ def api_trigger_monthly():
                     did = r_info.get("dag_id")
                     run_id = r_info.get("dag_run_id")
                     if did and run_id:
-                        extracted = fetch_mentions_from_dag_run(did, run_id, airflow_url, auth, cnpj_map=cnpj_map)
+                        extracted = fetch_mentions_from_dag_run(did, run_id, cnpj_map=cnpj_map)
                         for m in extracted:
                             if m['id'] not in seen_ids:
                                 seen_ids.add(m['id'])

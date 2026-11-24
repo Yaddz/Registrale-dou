@@ -1,6 +1,6 @@
 # 05. Guia Operacional, Configuração e Deploy
 
-Este guia orienta como configurar, executar localmente, realizar o build Docker e manter o **Ro-DOU Dashboard** em ambiente de produção.
+Este guia orienta como configurar, executar localmente, gerar o instalador Windows e manter o **Ro-DOU Dashboard**.
 
 ---
 

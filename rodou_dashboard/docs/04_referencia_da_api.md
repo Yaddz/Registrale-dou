@@ -272,7 +272,7 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 ```
 
 ### `POST /api/routines/cleanup_temp`
-* **Descrição:** Força a limpeza manual imediata de arquivos YAML temporários (`temp_*.yaml`), desregistra DAGs órfãs na API do Airflow e remove pastas de logs temporárias (com `force_all=True`).
+* **Descrição:** Mantida por compatibilidade de rota; no modo local não há DAGs temporárias em disco.
 * **Resposta de Sucesso (200):**
 ```json
 {
@@ -386,7 +386,7 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 ```
 
 ### `POST /api/save_settings`
-* **Descrição:** Salva as configurações globais do sistema (`Settings`). Preserva senhas preexistentes quando o campo for enviado em branco, higieniza espaços em senhas de app do Gmail e sincroniza a conexão `smtp_default` no Airflow. Requer perfil `master`.
+* **Descrição:** Salva as configurações globais do sistema (`Settings`). Preserva senhas preexistentes quando o campo for enviado em branco, higieniza espaços em senhas de app do Gmail e atualiza o `.env` local. Requer perfil `master`.
 
 ### `POST /api/sync`
 * **Descrição:** Dispara a sincronização manual de clientes com a API do GestãoClick em background. Valida previamente as credenciais (`gestaoclick_access_token` e `gestaoclick_secret_token`), retornando HTTP 400 com mensagem explicativa caso não estejam cadastradas.

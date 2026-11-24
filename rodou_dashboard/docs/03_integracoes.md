@@ -62,7 +62,7 @@ Responsável pelo envio de alertas imediatos quando uma empresa monitorada é me
 * Suporte a autenticação com usuário e senha ou chaves de aplicativo (ex: Gmail/Google Workspace, Microsoft 365, Amazon SES, SendGrid).
 * **Higienização Automática de Credenciais:** Remove automaticamente espaços inseridos por conveniência visual em Senhas de Aplicativo do Google (`abcd efgh ijkl mnop`).
 * **Preservação Inteligente de Senhas:** Atualizações de configurações que deixem o campo de senha vazio mantêm a senha salva previamente no banco de dados, evitando perda acidental de credenciais.
-* **Sincronização com o Airflow:** O salvamento de SMTP grava automaticamente as configurações no `.env` e atualiza a conexão `smtp_default` via REST API do Airflow.
+* **Persistência local:** O salvamento de SMTP grava automaticamente as configurações no SQLite e no arquivo `.env` local.
 * **Renderização Dinâmica de Templates:** Substitui variáveis no corpo HTML do e-mail:
   * `{empresa}`: Razão Social da empresa
   * `{cnpj}`: CNPJ da empresa

@@ -44,7 +44,7 @@ A documentação está dividida nos seguintes módulos:
 5. [**05. Guia Operacional, Configuração e Deploy**](05_guia_operacional_e_deploy.md)
    - Requisitos e variáveis de ambiente (`.env`)
    - Execução local para desenvolvimento
-   - Deploy com Docker e Gunicorn
+   - Execução local (Waitress) e empacotamento Windows (Inno Setup)
    - Execução dos testes automatizados
 
 ---
@@ -54,6 +54,6 @@ A documentação está dividida nos seguintes módulos:
 * **Backend:** Python 3.10+, Flask, SQLAlchemy, Gunicorn.
 * **Frontend:** Alpine.js, Tailwind CSS (CDN), Lucide Icons.
 * **Bancos de Dados:** SQLite (banco de aplicação local `/data/dashboard.db`) + PostgreSQL (banco INLABS `/data/dou_inlabs`).
-* **Sincronização:** Airflow DAGs + Workers em background (Google Sheets Scheduler e Mentions Watcher).
+* **Sincronização:** APScheduler + Workers em background (Google Sheets Scheduler e Mentions Watcher).
 * **Testes:** 85 testes automatizados com pytest.
 * **Feriados:** Cálculo dinâmico de dias úteis com feriados nacionais (algoritmo Computus de Butcher).

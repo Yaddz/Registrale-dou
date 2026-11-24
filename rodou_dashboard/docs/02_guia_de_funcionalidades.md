@@ -56,14 +56,14 @@ Aba acessível no menu superior para gestão completa da base de clientes:
 Permite configurar, disparar sob demanda e automatizar as pesquisas nos Diários Oficiais:
 
 * **Tipos de Rotinas:**
-  * **Rotina de Sistema (`Pesquisa_cnpj_sync`):** Rotina principal que lê todas as empresas ativas do banco SQLite e divide automaticamente os CNPJs em blocos para execução paralela de alta performance no Airflow.
+  * **Rotina de Sistema (`Pesquisa_cnpj.yaml`):** Rotina principal que lê todas as empresas ativas do banco SQLite e divide automaticamente os CNPJs em blocos para execução paralela de alta performance.
   * **Rotinas Personalizadas:** Rotinas customizadas para monitoramento de termos específicos (ex: palavras-chave de licitações, nomes de sócios, órgãos públicos específicos).
 * **Ações por Rotina:**
   * **Rodar Agora:** Dispara imediatamente a rotina para a data corrente.
   * **Disparar com Data Lógica:** Modal inteligente com suporte a datas no formato `DD/MM/AAAA` (com máscara automática) e `AAAA-MM-DD`, calendário flutuante interativo (Flatpickr), detecção de feriados nacionais e finais de semana (informando ausência de circulação do DOU) e aviso automático com comutação para a API Oficial do DOU quando a data for anterior a 120 dias.
   * **Busca Mensal Automatizada:** Dispara a varredura para todos os dias úteis de um mês e ano selecionados. Inclui download automatizado em lote de múltiplos dias faltantes no portal INLABS com sessão persistente (sem bloqueios de rate limit) e suporte completo ao **Cenário Misto** na busca (sumário visual com 3 categorias: ✅ *No Banco INLABS*, 📥 *Baixar INLABS*, 🌐 *Via API DOU*).
   * **Modos de Execução da Busca Mensal:** A execução suporta perfis variados de busca: `full` (executa dias no banco e busca faltantes via API DOU), `download_and_search` (baixa no INLABS os dias na janela de 120 dias e pesquisa históricos via API DOU), `inlabs_only` (busca somente dias salvos no PostgreSQL) e `api_dou_only` (pesquisa todo o período diretamente pela API Oficial do DOU).
-  * **Proteção e Estabilidade de DAGs Temporárias:** As DAGs temporárias geradas para consultas ad-hoc e buscas mensais (via API DOU) são monitoradas de forma protegida, com tolerância ampliada de 1 hora e verificação ativa no Airflow para evitar cancelamento prematuro por limpezas em segundo plano ou reciclagem de processos.
+  * **Buscas Avulsas e Mensais em Memória:** As consultas ad-hoc e buscas mensais (via PDF integral ou API do DOU) são executadas diretamente em memória pelo `LocalExecutor`, sem necessidade de arquivos temporários em disco.
   * **Padronização INLABS:** Todas as novas rotinas criadas automaticamente usam `INLABS` como fonte de dados padrão e replicam os e-mails de destinatário da rotina principal.
   * **Ativar/Pausar Rotina:** Chave para habilitar ou desabilitar o agendamento da rotina.
   * **Configurações Avançadas:** Edição do Cron de execução, seções do DOU (`SEÇÃO 1`, `SEÇÃO 2`, `SEÇÃO 3`), lista de órgãos específicos, busca por termo exato e e-mails de alerta.
@@ -76,7 +76,7 @@ O sistema verifica continuamente a integridade de todas as integrações ao carr
   1. **Destinatários e Notificação:** E-mails de destino (obrigatório com validação de regex), assunto do e-mail e horário de execução (cron).
   2. **Servidor de Envio (SMTP):** Servidor, porta, usuário, senha (com preservação de senhas preexistentes) e e-mail de envio, com botão de teste imediato de conexão SMTP dentro do modal.
 * **Fluxo Wizard Sequencial:** Ao salvar com sucesso uma etapa, o assistente abre o modal de confirmação sugerindo o avanço imediato para a próxima integração pendente.
-* Após salvar, o sistema sincroniza atomicamente o SQLite, o YAML `Pesquisa_cnpj.yaml`, as variáveis do `.env` e as conexões do Airflow (`smtp_default`).
+* Após salvar, o sistema sincroniza atomicamente o SQLite, o YAML `Pesquisa_cnpj.yaml` e as variáveis do `.env`.
 
 ---
 

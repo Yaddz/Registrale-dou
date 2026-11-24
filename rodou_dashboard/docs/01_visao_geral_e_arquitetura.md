@@ -20,7 +20,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
                            │               │                │
             ┌──────────────▼──────┐ ┌──────▼──────┐ ┌───────▼──────────────┐
             │   SQLite Database   │ │ YAML Configs│ │ Background Workers   │
-            │ (/data/dashboard.db)│ │(Airflow DAG)│ │ - Mentions Watcher   │
+            │ (database.db)      │ │(LocalExecutor)│ │ - Mentions Watcher  │
             │ - Users, Companies  │ │- Pesquisa_  │ │ - Sheets Scheduler   │
             │ - Mentions, History │ │  cnpj_*.yaml│ └──────────────────────┘
             │ - Settings,Template │ └─────────────┘
@@ -34,7 +34,7 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
        │ • Google Sheets API v4        │
        │ • PostgreSQL INLABS (Matérias)│
        │ • Servidor SMTP (E-mails)     │
-       │ • Apache Airflow (Execução)   │
+       │ • LocalExecutor + APScheduler   │
        └───────────────────────────────┘
 ```
 
@@ -128,7 +128,7 @@ O banco de dados SQLite principal fica localizado no volume persistente `/data/d
 Para garantir alta performance e tempo de resposta instantâneo na interface web, o Dashboard utiliza threads de segundo plano (daemons) que são inicializadas na subida da aplicação (`create_app`):
 
 ### 1. Mentions Watcher (`start_mentions_watcher()`)
-* Monitora o diretório de dados em busca de novos resultados gerados pelas tarefas de busca do Airflow.
+* Monitora a execução local (`JobRun`) em busca de novos resultados gerados pelas rotinas de busca.
 * Ao identificar novas detecções, extrai as informações estruturadas (data, empresa, CNPJ, seção, trecho limpo e link da publicação), insere de forma atômica no banco SQLite (`Mention`) e registra o evento em `SyncHistory`.
 * Permite que o dashboard exiba alertas sonoros e notificações em tempo real sem precisar reiniciar a aplicação.
 
@@ -138,5 +138,5 @@ Para garantir alta performance e tempo de resposta instantâneo na interface web
 
 ### 3. Limpeza Segura de DAGs Órfãs (`cleanup_orphaned_temp_dags()`)
 * Função executada periodicamente na listagem de rotinas (`get_routines`) e no boot da aplicação para manutenção preventiva do ambiente.
-* **Proteção contra Remoção Prematura:** Antes de excluir qualquer arquivo YAML temporário (`temp_*.yaml`) ou desregistrar a DAG do Airflow, a função consulta a API REST do Airflow (`GET /api/v1/dags/{dag_id}/dagRuns`). Caso a DAG possua execuções com status `running` ou `queued`, a limpeza é imediatamente ignorada para garantir que buscas mensais históricas ou ad-hoc em lote não sejam interrompidas.
+* **Execução em Memória:** Buscas ad-hoc e mensais são executadas diretamente em memória pelo `LocalExecutor`, evitando arquivos YAML temporários órfãos em disco.
 * **Janela de Tolerância:** Utiliza janela de segurança de 1 hora (`max_age_seconds=3600`) para expurgar apenas arquivos verdadeiramente abandonados ou sem execuções ativas, mantendo o ambiente de execução limpo sem afetar buscas de longa duração.

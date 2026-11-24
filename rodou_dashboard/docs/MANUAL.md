@@ -42,6 +42,7 @@
    - [6.4. Como Criar e Personalizar Templates de E-mail](#64-como-criar-e-personalizar-templates-de-e-mail)
    - [6.5. Como Conectar ao ERP GestãoClick](#65-como-conectar-ao-erp-gestãoclick)
    - [6.6. Limpeza e Manutenção do Sistema](#66-limpeza-e-manutenção-do-sistema)
+   - [6.7. Como Atualizar ou Desinstalar o Sistema](#67-como-atualizar-ou-desinstalar-o-sistema)
 7. [Perguntas Frequentes (FAQ) & Dúvidas do Dia a Dia](#7-perguntas-frequentes-faq--dúvidas-do-dia-a-dia)
 
 ---
@@ -178,7 +179,7 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 
 * **Rotina Principal do Sistema (`Pesquisa_cnpj_sync`):**
   * Varre automaticamente todas as empresas ativas cadastradas no sistema.
-  * O sistema divide a lista em blocos escaláveis de até **1.500 CNPJs** por bloco de busca para garantir alto desempenho e resiliência no Airflow.
+  * O sistema divide a lista em blocos escaláveis de até **1.500 CNPJs** por bloco de busca para garantir alto desempenho e processamento paralelo.
 * **Rotinas Personalizadas:**
   * Rotinas criadas por você para buscar termos específicos, palavras-chave de licitações, nomes de sócios ou monitorar atos de órgãos públicos específicos.
 
@@ -207,7 +208,7 @@ Na barra lateral, clique em **Rotinas de Busca** para configurar como e quando o
 9. Clique em **Salvar Configurações**.
 
 > [!NOTE]
-> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Qualquer alteração realizada e salva no painel é sincronizada **imediatamente** com a DAG do Airflow.
+> Todas as novas rotinas utilizam por padrão o **INLABS** como fonte de dados e replicam automaticamente os e-mails de destino cadastrados na rotina principal. Qualquer alteração realizada e salva no painel é aplicada **imediatamente** no agendador local.
 
 ---
 
@@ -360,7 +361,7 @@ Na sub-aba **Integrações Gerais** (ou pelo modal de configuração do Assisten
   > **Preservação Inteligente de Senhas:** Se você já salvou uma senha anteriormente, pode atualizar os outros campos (servidor, porta, remetente) deixando o campo de senha em branco. O sistema preservará a senha salva com segurança, sem apagá-la.
 * **E-mail de Envio (From):** E-mail que aparecerá no remetente das notificações (ex: `notificacoes@registrale.com.br`).
 * **Testar Envio:** Digite um e-mail de destino e clique em **Enviar Email de Teste** (ou use o botão de teste direto no modal da rotina principal). O teste valida a conexão TLS/SSL, autenticação e entrega da mensagem em tempo real.
-* **Sincronização com o Airflow:** Ao salvar, o sistema sincroniza os dados no arquivo `.env` e atualiza a conexão `smtp_default` no Airflow de forma automática e transparente.
+* **Persistência local:** Ao salvar, o sistema grava os dados no banco SQLite local e atualiza o arquivo `.env` de forma automática e transparente.
 
 ---
 
@@ -415,6 +416,23 @@ Na sub-aba **Limpeza do Sistema**:
 
 ---
 
+### 6.7. Como Atualizar ou Desinstalar o Sistema
+
+O Registrale-DOU é instalado no Windows como aplicativo desktop (`Registrale-Setup-x.y.z.exe`), com dados preservados em `%LOCALAPPDATA%\Registrale`:
+
+#### 🔄 Como Atualizar o Sistema
+Para obter novas funcionalidades, melhorias de desempenho e correções de segurança:
+1. No painel, acesse **Configurações → Verificar atualizações** (ou baixe o novo `Registrale-Setup-x.y.z.exe`).
+2. Execute o instalador sobre a instalação atual.
+3. Os dados (`database.db`, rotinas YAML, configurações e PDFs arquivados) são preservados automaticamente.
+
+#### 🗑️ Como Desinstalar o Sistema
+Caso precise remover a instalação:
+1. Abra **Configurações do Windows → Aplicativos** e selecione **Registrale-DOU** (ou execute `unins000.exe` em `%LOCALAPPDATA%\Programs\Registrale`).
+2. O desinstalador remove o programa e os atalhos, mantendo seus dados locais em `%LOCALAPPDATA%\Registrale` para eventual reinstalação.
+
+---
+
 ## 7. Perguntas Frequentes (FAQ) & Dúvidas do Dia a Dia
 
 ### ❓ "O que é o banner amarelo pedindo para configurar a rotina principal?"
@@ -428,7 +446,7 @@ Na sub-aba **Limpeza do Sistema**:
 ---
 
 ### ❓ "Quanto tempo leva uma busca mensal histórica via API Oficial do DOU e como acompanhar?"
-**Resposta:** Como a API Oficial do DOU consulta a Imprensa Nacional termo a termo para cada dia útil do mês pesquisado, o processamento pode levar de 5 a 15 minutos dependendo da quantidade de empresas monitoradas. O sistema processa tudo de forma assíncrona e protegida em segundo plano no Airflow. Você pode acompanhar o andamento diretamente no **Histórico de Eventos** da barra lateral, que registrará o evento **"Busca Mensal Concluída"** assim que todos os dias forem consolidados, atualizando automaticamente os KPIs e a aba **Todas as Menções**.
+**Resposta:** Como a API Oficial do DOU consulta a Imprensa Nacional termo a termo para cada dia útil do mês pesquisado, o processamento pode levar de 5 a 15 minutos dependendo da quantidade de empresas monitoradas. O sistema processa tudo de forma assíncrona em segundo plano. Você pode acompanhar o andamento diretamente no **Histórico de Eventos** da barra lateral, que registrará o evento **"Busca Mensal Concluída"** assim que todos os dias forem consolidados, atualizando automaticamente os KPIs e a aba **Todas as Menções**.
 
 ---
 
