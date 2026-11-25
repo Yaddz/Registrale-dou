@@ -1,6 +1,6 @@
 /*
  * Registrale — configuração do Tailwind (Play CDN).
- * Fonte da verdade dos tokens visuais. Documentação: rodou_dashboard/docs/06_design_system.md
+ * Fonte da verdade dos tokens visuais. Documentação: docs/tecnico/06_design_system.md
  *
  * Paleta reduzida a 5 famílias:
  *   neutral (stone)  → superfícies, texto, bordas

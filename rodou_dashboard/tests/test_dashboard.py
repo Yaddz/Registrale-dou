@@ -721,7 +721,7 @@ class TestNewOptimizedFeatures:
         data = resp.get_json()
         assert data.get('status') == 'success'
         assert 'Manual do Usuário' in data.get('content')
-        assert 'Visão Geral' in data.get('content')
+        assert 'Concluída com pendências' in data.get('content')
 
     def test_download_user_manual_endpoint(self, auth_client):
         resp = auth_client.get('/api/manual?download=true')

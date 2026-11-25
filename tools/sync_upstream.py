@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OURS_FILES: tuple[str, ...] = (
     "AGENTS.md",
     "README.md",
+    "CHANGELOG.md",
 )
 
 # Caminhos do upstream removidos pelo projeto (re-removidos automaticamente após merge).
@@ -41,9 +42,24 @@ REMOVED_PATHS: tuple[str, ...] = (
     "tests/test_dag_loading.py",
     "tests/test_e2e_dag_execution.py",
     ".github/workflows/ci-tests.yml",
+    ".github/workflows/gh_pages.yml",
+    ".github/workflows/update_changelog.yml",
     ".github/workflows/docker_build_and_publish.yml",
     ".env.example",
     "requirements-uninstall.txt",
+    "docs/mkdocs.yml",
+    "docs/index.html",
+    "docs/overrides",
+    "docs/version.txt",
+    "docs/docs",
+    "docs/img/Makerun.png",
+    "docs/img/makerunwsl.png",
+    "docs/img/new_make_run.png",
+    "docs/img/exemplo-dag-doc_md.png",
+    "docs/img/fluxo_add_opensearch.png",
+    "docs/img/rodou_arquitetura.excalidraw",
+    "docs/img/rodou_arquitetura.png",
+    "docs/img/rodou_arquitetura.svg",
 )
 
 
@@ -137,7 +153,7 @@ def sync_upstream(
         print(f"  - {path}")
 
     if conflicts:
-        print("\nAção necessária: resolva os conflitos acima (consulte plano/UPSTREAM.md) e rode os testes.")
+        print("\nAção necessária: resolva os conflitos acima (consulte docs/tecnico/UPSTREAM.md) e rode os testes.")
         return 1
 
     if run_tests:

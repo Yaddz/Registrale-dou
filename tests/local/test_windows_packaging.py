@@ -523,15 +523,20 @@ class TestWindowsLauncherAndArtifacts:
 
     def test_build_excludes_client_routine_and_git_does_not_track_it(self):
         """build.ps1 remove Pesquisa_cnpj*.yaml do stage e Pesquisa_cnpj.yaml não está versionado."""
+        import shutil
         import subprocess
 
         repo_root = Path(__file__).resolve().parents[2]
         build_ps1 = (repo_root / "windows" / "build.ps1").read_text(encoding="utf-8")
         assert "Pesquisa_cnpj*.y*ml" in build_ps1
         assert "LeakedRoutines" in build_ps1
+        assert "docs\\manual" in build_ps1
 
         gitignore = (repo_root / ".gitignore").read_text(encoding="utf-8")
         assert "dag_confs/Pesquisa_cnpj*.yaml" in gitignore
+
+        if not (repo_root / ".git").exists() or shutil.which("git") is None:
+            pytest.skip("Repositório .git ou executável git indisponível neste ambiente")
 
         tracked = subprocess.check_output(
             ["git", "ls-files", "dag_confs/Pesquisa_cnpj.yaml"],

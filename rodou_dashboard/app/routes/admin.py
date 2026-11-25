@@ -759,31 +759,40 @@ def open_pdf_storage_folder():
 @admin_bp.route('/manual', methods=['GET'])
 @login_required
 def get_user_manual():
-    """Retorna o conteúdo do Manual do Usuário em Markdown ou como download."""
+    """Retorna o conteúdo do Manual único (docs/manual/) em Markdown ou como download."""
+    import io
+    from pathlib import Path
     from flask import send_file, request
-    manual_candidates = [
-        os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'MANUAL.md'),
-        os.path.join(BASE_DIR, 'MANUAL.md'),
-        os.path.join(BASE_DIR, 'rodou_dashboard', 'docs', 'MANUAL.md'),
+
+    manual_dir_candidates = [
+        Path(BASE_DIR) / 'docs' / 'manual',
+        Path(__file__).resolve().parents[3] / 'docs' / 'manual',
     ]
-    manual_path = None
-    for p in manual_candidates:
-        if os.path.exists(p):
-            manual_path = p
-            break
-            
-    if not manual_path:
+    manual_dir = next((d for d in manual_dir_candidates if d.is_dir()), None)
+
+    content = None
+    if manual_dir is not None:
+        files = sorted(
+            [f for f in manual_dir.glob('*.md') if f.is_file()],
+            key=lambda p: (0 if p.name.lower() == 'readme.md' else 1, p.name),
+        )
+        if files:
+            parts = [f.read_text(encoding='utf-8').strip() for f in files]
+            content = '\n\n---\n\n'.join(p for p in parts if p) + '\n'
+
+    if not content:
         return jsonify({"status": "error", "message": "Manual não encontrado."}), 404
-        
+
     if request.args.get('download', '').lower() in ('true', '1', 'yes'):
-        return send_file(manual_path, as_attachment=True, download_name='MANUAL.md', mimetype='text/markdown')
-        
-    try:
-        with open(manual_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        return jsonify({"status": "success", "content": content})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        buf = io.BytesIO(content.encode('utf-8'))
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name='MANUAL.md',
+            mimetype='text/markdown',
+        )
+
+    return jsonify({"status": "success", "content": content})
 
 
 @admin_bp.route('/admin/logs', methods=['GET'])

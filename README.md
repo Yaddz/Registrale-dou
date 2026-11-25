@@ -89,7 +89,7 @@ Para gerar o instalador Windows (em ambiente Windows com Inno Setup 6):
 
 ## Atualizações do Ro-DOU oficial (upstream)
 
-O núcleo de busca (`src/`) permanece compatível com o repositório oficial do Ro-DOU (`upstream/main`) por meio do shim em `compat/airflow_shim/`. O procedimento completo de merge, a lista de patches locais e os caminhos removidos estão documentados em [`plano/UPSTREAM.md`](plano/UPSTREAM.md).
+O núcleo de busca (`src/`) permanece compatível com o repositório oficial do Ro-DOU (`upstream/main`) por meio do shim em `compat/airflow_shim/`. O procedimento completo de merge, a lista de patches locais e os caminhos removidos estão documentados em [`docs/tecnico/UPSTREAM.md`](docs/tecnico/UPSTREAM.md).
 
 ```bash
 uv run python tools/sync_upstream.py
@@ -97,11 +97,13 @@ uv run python tools/sync_upstream.py
 
 ---
 
-## Documentação adicional
+## Documentação
 
-- [`MANUAL.md`](MANUAL.md) — Manual do usuário
-- [`rodou_dashboard/docs/`](rodou_dashboard/docs/README.md) — Arquitetura, API REST e guia operacional
-- [`plano/PLANO.md`](plano/PLANO.md) — Histórico e especificações da migração para Windows
+- [`docs/manual/`](docs/manual/README.md) — Manual único do analista (também acessível dentro do painel)
+- [`docs/tecnico/`](docs/tecnico/01_visao_geral_e_arquitetura.md) — Arquitetura, funcionalidades, integrações, API REST, build Windows e Design System
+- [`docs/upstream/`](docs/upstream/pesquisa_dou.md) — Guias de pesquisa, operadores e parâmetros do Ro-DOU aplicáveis ao app
+- [`docs/projeto/PLANO.md`](docs/projeto/PLANO.md) — Plano de migração, decisões de arquitetura e histórico dos sprints
+- [`CHANGELOG.md`](CHANGELOG.md) — Histórico de versões do Registrale-DOU
 
 ---
 

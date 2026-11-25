@@ -127,6 +127,13 @@ foreach ($Dir in $DirsToCopy) {
     }
 }
 
+$ManualSrc = Join-Path $RepoRoot "docs\manual"
+if (Test-Path $ManualSrc) {
+    $ManualDst = Join-Path $AppStage "docs\manual"
+    New-Item -ItemType Directory -Force -Path $ManualDst | Out-Null
+    Copy-Item -Path (Join-Path $ManualSrc "*") -Destination $ManualDst -Recurse -Force
+}
+
 # Remove pastas de testes, caches, artefatos locais e rotinas com dados de clientes do pacote final
 Get-ChildItem -Path $AppStage -Include "__pycache__",".pytest_cache","tests" -Directory -Recurse | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 $DagConfsStage = Join-Path $AppStage "dag_confs"

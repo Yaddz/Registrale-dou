@@ -119,13 +119,18 @@ def test_open_pdf_storage_folder_validation_and_launch(auth_client, app, tmp_pat
     missing = auth_client.post("/api/pdf_storage/open_folder", json={"target": "analyst"})
     assert missing.status_code == 404
 
-    # Pasta existente: abre sem erro (subprocess mockado)
+    # Pasta existente: abre sem erro (os.startfile no Windows, subprocess nos demais)
     analyst_dir.mkdir(parents=True, exist_ok=True)
-    with patch("subprocess.Popen") as popen_mock:
+    with patch("subprocess.Popen") as popen_mock, patch("os.startfile", create=True) as startfile_mock:
         ok = auth_client.post("/api/pdf_storage/open_folder", json={"target": "analyst"})
         assert ok.status_code == 200
         assert ok.get_json()["path"] == str(analyst_dir)
-        popen_mock.assert_called_once()
+        if os.name == "nt":
+            startfile_mock.assert_called_once_with(str(analyst_dir))
+            popen_mock.assert_not_called()
+        else:
+            popen_mock.assert_called_once()
+            startfile_mock.assert_not_called()
 
 
 def test_pdf_storage_stats_counts_root_and_old_layout(auth_client, app, tmp_path, monkeypatch):
