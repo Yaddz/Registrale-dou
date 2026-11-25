@@ -188,9 +188,13 @@ def test_smtp():
     test_email = data.get('test_email')
     
     from ..models import Settings
+    from ..services.email_service import is_smtp_enabled
     settings_record = Settings.query.filter_by(key='global_settings').first()
     saved_settings = settings_record.get_value() if settings_record else {}
     saved_smtp = saved_settings.get('smtp', {}) if isinstance(saved_settings, dict) else {}
+    smtp_enabled = bool(smtp['enabled']) if 'enabled' in smtp else is_smtp_enabled(saved_smtp)
+    if not smtp_enabled:
+        return jsonify({"status": "error", "message": "E-mail desativado em Configurações → Integrações."}), 400
     
     server = str(smtp.get('server') or saved_smtp.get('server') or '').strip()
     if server.lower().startswith('stmp.'):
@@ -253,7 +257,9 @@ def test_smtp():
 @exports_bp.route('/send_email', methods=['POST'])
 @login_required
 def send_email():
-    from ..services.email_service import EmailSender
+    from ..services.email_service import EmailSender, is_smtp_enabled
+    if not is_smtp_enabled():
+        return jsonify({"status": "error", "message": "E-mail desativado em Configurações → Integrações."}), 400
     data = request.get_json(silent=True) or {}
     to_emails = data.get('to_emails', [])
     subject = data.get('subject', 'Notificação Registrale')

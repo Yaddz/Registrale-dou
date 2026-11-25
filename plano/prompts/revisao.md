@@ -10,7 +10,7 @@ Leitura obrigatória:
 Verifique:
 - Cada item do critério de aceite foi cumprido **com evidência reproduzível**? Rode você mesmo os testes indicados no Registro.
 - Regressões nas regras de negócio: CNPJ por raiz, seções, menções gravadas antes do e-mail, fallback do INLABS (nunca pesquisar banco vazio; PDF integral → API do DOU, regra 6 do `AGENTS.md`), datas e baseline de novembro/2026 (26 menções, 16 empresas).
-- Enquanto existirem os dois modos: o modo Docker (`REGISTRALE_EXECUTOR=airflow`) continua funcionando?
+- A partir do Sprint 11: os testes de busca usaram a rotina de teste de 16 empresas (gerada de `tests/fixtures/baseline/nov2026_mentions.json`, sem nova lista de clientes versionada) e o log do app ficou sem `NoneType`/tracebacks?
 - Compatibilidade com o upstream: houve mudança em `src/` ou `dag_load_inlabs/`? Está registrada em `plano/UPSTREAM.md` e é mínima?
 - Windows: caminhos, encoding, processos, portas, permissões e ausência de dependências só de Linux.
 - Concorrência e idempotência (agendador, threads, buscas repetidas e downloads), timeouts e retries, uso de memória e rede.

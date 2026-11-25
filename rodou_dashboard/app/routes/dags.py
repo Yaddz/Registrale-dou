@@ -48,6 +48,10 @@ def _validate_routine_file_names():
         if not _is_safe_routine_name(n):
             return jsonify({"status": "error", "message": "Nome de arquivo de rotina inválido."}), 400
 
+# Parâmetros padrão iguais à baseline: Seções 1/2/3 + Edição Extra
+DEFAULT_DOU_SECTIONS = ["SECAO_1", "SECAO_2", "SECAO_3", "EDICAO_EXTRA"]
+
+
 def add_history_event(evento, detalhes):
     from ..models import SyncHistory
     SyncHistory.log_event(evento, detalhes)
@@ -90,6 +94,104 @@ def _extract_sources_used_from_runs(run_ids) -> str:
         return ", ".join(labels)
     except Exception:
         return ""
+
+
+def _summarize_coverage_from_runs(run_ids):
+    """Resume a cobertura por seção das execuções: ``(texto, pendentes)``.
+
+    Distingue "dia sem menções" (todas as seções cobertas) de "busca incompleta"
+    (``pendentes`` não vazio).
+    """
+    if not run_ids:
+        return "", []
+    try:
+        from ..models import JobRun
+        by_label = {}
+        notes = []
+        for job in JobRun.query.filter(JobRun.id.in_(list(run_ids))).all():
+            for block in job.get_resultado():
+                if not isinstance(block, dict):
+                    continue
+                for note in block.get("notes") or []:
+                    if note not in notes:
+                        notes.append(note)
+                for cov in block.get("coverage") or []:
+                    if not isinstance(cov, dict):
+                        continue
+                    label = cov.get("label") or cov.get("section")
+                    prev = by_label.get(label)
+                    # pendente prevalece sobre os demais estados
+                    if prev is None or cov.get("status") == "pendente":
+                        by_label[label] = cov
+        parts, pending = [], []
+        names = {"coberta": "ok", "sem_edicao": "sem edição", "pendente": "PENDENTE"}
+        for label, cov in by_label.items():
+            parts.append(f"{label}: {names.get(cov.get('status'), cov.get('status'))} ({cov.get('source')})")
+            if cov.get("status") == "pendente":
+                pending.append(label)
+        text = "; ".join(parts)
+        if notes:
+            text += (" | Avisos: " if text else "Avisos: ") + " ".join(notes)
+        return text, pending
+    except Exception:
+        return "", []
+
+
+def _is_pdf_mention_id(mention_id) -> bool:
+    return str(mention_id or "").split("_", 1)[-1].startswith("pdf-")
+
+
+def _section_key(secao) -> str:
+    """Seção normalizada para a chave entre fontes (PDF: "DOU - Edição Extra"; API: "... Extra A")."""
+    low = re.sub(r"\s+", " ", str(secao or "")).strip().lower()
+    return "extra" if "extra" in low else low
+
+
+def reconcile_mentions_across_sources(mentions):
+    """Evita duplicar a mesma menção quando muda a fonte (PDF x API do DOU).
+
+    O id da menção depende da fonte (``pdf-<data>-<jornal>-<página>`` x id da API), então
+    uma nova tentativa do dia que troque de fonte criaria outra linha e outro e-mail. A
+    chave estável entre fontes é (CNPJ, data, seção): uma menção de PDF e uma da API com a
+    mesma chave são a mesma publicação. Cada linha existente de outra fonte "consome" no
+    máximo uma menção nova (vários atos da mesma empresa/seção/dia continuam distintos).
+
+    Retorna ``(menções_a_gravar, ids_ja_notificados)``: a API substitui a linha de PDF (a
+    linha antiga é removida da sessão) e o PDF é descartado se já existe a da API; os ids
+    devolvidos já foram gravados antes, logo não geram novo e-mail.
+    """
+    from ..models import Mention, db
+
+    mentions = list(mentions or [])
+    ids = [m["id"] for m in mentions if m.get("id")]
+    existing_ids = {r.id for r in Mention.query.filter(Mention.id.in_(ids)).all()} if ids else set()
+    norms = {m.get("cnpj_norm") for m in mentions if m.get("cnpj_norm")}
+    dates = {m.get("data") for m in mentions if m.get("data")}
+    if not norms or not dates:
+        return mentions, set()
+
+    by_key = {}
+    for row in Mention.query.filter(Mention.cnpj_norm.in_(norms), Mention.data.in_(dates)).all():
+        by_key.setdefault((row.cnpj_norm, row.data, _section_key(row.secao)), []).append(row)
+
+    kept, already_notified = [], set()
+    for m in mentions:
+        if m.get("id") in existing_ids:
+            kept.append(m)
+            continue
+        key = (m.get("cnpj_norm"), m.get("data"), _section_key(m.get("secao")))
+        incoming_pdf = _is_pdf_mention_id(m.get("id"))
+        match = next((r for r in by_key.get(key, []) if _is_pdf_mention_id(r.id) != incoming_pdf), None)
+        if match is None:
+            kept.append(m)
+            continue
+        by_key[key].remove(match)
+        if incoming_pdf:
+            continue  # a API já gravou esta publicação: o PDF não acrescenta nada
+        db.session.delete(match)  # a API (com link e título corretos) substitui a linha de PDF
+        already_notified.add(m["id"])
+        kept.append(m)
+    return kept, already_notified
 
 
 def extract_mentions_from_results(results_raw_list, cnpj_map=None):
@@ -195,8 +297,10 @@ def manage_routines():
     if not sections or len(sections) == 0:
         return jsonify({"status": "error", "message": "Selecione pelo menos uma seção do DOU."}), 400
     
+    from ..services.email_service import is_smtp_enabled
+    smtp_on = is_smtp_enabled()
     emails = data.get('emails', [])
-    if not emails or len(emails) == 0:
+    if smtp_on and (not emails or len(emails) == 0):
         return jsonify({"status": "error", "message": "Adicione pelo menos um e-mail de destino."}), 400
     
     filename = data.get('file')
@@ -251,10 +355,10 @@ def manage_routines():
         raw_terms = data.get('terms', search.get('terms', []))
         search["terms"] = [QuotedString(t) for t in raw_terms]
     
-    search["dou_sections"] = data.get('sections', search.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"]))
+    search["dou_sections"] = data.get('sections', search.get('dou_sections', DEFAULT_DOU_SECTIONS))
     is_exact_val = data.get('is_exact_search')
     if is_exact_val is None:
-        is_exact_val = search.get("is_exact_search", True)
+        is_exact_val = search.get("is_exact_search", False)
     is_exact_val = bool(is_exact_val)
     search["is_exact_search"] = is_exact_val
     search["force_rematch"] = bool(data.get('force_rematch', True))
@@ -272,7 +376,10 @@ def manage_routines():
     
     report = dag.get("report", {})
     report["title"] = data.get('name', report.get('title', 'Alerta'))
-    report["emails"] = data.get('emails', report.get('emails', []))
+    existing_emails = report.get('emails', [])
+    if not emails and not smtp_on and existing_emails:
+        emails = existing_emails
+    report["emails"] = emails if emails else (data.get('emails', []) if 'emails' in data else existing_emails)
     report["subject"] = data.get('subject', report.get('subject', ''))
     
     if 'active' in data:
@@ -308,7 +415,7 @@ def manage_routines():
             "force_rematch": bool(search.get("force_rematch", True)),
             "organs": search.get("department", []),
             "department": search.get("department", []),
-            "sections": search.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
+            "sections": search.get("dou_sections", DEFAULT_DOU_SECTIONS),
             "terms_ignore": search.get("terms_ignore", []),
             "source": source_input
         })
@@ -325,85 +432,149 @@ def manage_routines():
 def api_integrations_status():
     """Retorna o diagnóstico completo de todas as integrações e pendências do sistema para o assistente/alerta."""
     from ..services.dag_config_service import get_main_dag_info
+    from ..services.email_service import is_smtp_enabled
+    from ..services.inlabs_service import is_inlabs_local_available
     from ..models import Settings
     
     # 1. Rotina Principal (Main DAG)
     main_info = get_main_dag_info()
+    main_enabled = bool(main_info.get("active", True))
     main_dag_configured = bool(main_info.get("is_configured", False))
     
-    # 2. Global Settings (SMTP, Google Sheets, INLABS)
+    # 2. Global Settings (SMTP, Google Sheets, GestãoClick, PDF, INLABS)
     settings_record = Settings.query.filter_by(key='global_settings').first()
     settings_data = settings_record.get_value() if settings_record else {}
+    if not isinstance(settings_data, dict):
+        settings_data = {}
     
     # SMTP
-    from ..services.email_service import is_smtp_enabled
-    smtp_data = settings_data.get('smtp', {})
+    smtp_data = settings_data.get('smtp', {}) or {}
     smtp_enabled = is_smtp_enabled(smtp_data)
     smtp_configured = bool(str(smtp_data.get('server') or '').strip() and str(smtp_data.get('user') or '').strip())
     
+    # Com SMTP desligado, a rotina principal não exige e-mail nem assunto
+    if not smtp_enabled:
+        main_dag_configured = True
+        main_missing = []
+    else:
+        main_missing = main_info.get("missing_fields", [])
+
     # Google Sheets
-    sheets_data = settings_data.get('google_sheets', {})
+    sheets_data = settings_data.get('google_sheets', {}) or {}
+    sheets_enabled = bool(sheets_data.get('auto_sync', False))
     has_creds = bool(str(sheets_data.get('credentials_json') or '').strip())
     has_sheet = bool(str(sheets_data.get('spreadsheet_url') or sheets_data.get('spreadsheet_id') or sheets_data.get('sheet_url') or '').strip())
     sheets_configured = has_creds and has_sheet
-    
+
+    # GestãoClick
+    ak_data = settings_data.get('api_keys', {}) or {}
+    gc_enabled = bool(ak_data.get('gestaoclick_auto_sync', False))
+    gc_has_access = bool(str(ak_data.get('gestaoclick_access_token') or '').strip())
+    gc_has_secret = bool(str(ak_data.get('gestaoclick_secret_token') or '').strip())
+    gc_configured = gc_has_access and gc_has_secret
+
+    # Arquivo PDF
+    pa_data = settings_data.get('pdf_archive', {}) or {}
+    pa_enabled = bool(pa_data.get('enabled', True))
+    pa_configured = True  # pasta padrão sempre resolvida
+
     # INLABS
-    inlabs_data = settings_data.get('inlabs', {})
+    inlabs_data = settings_data.get('inlabs', {}) or {}
+    inlabs_local = is_inlabs_local_available()
     inlabs_configured = bool(str(inlabs_data.get('user') or '').strip() and str(inlabs_data.get('password') or '').strip())
-    
+
+    def _status_for(enabled: bool, configured: bool, available: bool = True) -> str:
+        if not available:
+            return "unavailable"
+        if not enabled:
+            return "disabled"
+        return "configured" if configured else "pending"
+
     integrations = [
         {
             "id": "main_dag",
             "name": "Rotina Principal",
             "title": "E-mails da Rotina Principal",
             "description": "Defina os e-mails de destino e o assunto para receber o relatório diário de publicações.",
+            "enabled": main_enabled,
             "is_configured": main_dag_configured,
+            "status": _status_for(main_enabled, main_dag_configured),
             "action_type": "modal_main_dag",
             "icon": "calendar-clock",
-            "missing_fields": main_info.get("missing_fields", [])
+            "missing_fields": main_missing if main_enabled else [],
         },
-    ]
-    if smtp_enabled:
-        integrations.append({
+        {
             "id": "smtp",
             "name": "Servidor SMTP",
             "title": "Servidor de Envio (SMTP)",
             "description": "Configure o servidor de e-mail (Host, Porta, Usuário e Senha) para disparo automático.",
+            "enabled": smtp_enabled,
             "is_configured": smtp_configured,
+            "status": _status_for(smtp_enabled, smtp_configured),
             "action_type": "modal_smtp",
             "icon": "mail",
-            "missing_fields": [f for f in ["server", "user"] if not str(smtp_data.get(f) or '').strip()]
-        })
-    integrations.extend([
+            "missing_fields": [f for f in ["server", "user"] if not str(smtp_data.get(f) or '').strip()] if smtp_enabled else [],
+        },
         {
             "id": "google_sheets",
             "name": "Google Sheets",
             "title": "Planilha Google Sheets",
             "description": "Conecte a planilha com credenciais de serviço para sincronização automática de empresas.",
+            "enabled": sheets_enabled,
             "is_configured": sheets_configured,
+            "status": _status_for(sheets_enabled, sheets_configured),
             "action_type": "tab_sheets",
             "icon": "file-spreadsheet",
-            "missing_fields": ([ "credentials_json" ] if not has_creds else []) + ([ "spreadsheet_url" ] if not has_sheet else [])
+            "missing_fields": (([ "credentials_json" ] if not has_creds else []) + ([ "spreadsheet_url" ] if not has_sheet else [])) if sheets_enabled else [],
+        },
+        {
+            "id": "gestaoclick",
+            "name": "API GestãoClick",
+            "title": "API GestãoClick",
+            "description": "Informe os tokens do GestãoClick para sincronização automática de empresas.",
+            "enabled": gc_enabled,
+            "is_configured": gc_configured,
+            "status": _status_for(gc_enabled, gc_configured),
+            "action_type": "tab_gestaoclick",
+            "icon": "key",
+            "missing_fields": (([ "gestaoclick_access_token" ] if not gc_has_access else []) + ([ "gestaoclick_secret_token" ] if not gc_has_secret else [])) if gc_enabled else [],
+        },
+        {
+            "id": "pdf_archive",
+            "name": "Arquivo PDF",
+            "title": "Arquivo automático do PDF",
+            "description": "Salva diariamente os PDFs completos do DOU na pasta escolhida.",
+            "enabled": pa_enabled,
+            "is_configured": pa_configured,
+            "status": _status_for(pa_enabled, pa_configured),
+            "action_type": "tab_pdf_archive",
+            "icon": "file-text",
+            "missing_fields": [],
         },
         {
             "id": "inlabs",
             "name": "Acesso INLABS",
             "title": "Credenciais INLABS",
-            "description": "Informe usuário e senha do portal INLABS (Imprensa Nacional) para download do DOU.",
-            "is_configured": inlabs_configured,
+            "description": (
+                "Informe usuário e senha do portal INLABS (Imprensa Nacional) para download do DOU."
+                if inlabs_local
+                else "INLABS local não instalado nesta versão; a busca usa a contingência (PDF integral + API do DOU)."
+            ),
+            "enabled": bool(inlabs_local),
+            "local_available": inlabs_local,
+            "is_configured": inlabs_configured if inlabs_local else False,
+            "status": _status_for(inlabs_local, inlabs_configured, available=inlabs_local),
             "action_type": "tab_inlabs",
             "icon": "newspaper",
-            "missing_fields": [f for f in ["user", "password"] if not str(inlabs_data.get(f) or '').strip()]
-        }
-    ])
+            "missing_fields": ([f for f in ["user", "password"] if not str(inlabs_data.get(f) or '').strip()] if inlabs_local else []),
+        },
+    ]
     
-    pending = [i for i in integrations if not i["is_configured"]]
+    pending = [i for i in integrations if i["status"] == "pending"]
     
-    missing_all = []
-    for i in pending:
-        missing_all.append(i["id"])
+    missing_all = [i["id"] for i in pending]
         
-    main_dag_is_configured = bool(main_dag_configured and (smtp_configured or not smtp_enabled))
+    main_dag_is_configured = bool((not main_enabled or main_dag_configured) and (smtp_configured or not smtp_enabled))
     
     return jsonify({
         "status": "ok",
@@ -435,7 +606,11 @@ def api_configure_main_dag():
         
     data = request.json or {}
     
-    # Valida e-mails
+    # Valida e-mails (exigido apenas com SMTP ligado)
+    from ..services.email_service import is_smtp_enabled
+    smtp_in = data.get('smtp') if isinstance(data.get('smtp'), dict) else None
+    smtp_on = bool(smtp_in.get('enabled')) if (smtp_in and 'enabled' in smtp_in) else is_smtp_enabled()
+
     raw_emails = data.get('emails', [])
     if isinstance(raw_emails, str):
         emails = [e.strip() for e in raw_emails.replace('\n', ',').split(',') if e.strip()]
@@ -444,7 +619,7 @@ def api_configure_main_dag():
     else:
         emails = []
         
-    if not emails:
+    if smtp_on and not emails:
         return jsonify({"status": "error", "message": "Pelo menos um e-mail de destino é obrigatório para a rotina principal."}), 400
         
     # Valida formato dos e-mails
@@ -467,6 +642,8 @@ def api_configure_main_dag():
     if not s_rec:
         s_rec = Settings(key='main_dag_settings')
         db.session.add(s_rec)
+    if not emails and not smtp_on and existing_val.get('emails'):
+        emails = list(existing_val.get('emails') or [])
     
     updated_main_settings = dict(existing_val)
     updated_main_settings.update({
@@ -507,7 +684,6 @@ def api_configure_main_dag():
         
         if server and user:
             from ..models import db, Settings
-            from dotenv import set_key
             
             settings_record = Settings.query.filter_by(key='global_settings').first()
             if not settings_record:
@@ -537,29 +713,6 @@ def api_configure_main_dag():
             settings_record.set_value(current_val)
             db.session.commit()
             
-            from ..runtime.paths import get_data_dir
-            DATA_DIR = str(get_data_dir(create=True))
-            env_path = os.path.join(DATA_DIR, '.env')
-            if not os.path.exists(env_path): open(env_path, 'a').close()
-            
-            smtp_mappings = {
-                "AIRFLOW__SMTP__SMTP_HOST": server,
-                "AIRFLOW__SMTP__SMTP_PORT": port,
-                "AIRFLOW__SMTP__SMTP_USER": user,
-                "AIRFLOW__SMTP__SMTP_PASSWORD": raw_password,
-                "AIRFLOW__SMTP__SMTP_MAIL_FROM": from_email
-            }
-            for env_var, val in smtp_mappings.items():
-                if val:
-                    set_key(env_path, env_var, str(val))
-                    os.environ[env_var] = str(val)
-            if port in ('587', '25'):
-                set_key(env_path, "AIRFLOW__SMTP__SMTP_STARTTLS", "true")
-                os.environ["AIRFLOW__SMTP__SMTP_STARTTLS"] = "true"
-            elif port == '465':
-                set_key(env_path, "AIRFLOW__SMTP__SMTP_SSL", "true")
-                os.environ["AIRFLOW__SMTP__SMTP_SSL"] = "true"
-                
             # Sincronizar conexão smtp_default no orquestrador (no-op no modo local)
             try:
                 import json
@@ -746,7 +899,7 @@ def _dispatch_routine(dag_id, logical_date=None, yaml_dict=None):
         return False, str(exc), {"dag_id": dag_id, "dag_run_id": None}
 
 
-def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None):
+def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None, notify_only_new=False):
     import time
     import logging
     from datetime import datetime, timezone, timedelta
@@ -793,11 +946,15 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                     run_res = fetch_mentions_from_dag_run(did, run_id, cnpj_map=cnpj_map)
                     direct_mentions.extend(run_res)
 
+            # Mesma publicação vinda de outra fonte (PDF x API) não vira menção nova
+            direct_mentions, already_notified_ids = reconcile_mentions_across_sources(direct_mentions)
+
             # Se obteve menções diretas, insere/atualiza no banco SQLite para o Dashboard
             if direct_mentions:
                 from ..runtime.pdf_archiver import resolve_pdf_for_mention
                 m_ids = [m['id'] for m in direct_mentions if m.get('id')]
                 existing_records = {e.id: e for e in Mention.query.filter(Mention.id.in_(m_ids)).all()} if m_ids else {}
+                new_mention_ids = {i for i in m_ids if i not in existing_records and i not in already_notified_ids}
                 for m in direct_mentions:
                     pdf_path = m.get('pdf_path') or resolve_pdf_for_mention(m.get('data'), m.get('secao'))
                     existing = existing_records.get(m['id'])
@@ -818,6 +975,9 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 db.session.commit()
                 clear_mentions_cache()
                 relevant_mentions = direct_mentions
+                if notify_only_new:
+                    # Nova tentativa do dia: só avisa o que ainda não tinha sido gravado/enviado.
+                    relevant_mentions = [m for m in direct_mentions if m.get('id') in new_mention_ids]
             else:
                 clear_mentions_cache()
                 relevant_mentions = []
@@ -849,6 +1009,9 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
             sources_label = _extract_sources_used_from_runs(run_ids)
             if sources_label:
                 source_tag = f" [Fonte: {sources_label}]"
+            coverage_text, pending_sections = _summarize_coverage_from_runs(run_ids)
+            if coverage_text:
+                source_tag += f" [Seções: {coverage_text}]"
 
             # 5. Envio do E-mail Formatado
             from ..services.email_service import is_smtp_enabled
@@ -895,7 +1058,19 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 if not relevant_mentions:
                     motivo.append(f"0 menções encontradas para {target_date_str}")
                 motivo_str = f" ({'; '.join(motivo)})" if motivo else ""
-                add_history_event("Busca Concluída", f"Rotina {routine_name} concluída{motivo_str}{source_tag}. Total no painel: {total} ({hoje} hoje).")
+                if pending_sections:
+                    add_history_event(
+                        "Busca Concluída com Pendências",
+                        f"Rotina {routine_name} concluída com pendências: {', '.join(pending_sections)} não foram cobertas por nenhuma fonte, "
+                        f"então o resultado de {target_date_str} está INCOMPLETO{motivo_str}{source_tag}."
+                    )
+                else:
+                    add_history_event("Busca Concluída", f"Rotina {routine_name} concluída{motivo_str}{source_tag}. Total no painel: {total} ({hoje} hoje).")
+            elif pending_sections:
+                add_history_event(
+                    "Busca com Pendências",
+                    f"Atenção: {', '.join(pending_sections)} não foram cobertas em {target_date_str}; o resultado está incompleto{source_tag}."
+                )
 
         except Exception as e:
             import logging
@@ -964,6 +1139,12 @@ def trigger_routine(file):
                         routine_cnpjs.add(clean_t)
     except Exception: pass
 
+    # Rotina sem empresas/termos (ex.: antes da primeira sincronização): mensagem clara
+    # em vez do erro técnico de validação do YAML.
+    from ..runtime.runner import NO_COMPANIES_MESSAGE, routine_has_no_terms
+    if routine_has_no_terms(file_path):
+        return jsonify({"status": "error", "code": "no_companies", "message": NO_COMPANIES_MESSAGE}), 400
+
     # ----------------------------------------------------
     # SE FOR ROTINA INLABS COM DATA ESPECÍFICA (EX: 2026-08-15)
     # ----------------------------------------------------
@@ -1011,10 +1192,10 @@ def trigger_routine(file):
                     for block in original_searches:
                         temp_block = {
                             "header": block.get("header", f"Busca API-DOU {source_file}"),
-                            "is_exact_search": block.get("is_exact_search", True),
+                            "is_exact_search": block.get("is_exact_search", False),
                             "force_rematch": True,
                             "terms": block.get("terms", []),
-                            "dou_sections": block.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
+                            "dou_sections": block.get("dou_sections", DEFAULT_DOU_SECTIONS),
                             "field": block.get("field", "TUDO"),
                             "full_text": block.get("full_text", True),
                             "date": "DIA",
@@ -1058,16 +1239,11 @@ def trigger_routine(file):
                 except Exception as e:
                     logging.error(f"Erro na busca ad-hoc API DOU para {target_date}: {e}")
 
-        # Helper para verificar se o INLABS local está pronto (Postgres portátil/URL + credenciais)
+        # Verifica se o INLABS local está disponível (Postgres portátil/URL) e com credenciais configuradas
         def _local_inlabs_ready():
-            if not os.getenv("INLABS_DB_URL"):
-                try:
-                    from ..runtime.pg_portable import get_portable_postgres
-                    pg = get_portable_postgres()
-                    if pg.get_connection_info() is None or not pg.is_running():
-                        return False
-                except Exception:
-                    return False
+            from ..services.inlabs_service import is_inlabs_local_available
+            if not is_inlabs_local_available():
+                return False
             try:
                 from ..models import Settings
                 rec = Settings.query.filter_by(key="global_settings").first()
@@ -1235,7 +1411,7 @@ def api_check_date():
     from sqlalchemy import text
     from ..models import InlabsDownloadLog
     from ..services.holiday_service import is_business_day, is_within_inlabs_retention_window
-    from ..services.inlabs_service import get_inlabs_postgres_engine
+    from ..services.inlabs_service import InlabsUnavailable, get_inlabs_postgres_engine
     
     target_date = request.args.get('date', '').strip()
     if not target_date:
@@ -1260,6 +1436,8 @@ def api_check_date():
             if res and int(res) > 0:
                 already_loaded = True
                 articles_count = int(res)
+    except InlabsUnavailable:
+        pass  # sem INLABS local: o dia nunca está "carregado"
     except Exception:
         log = InlabsDownloadLog.query.filter_by(date_str=target_date, status='success').first()
         if log:
@@ -1713,10 +1891,10 @@ def api_trigger_monthly():
                         for idx, block in enumerate(original_searches):
                             temp_block = {
                                 "header": block.get("header", f"Busca API-DOU {os.path.basename(r_subfile)} - PARTE {idx+1}"),
-                                "is_exact_search": block.get("is_exact_search", True),
+                                "is_exact_search": block.get("is_exact_search", False),
                                 "force_rematch": True,
                                 "terms": block.get("terms", []),
-                                "dou_sections": block.get("dou_sections", ["SECAO_1", "SECAO_2", "SECAO_3"]),
+                                "dou_sections": block.get("dou_sections", DEFAULT_DOU_SECTIONS),
                                 "field": block.get("field", "TUDO"),
                                 "full_text": block.get("full_text", True),
                                 "date": "DIA",
@@ -1769,6 +1947,12 @@ def api_trigger_monthly():
                     if dou_run_ids:
                         with app_context:
                             get_executor().wait(dou_run_ids, timeout=max(1800, 300 * len(dou_run_ids)))
+                            _cov_text, _pend = _summarize_coverage_from_runs(dou_run_ids)
+                            if _pend:
+                                add_history_event(
+                                    "Busca Mensal com Pendências",
+                                    f"Seções sem cobertura em algum dia: {', '.join(_pend)}. O resultado do mês pode estar incompleto; repita a busca mensal mais tarde.",
+                                )
                         
             except Exception as e:
                 logging.error(f"Erro ao criar/executar DAG temporária API-DOU: {e}")

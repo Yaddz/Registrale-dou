@@ -15,7 +15,28 @@ LOGS_DIR = str(get_logs_dir(create=False))
 import logging
 logger = logging.getLogger(__name__)
 
+# Parâmetros padrão iguais à baseline: Seções 1/2/3 + Edição Extra
+DEFAULT_DOU_SECTIONS = ["SECAO_1", "SECAO_2", "SECAO_3", "EDICAO_EXTRA"]
+
 import time
+import threading
+import tempfile
+from functools import wraps
+
+# Trava única das sincronizações de empresas (planilha, GestãoClick agendado e
+# manual) e da reconstrução da rotina principal: evita duas gravações ao mesmo
+# tempo no SQLite e no Pesquisa_cnpj.yaml. Reentrante para chamadas aninhadas.
+COMPANY_SYNC_LOCK = threading.RLock()
+
+
+def with_company_sync_lock(fn):
+    """Executa ``fn`` com a trava única das sincronizações de empresas."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        with COMPANY_SYNC_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
+
 
 _cnpjs_cache = {'time': 0, 'data': set(), 'mtime': 0}
 _last_search_cache = {'time': 0, 'data': 'N/A'}
@@ -90,7 +111,7 @@ def get_last_search_time():
     try:
         from ..models import JobRun
         last_job = (
-            JobRun.query.filter(JobRun.status == "success")
+            JobRun.query.filter(JobRun.status.in_(["success", "partial"]))
             .order_by(JobRun.fim.desc())
             .first()
         )
@@ -219,12 +240,12 @@ def get_routines():
                                 "schedule": dag.get('schedule', '0 5 * * *'),
                                 "terms": search.get('terms', []),
                                 "organs": search.get('department', []),
-                                "sections": search.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"]),
+                                "sections": search.get('dou_sections', DEFAULT_DOU_SECTIONS),
                                 "emails": report.get('emails', []),
                                 "subject": report.get('subject', ''),
                                 "type": "sync",
                                 "active": bool(active_val),
-                                "is_exact_search": search.get('is_exact_search', True),
+                                "is_exact_search": search.get('is_exact_search', False),
                                 "force_rematch": search.get('force_rematch', True),
                                 "terms_ignore": search.get('terms_ignore', []),
                                 "source": search.get('sources', ['INLABS'])[0] if isinstance(search.get('sources'), list) and len(search.get('sources')) > 0 else ('INLABS' if 'inlabs' in dag.get('tags', []) else 'DOU')
@@ -250,12 +271,12 @@ def get_routines():
                     "terms": search.get('terms', []),
                     "organs": search.get('department', []),
                     "department": search.get('department', []),
-                    "sections": search.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"]),
+                    "sections": search.get('dou_sections', DEFAULT_DOU_SECTIONS),
                     "emails": report.get('emails', []),
                     "subject": report.get('subject', ''),
                     "type": "custom",
                     "active": bool(active_val),
-                    "is_exact_search": search.get('is_exact_search', True),
+                    "is_exact_search": search.get('is_exact_search', False),
                     "force_rematch": search.get('force_rematch', True),
                     "terms_ignore": search.get('terms_ignore', []),
                     "source": search.get('sources', ['INLABS'])[0] if isinstance(search.get('sources'), list) and len(search.get('sources')) > 0 else ('INLABS' if 'inlabs' in dag.get('tags', []) else 'DOU')
@@ -304,9 +325,9 @@ def get_routines():
         "description": f"Busca padrão diária vinculada às empresas com monitoramento ativo na base ({total_cnpjs} CNPJs).",
         "schedule": db_main_dag.get('schedule') or (sync_base_data.get('schedule', '0 8 * * MON-FRI') if sync_base_data else "0 8 * * MON-FRI"),
         "terms": [f"{total_cnpjs} CNPJs monitorados"],
-        "organs": db_main_dag.get('organs') or (sync_base_data.get('organs', ["Diversos"]) if sync_base_data else ["Diversos"]),
-        "department": db_main_dag.get('department') or (sync_base_data.get('department', ["Diversos"]) if sync_base_data else ["Diversos"]),
-        "sections": db_main_dag.get('sections') or (sync_base_data.get('sections', ["SECAO_1", "SECAO_2", "SECAO_3"]) if sync_base_data else ["SECAO_1", "SECAO_2", "SECAO_3"]),
+        "organs": db_main_dag.get('organs') or (sync_base_data.get('organs', []) if sync_base_data else []),
+        "department": db_main_dag.get('department') or (sync_base_data.get('department', []) if sync_base_data else []),
+        "sections": db_main_dag.get('sections') or (sync_base_data.get('sections', DEFAULT_DOU_SECTIONS) if sync_base_data else DEFAULT_DOU_SECTIONS),
         "emails": db_main_dag.get('emails') or (sync_base_data.get('emails', []) if sync_base_data else []),
         "subject": db_main_dag.get('subject') if 'subject' in db_main_dag else (sync_base_data.get('subject', '') if sync_base_data else ''),
         "type": "sync",
@@ -404,6 +425,7 @@ def get_main_dag_info():
         "missing_fields": missing_fields
     }
 
+@with_company_sync_lock
 def rebuild_yaml_from_db():
     import copy, math, shutil
     from ..models import Company, Settings
@@ -442,10 +464,10 @@ def rebuild_yaml_from_db():
                 'dataset': 'inlabs',
                 'search': [{
                     'header': 'MONITORAMENTO PADRÃO',
-                    'is_exact_search': db_main_dag.get('is_exact_search', True),
+                    'is_exact_search': db_main_dag.get('is_exact_search', False),
                     'force_rematch': db_main_dag.get('force_rematch', True),
-                    'department': db_main_dag.get('organs') or db_main_dag.get('department') or ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
-                    'dou_sections': db_main_dag.get('sections') or db_main_dag.get('dou_sections') or ["SECAO_1", "SECAO_2", "SECAO_3"],
+                    'department': db_main_dag.get('organs') or db_main_dag.get('department') or [],
+                    'dou_sections': db_main_dag.get('sections') or db_main_dag.get('dou_sections') or DEFAULT_DOU_SECTIONS,
                     'terms_ignore': db_main_dag.get('terms_ignore', []),
                     'terms': []
                 }],
@@ -524,8 +546,8 @@ def rebuild_yaml_from_db():
         exact_search_val = False
 
     force_rematch_val = bool(db_main_dag.get('force_rematch', search_template.get('force_rematch', True)))
-    organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', ['ANVISA', 'Agência Nacional de Vigilância Sanitária'])
-    sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', ["SECAO_1", "SECAO_2", "SECAO_3"])
+    organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', [])
+    sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', DEFAULT_DOU_SECTIONS)
     terms_ignore_val = db_main_dag.get('terms_ignore', search_template.get('terms_ignore', []))
     terms_ignore_val = [t for t in (terms_ignore_val or []) if t and str(t).strip()]
     organs_val = [o for o in (organs_val or []) if o and str(o).strip()]
@@ -538,7 +560,8 @@ def rebuild_yaml_from_db():
         block['is_exact_search'] = exact_search_val
         block['force_rematch'] = force_rematch_val
         block['department'] = organs_val
-        block['dou_sections'] = sections_val
+        block['dou_sections'] = list(sections_val)
+        block['department'] = list(organs_val)
         block['terms_ignore'] = terms_ignore_val
         block['full_text'] = False
         search_blocks.append(block)
@@ -553,8 +576,8 @@ def rebuild_yaml_from_db():
     except: pass
 
     try:
-        tmp_path = base_yaml + '.tmp'
-        with open(tmp_path, 'w', encoding='utf-8') as f:
+        fd, tmp_path = tempfile.mkstemp(prefix='.Pesquisa_cnpj.', suffix='.tmp', dir=target_dir)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             yaml.safe_dump(template_data, f, allow_unicode=True, sort_keys=False)
         try:
             os.replace(tmp_path, base_yaml)
@@ -573,11 +596,19 @@ def rebuild_yaml_from_db():
                 yaml.safe_dump(template_data, f, allow_unicode=True, sort_keys=False)
         except Exception as final_err:
             logger.error(f"Erro ao salvar YAML base em {base_yaml}: {final_err}")
+        try:
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
 
     # Notifica o Airflow para recarregar o gerador de DAGs imediatamente
     touch_dag_generator()
+    if not all_cnpjs:
+        logger.info("Nenhuma empresa ativa: rotina principal gravada sem termos (a busca avisa para sincronizar a planilha).")
     logger.info(f"YAML reconstruído com {len(all_cnpjs)} CNPJs em 1 arquivo com {len(chunks)} parte(s) (is_exact_search={exact_search_val}).")
 
+@with_company_sync_lock
 def sync_json_to_db():
     import json
     from ..models import db, Company

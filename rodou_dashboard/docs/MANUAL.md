@@ -92,9 +92,12 @@ Ao entrar no sistema, você visualiza a aba **Visão Geral** com:
    * **Monitorados (DAGs):** Empresas que estão ativas na busca diária.
    * **Menções Hoje:** Publicações encontradas na edição de hoje do DOU.
    * **Este Mês:** Total de matérias encontradas no mês corrente.
-2. **Barra Superior de Status:**
+2. **Barra Superior de Status e Atividade:**
+   * **Indicador de Atividade:** Mostra em tempo real o estado atual do app (**Ocioso**, **Executando: <rotina> (<data>)**, **Sincronizando planilha**, **Baixando PDFs** ou **Concluída com pendências** com horário da próxima tentativa).
    * **Última Sync:** Data e hora em que a lista de clientes foi atualizada com o ERP ou Google Sheets.
    * **Última Pesquisa:** Horário da última busca executada no DOU.
+   * **Próxima Pesquisa:** Próximo agendamento automático ativo.
+   * **Botão Atualizar:** Recarrega os dados da aba atual ignorando caches temporários.
 3. **Feed de Menções Recentes:**
    * Lista das últimas matérias encontradas, com o nome da empresa, seção do DOU, trecho em destaque e botão para ler o documento oficial.
 4. **Histórico de Atividades:**
@@ -119,11 +122,11 @@ Se houver qualquer integração pendente, um **banner informativo com badges int
   * 🟡 **Amarelo (Pendente):** A integração requer preenchimento de parâmetros obrigatórios.
   * Clicar em qualquer badge direciona o operador imediatamente para o formulário correspondente (com rolagem suave e foco no card).
 
-* **As 4 Integrações Monitoradas pelo Assistente:**
-  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados. Em instalações limpas, a rotina inicia sem CNPJs pré-cadastrados (vazia) e o indicador **Última sync** exibe **Nunca** até a primeira sincronização.
-  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui interruptor **Enviar e-mails** (ligado/desligado): quando desligado, o SMTP sai das pendências, as buscas continuam gravando as menções normalmente e o histórico registra **E-mail desativado**.
-  3. **Planilha Google Sheets:** Conexão via Conta de Serviço (Service Account) com URL da planilha (`spreadsheet_url`), nome da aba e mapeamento de colunas para sincronização contínua de clientes.
-  4. **Credenciais INLABS:** Usuário e senha de acesso ao portal da Imprensa Nacional para download automatizado das edições do DOU.
+* **As Integrações Monitoradas pelo Assistente:**
+  1. **Rotina Principal (`Pesquisa_cnpj.yaml`):** Com SMTP ligado, exige e-mails de destino e assunto para o disparo diário dos relatórios consolidados. Em instalações limpas, a rotina inicia sem CNPJs pré-cadastrados (vazia) e o indicador **Última sync** exibe **Nunca** até a primeira sincronização.
+  2. **Servidor SMTP (E-mail):** Configuração de Host, Porta, Usuário, Senha e Remetente para envio de alertas automáticos. Possui interruptor **Enviar e-mails** (ligado/desligado) que grava o estado na hora: quando desligado, aparece como **Desativada** (não pendente), todos os campos e botões de envio/teste/template de e-mail ficam desabilitados, as rotinas podem ser salvas sem e-mail, e as buscas continuam gravando as menções normalmente.
+  3. **Planilha Google Sheets / API GestãoClick / Arquivo PDF:** Todos os interruptores de liga/desliga do painel seguem o mesmo padrão e gravam imediatamente ao alternar. O que estiver desligado aparece como **Desativada** (estado neutro) e não gera pendência no assistente.
+  4. **Credenciais INLABS:** Quando o INLABS local não está instalado na máquina, aparece como **Indisponível / Não instalado** (estado neutro) e a busca usa automaticamente a contingência (PDF integral + API do DOU).
 
 * **Avisos dispensáveis na Visão geral:** tanto o aviso de contingência do **INLABS** quanto o aviso **Integrações pendentes** podem ser fechados pelo botão **X** (além de recolher no caso de integrações). O fechamento fica salvo por usuário no servidor e reaparece automaticamente se o estado do portal mudar ou surgir uma pendência nova.
 
@@ -429,8 +432,8 @@ O Registrale-DOU é instalado no Windows como aplicativo desktop (`Registrale-Se
 
 #### 🔄 Como Atualizar o Sistema
 Para obter novas funcionalidades, melhorias de desempenho e correções de segurança:
-1. No painel, acesse **Configurações → Verificar atualizações** (ou baixe o novo `Registrale-Setup-x.y.z.exe`).
-2. Execute o instalador sobre a instalação atual.
+1. No painel, acesse **Configurações → Sistema e atualizações** e clique em **Verificar atualizações**, ou clique com o botão direito no ícone da bandeja do sistema (relógio do Windows) e selecione **Verificar atualizações**.
+2. Se houver nova versão, clique em **Baixar e atualizar** (ou execute o novo `Registrale-Setup-x.y.z.exe`).
 3. Os dados (`database.db`, rotinas YAML, configurações e PDFs arquivados) são preservados automaticamente.
 
 #### 🗑️ Como Desinstalar o Sistema

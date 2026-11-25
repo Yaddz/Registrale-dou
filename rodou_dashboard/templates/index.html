@@ -137,6 +137,13 @@
         <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
             <div>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-stone-400">
+                    <!-- Indicador de Atividade Global -->
+                    <div id="global-activity-indicator" class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900" :title="activity.next_search ? ('Próximo agendamento: ' + activity.next_search) : ''">
+                        <span x-show="activity.busy" class="inline-flex text-ink-600 dark:text-ink-400 animate-spin"><i data-lucide="loader-2" class="w-3.5 h-3.5"></i></span>
+                        <span x-show="!activity.busy" class="status-dot" :class="activity.state === 'partial' ? 'status-dot-warning' : 'status-dot-success'"></span>
+                        <span class="font-medium text-neutral-800 dark:text-neutral-200 whitespace-nowrap" x-text="activity.label || 'Ocioso'">Ocioso</span>
+                    </div>
+
                     <!-- Última Sync Tooltip -->
                     <div class="relative group flex items-center gap-2 cursor-pointer py-1">
                         <span class="status-dot status-dot-success"></span>
@@ -175,6 +182,10 @@
                     <i data-lucide="moon" x-show="!darkMode"></i>
                     <i data-lucide="sun" x-show="darkMode" x-cloak></i>
                 </button>
+                <button id="refresh-tab-btn" @click="refreshCurrentTab()" :disabled="isRefreshingTab" class="btn btn-secondary" title="Atualizar dados da aba atual">
+                    <span :class="{'animate-spin': isRefreshingTab}" class="inline-flex shrink-0"><i data-lucide="rotate-cw"></i></span>
+                    <span>Atualizar</span>
+                </button>
                 <button @click="showSyncModal = true" 
                         :disabled="isSyncing"
                         class="btn btn-secondary">
@@ -193,16 +204,16 @@
         <!-- Tab: Home -->
         <div x-show="activeTab === 'home'" x-cloak class="space-y-6">
             <!-- Aviso de Contingência INLABS -->
-            <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
+            <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded || inlabsStatus.local_available === false) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
                 <div class="callout callout-warning px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div class="flex items-start gap-3">
                         <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
                         <div class="space-y-1">
                             <div class="flex flex-wrap items-center gap-2">
-                                <h4 class="font-semibold text-slate-900 dark:text-stone-100 text-sm" x-text="!inlabsStatus.portal_ok ? 'Portal INLABS indisponível / em manutenção' : 'INLABS sem a edição de hoje'"></h4>
+                                <h4 class="font-semibold text-slate-900 dark:text-stone-100 text-sm" x-text="inlabsStatus.local_available === false ? 'INLABS local não instalado' : (!inlabsStatus.portal_ok ? 'Portal INLABS indisponível / em manutenção' : 'INLABS sem a edição de hoje')"></h4>
                                 <span class="badge" x-text="'Fonte em uso: ' + (inlabsStatus.fallback_label || 'PDF integral + API do DOU')"></span>
                             </div>
-                            <p class="text-xs text-amber-800 dark:text-amber-300/90" x-text="inlabsStatus.portal_message || 'A edição do dia ainda não foi carregada no banco INLABS. As buscas utilizam a fonte de contingência configurada.'"></p>
+                            <p class="text-xs text-amber-800 dark:text-amber-300/90" x-text="inlabsStatus.local_available === false ? (inlabsStatus.local_message || 'INLABS local não instalado: usando contingência (PDF/API).') : (inlabsStatus.portal_message || 'A edição do dia ainda não foi carregada no banco INLABS. As buscas utilizam a fonte de contingência configurada.')"></p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
@@ -223,7 +234,7 @@
                 <div class="callout callout-warning"
                      x-data="{
                         open: true,
-                        get pendingKey() { return (integrationsStatus.integrations || []).filter(i => !i.is_configured).map(i => i.id).join(','); },
+                        get pendingKey() { return (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.id).join(','); },
                         init() { try { this.open = localStorage.getItem('integrationsCollapsed') !== this.pendingKey; } catch (e) {} },
                         toggle() {
                             this.open = !this.open;
@@ -236,8 +247,8 @@
                             <span class="text-sm font-semibold text-slate-900 dark:text-stone-100 whitespace-nowrap">Integrações pendentes</span>
                             <span class="text-xs text-slate-500 dark:text-stone-400 truncate"
                                   x-text="open
-                                    ? `${integrationsStatus.pending_count} de ${(integrationsStatus.integrations || []).length} a configurar`
-                                    : (integrationsStatus.integrations || []).filter(i => !i.is_configured).map(i => i.name).join(', ')"></span>
+                                    ? `${integrationsStatus.pending_count} pendente(s)`
+                                    : (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.name).join(', ')"></span>
                         </button>
                         <button @click="startIntegrationWizard()" class="btn btn-primary btn-sm shrink-0 hidden sm:inline-flex">
                             <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
@@ -250,12 +261,16 @@
                         </button>
                     </div>
                     <div id="integrations-body" x-show="open" class="px-4 pb-4 space-y-3">
-                        <p class="text-xs text-slate-500 dark:text-stone-400">Configure as integrações abaixo para o sistema funcionar por completo.</p>
+                        <p class="text-xs text-slate-500 dark:text-stone-400">Configure as integrações pendentes abaixo. Itens desativados não impedem o funcionamento.</p>
                         <div class="flex flex-wrap gap-2">
                             <template x-for="item in (integrationsStatus.integrations || [])" :key="item.id">
-                                <button @click="openIntegrationTarget(item.id)" class="btn btn-sm" :class="item.is_configured ? 'btn-ghost' : 'btn-secondary'">
-                                    <i :data-lucide="item.is_configured ? 'check' : 'circle'" :class="item.is_configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'"></i>
+                                <button @click="openIntegrationTarget(item.id)" class="btn btn-sm"
+                                        :class="item.status === 'pending' ? 'btn-secondary' : 'btn-ghost'">
+                                    <i :data-lucide="item.status === 'configured' ? 'check' : (item.status === 'pending' ? 'circle' : 'pause-circle')"
+                                       :class="item.status === 'configured' ? 'text-success-600 dark:text-success-400' : (item.status === 'pending' ? 'text-warning-600 dark:text-warning-400' : 'text-neutral-400')"></i>
                                     <span x-text="item.name"></span>
+                                    <span x-show="item.status === 'disabled' || item.status === 'unavailable'" class="badge text-[11px]"
+                                          x-text="item.status === 'unavailable' ? 'Indisponível' : 'Desativada'"></span>
                                 </button>
                             </template>
                         </div>
@@ -429,7 +444,7 @@
                                             <button @click="openDetails(m)" class="btn btn-ghost btn-icon btn-sm" title="Ver detalhes">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                             </button>
-                                            <button @click="openEmailModal([m])" class="btn btn-ghost btn-icon btn-sm" title="Enviar e-mail">
+                                            <button @click="openEmailModal([m])" :disabled="!settings.smtp?.enabled" :title="settings.smtp?.enabled ? 'Enviar e-mail' : 'E-mail desativado em Configurações → Integrações'" class="btn btn-ghost btn-icon btn-sm disabled:opacity-40 disabled:cursor-not-allowed">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
                                             </button>
                                             <a :href="m.link" target="_blank" class="btn btn-ghost btn-icon btn-sm" title="Abrir DOU">
@@ -740,7 +755,7 @@
                                 <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-3 px-4 py-2">
                                     <span class="text-xs font-medium text-neutral-700 dark:text-neutral-300 whitespace-nowrap">Enviar e-mails:</span>
                                     <label class="dash-switch" title="Ativar ou desativar o envio de e-mails">
-                                        <input type="checkbox" x-model="settings.smtp.enabled" class="sr-only dash-switch-input">
+                                        <input type="checkbox" :checked="Boolean(settings.smtp?.enabled)" @change="toggleSettingSwitch('smtp', 'enabled', $event, {on: 'Envio de e-mails ativado!', off: 'Envio de e-mails desativado.'})" class="sr-only dash-switch-input">
                                         <div class="dash-switch-track dash-switch-sm">
                                             <div class="dash-switch-thumb"></div>
                                         </div>
@@ -769,26 +784,29 @@
                         
                         <hr class="border-slate-100">
                         
-                        <div>
+                        <div id="gestaoclick-settings-card">
                             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                                 <div class="flex items-center gap-3">
                                     <h3 class="font-semibold text-lg flex items-center gap-3"><i data-lucide="key" class="w-5 h-5 text-slate-400"></i> API GestãoClick & Caminhos</h3>
-                                    <span x-show="settings.api_keys?.gestaoclick_access_token && settings.api_keys?.gestaoclick_secret_token" class="badge badge-success">
+                                    <span x-show="!settings.api_keys?.gestaoclick_auto_sync" class="badge">
+                                        Desativada
+                                    </span>
+                                    <span x-show="settings.api_keys?.gestaoclick_auto_sync && settings.api_keys?.gestaoclick_access_token && settings.api_keys?.gestaoclick_secret_token" class="badge badge-success">
                                         <span class="status-dot status-dot-success"></span> Configurada
                                     </span>
-                                    <span x-show="!settings.api_keys?.gestaoclick_access_token || !settings.api_keys?.gestaoclick_secret_token" class="badge badge-warning">
+                                    <span x-show="settings.api_keys?.gestaoclick_auto_sync && (!settings.api_keys?.gestaoclick_access_token || !settings.api_keys?.gestaoclick_secret_token)" class="badge badge-warning">
                                         <span class="status-dot status-dot-warning"></span> Pendente
                                     </span>
                                 </div>
                                 <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-3 px-4 py-2">
-                                    <span class="text-xs font-semibold text-slate-700 dark:text-stone-300 whitespace-nowrap">Sincronização automática:</span>
+                                    <span class="text-xs font-medium text-neutral-700 dark:text-neutral-300 whitespace-nowrap">Sincronização automática:</span>
                                     <label class="dash-switch" title="Sincronização automática GestãoClick">
-                                        <input type="checkbox" x-model="settings.api_keys.gestaoclick_auto_sync" class="sr-only dash-switch-input">
+                                        <input type="checkbox" :checked="Boolean(settings.api_keys?.gestaoclick_auto_sync)" @change="toggleSettingSwitch('api_keys', 'gestaoclick_auto_sync', $event, {on: 'Sincronização automática do GestãoClick ativada!', off: 'Sincronização automática do GestãoClick desativada.'})" class="sr-only dash-switch-input">
                                         <div class="dash-switch-track dash-switch-sm">
                                             <div class="dash-switch-thumb"></div>
                                         </div>
                                     </label>
-                                    <span :class="settings.api_keys.gestaoclick_auto_sync !== false ? 'text-emerald-700 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-stone-400 font-bold'" class="text-xs whitespace-nowrap" x-text="settings.api_keys.gestaoclick_auto_sync !== false ? 'Ativa' : 'Desativada'"></span>
+                                    <span :class="settings.api_keys?.gestaoclick_auto_sync ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.api_keys?.gestaoclick_auto_sync ? 'Ativa' : 'Desativada'"></span>
                                 </div>
                             </div>
                             <div class="space-y-6">
@@ -808,10 +826,13 @@
                         <div id="inlabs-credentials-card" class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-6">
                             <div class="flex items-center justify-between mb-6">
                                 <h3 class="font-semibold text-lg flex items-center gap-3"><i data-lucide="database" class="w-5 h-5 text-slate-400"></i> Credenciais INLABS</h3>
-                                <span x-show="settings.inlabs?.user && settings.inlabs?.password" class="badge badge-success">
+                                <span x-show="inlabsStatus && inlabsStatus.local_available === false" class="badge">
+                                    Não instalado
+                                </span>
+                                <span x-show="(!inlabsStatus || inlabsStatus.local_available !== false) && settings.inlabs?.user && settings.inlabs?.password" class="badge badge-success">
                                     <span class="status-dot status-dot-success"></span> Configurado
                                 </span>
-                                <span x-show="!settings.inlabs?.user || !settings.inlabs?.password" class="badge badge-warning">
+                                <span x-show="(!inlabsStatus || inlabsStatus.local_available !== false) && (!settings.inlabs?.user || !settings.inlabs?.password)" class="badge badge-warning">
                                     <span class="status-dot status-dot-warning"></span> Pendente
                                 </span>
                             </div>
@@ -848,10 +869,16 @@
                                 <h3 class="text-xl font-semibold text-slate-900 dark:text-stone-100">Arquivo automático do PDF integral do DOU</h3>
                                 <p class="text-xs text-slate-500 dark:text-stone-400 mt-1">Salva diariamente os PDFs completos na pasta e organização escolhidas após a busca diária.</p>
                             </div>
-                            <label class="inline-flex items-center gap-3 cursor-pointer">
-                                <input type="checkbox" x-model="settings.pdf_archive.enabled" class="w-5 h-5 rounded border-slate-300 text-slate-900 focus:ring-slate-900">
-                                <span class="text-sm font-semibold text-slate-700 dark:text-stone-200" x-text="settings.pdf_archive.enabled ? 'Ativado' : 'Desativado'"></span>
-                            </label>
+                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-3 px-4 py-2">
+                                <span class="text-xs font-medium text-neutral-700 dark:text-neutral-300 whitespace-nowrap">Arquivar PDFs:</span>
+                                <label class="dash-switch" title="Ativar ou desativar o arquivo automático de PDFs">
+                                    <input type="checkbox" :checked="Boolean(settings.pdf_archive?.enabled)" @change="toggleSettingSwitch('pdf_archive', 'enabled', $event, {on: 'Arquivo automático de PDF ativado!', off: 'Arquivo automático de PDF desativado.'})" class="sr-only dash-switch-input">
+                                    <div class="dash-switch-track dash-switch-sm">
+                                        <div class="dash-switch-thumb"></div>
+                                    </div>
+                                </label>
+                                <span :class="settings.pdf_archive?.enabled ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.pdf_archive?.enabled ? 'Ativado' : 'Desativado'"></span>
+                            </div>
                         </div>
 
                         <div class="space-y-2">
@@ -1143,12 +1170,12 @@
                                         </select>
                                         <div class="flex items-center gap-2 pr-2">
                                             <label class="dash-switch" title="Sincronização automática da planilha">
-                                                <input type="checkbox" x-model="settings.google_sheets.auto_sync" class="sr-only dash-switch-input">
+                                                <input type="checkbox" :checked="Boolean(settings.google_sheets?.auto_sync)" @change="toggleSettingSwitch('google_sheets', 'auto_sync', $event, {on: 'Sincronização automática da planilha ativada!', off: 'Sincronização automática da planilha desativada.'})" class="sr-only dash-switch-input">
                                                 <div class="dash-switch-track dash-switch-sm">
                                                     <div class="dash-switch-thumb"></div>
                                                 </div>
                                             </label>
-                                            <span :class="settings.google_sheets.auto_sync ? 'text-emerald-700 font-bold' : 'text-slate-500 font-bold'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets.auto_sync ? 'Ativo' : 'Inativo'"></span>
+                                            <span :class="settings.google_sheets?.auto_sync ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets?.auto_sync ? 'Ativo' : 'Inativo'"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1160,12 +1187,12 @@
                                         <span class="text-xs text-slate-600 font-medium truncate">Remover excluídos</span>
                                         <div class="flex items-center gap-2 pr-2 shrink-0">
                                             <label class="dash-switch" title="Apagar registros que não constam mais na planilha">
-                                                <input type="checkbox" x-model="settings.google_sheets.delete_obsolete" class="sr-only dash-switch-input">
+                                                <input type="checkbox" :checked="Boolean(settings.google_sheets?.delete_obsolete)" @change="toggleSettingSwitch('google_sheets', 'delete_obsolete', $event, {on: 'Remoção de obsoletos ativada.', off: 'Remoção de obsoletos desativada.'})" class="sr-only dash-switch-input">
                                                 <div class="dash-switch-track dash-switch-sm">
                                                     <div class="dash-switch-thumb"></div>
                                                 </div>
                                             </label>
-                                            <span :class="settings.google_sheets.delete_obsolete ? 'text-rose-600 font-bold' : 'text-slate-500 font-bold'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets.delete_obsolete ? 'Sim' : 'Não'"></span>
+                                            <span :class="settings.google_sheets?.delete_obsolete ? 'text-danger-600 dark:text-danger-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets?.delete_obsolete ? 'Sim' : 'Não'"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1253,7 +1280,14 @@
 
                 <!-- Sub Tab: Templates -->
                 <div x-show="settingsSubTab === 'templates'" class="space-y-8" x-cloak>
-                    <div class="card p-6">
+                    <div x-show="!settings.smtp?.enabled" class="callout callout-info p-4 flex items-start gap-3">
+                        <i data-lucide="info" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
+                        <div>
+                            <h4 class="text-sm font-semibold">E-mail desativado em Configurações → Integrações</h4>
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Ligue o envio de e-mails (SMTP) para editar e usar os templates de notificação.</p>
+                        </div>
+                    </div>
+                    <div class="card p-6" :class="!settings.smtp?.enabled && 'opacity-50 pointer-events-none select-none'">
                         <h3 class="font-semibold text-lg mb-6 flex items-center gap-3 text-slate-900 dark:text-stone-100"><i data-lucide="layout-template" class="w-5 h-5 text-slate-400"></i> Templates de E-mail</h3>
                         
                         <div class="space-y-4">
@@ -1506,6 +1540,7 @@
                 <div x-show="settingsSubTab === 'storage'" class="space-y-8" x-cloak>
                     <div class="card overflow-hidden" x-data="{
                         stats: null,
+                        unavailable: '',
                         loading: false,
                         error: false,
                         controller: null,
@@ -1523,6 +1558,11 @@
                                 .then(data => {
                                     if(data.status === 'success') {
                                         this.stats = data;
+                                        this.unavailable = '';
+                                    } else if (data.status === 'unavailable') {
+                                        // Sem Postgres portátil: não é erro, a busca usa a contingência
+                                        this.stats = null;
+                                        this.unavailable = data.message || 'INLABS local não instalado: usando contingência (PDF/API).';
                                     } else {
                                         this.error = true;
                                     }
@@ -1552,6 +1592,7 @@
                                 <span>Atualizar dados</span>
                             </button>
                         </div>
+                        <div x-show="unavailable" x-cloak class="callout callout-info mx-6 mt-6 px-4 py-3 text-xs" x-text="unavailable"></div>
                         <div class="p-6 grid grid-cols-2 gap-6">
                             <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 text-center">
                                 <div class="text-[11px] font-semibold text-slate-400 dark:text-stone-400 mb-2">Tamanho utilizado</div>
@@ -1788,7 +1829,7 @@
                                         </div>
                                         <div class="flex items-center gap-2">
                                             <i data-lucide="layers" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-                                            <span class="text-xs text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="r.organs.length + ' órgãos'"></span>
+                                            <span class="text-xs text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="(r.organs && r.organs.length) ? 'Filtro de órgão ativo: ' + r.organs.join(', ') : 'Todos os órgãos'" :title="(r.organs && r.organs.length) ? 'Só publicações destes órgãos são consideradas. Para buscar em todos, esvazie o campo Órgãos específicos na rotina.' : ''"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1798,7 +1839,7 @@
                                 {% if user.role == 'master' %}
                                 <div class="flex items-center gap-2 pr-3 border-r border-slate-200">
                                     <label class="dash-switch" :title="r.active ? 'Pausar rotina' : 'Ativar rotina'">
-                                        <input type="checkbox" :checked="r.active" @change="toggleRoutine(r)" class="sr-only dash-switch-input">
+                                        <input type="checkbox" :checked="r.active" @change="toggleRoutine(r, $event)" class="sr-only dash-switch-input">
                                         <div class="dash-switch-track dash-switch-sm">
                                             <div class="dash-switch-thumb"></div>
                                         </div>
@@ -2322,25 +2363,40 @@
                                     <p class="text-xs text-slate-500 dark:text-stone-400 mt-1">As origens marcadas abaixo serão monitoradas no DOU. Desmarque uma origem para desativar o monitoramento de suas empresas:</p>
                                 </div>
 
-                                <!-- Checkboxes Lado a Lado (As marcadas são monitoradas) -->
+                                <!-- Interruptores Lado a Lado (Os ligados são monitorados) -->
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <label class="flex items-center justify-between p-3.5 bg-white dark:bg-neutral-900 rounded-lg border cursor-pointer transition-colors" :class="monitoredOrigins.gestaoclick ? 'border-neutral-900 dark:border-neutral-200' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'">
                                         <div class="flex items-center gap-2.5">
-                                            <input type="checkbox" x-model="monitoredOrigins.gestaoclick" @change="toggleOriginMonitoring('gestaoclick', 'GestãoClick')" class="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-neutral-900">
+                                            <span class="dash-switch" title="Monitorar GestãoClick">
+                                                <input type="checkbox" :checked="Boolean(monitoredOrigins.gestaoclick)" @change="toggleOriginMonitoring('gestaoclick', 'GestãoClick', $event)" class="sr-only dash-switch-input">
+                                                <div class="dash-switch-track dash-switch-sm">
+                                                    <div class="dash-switch-thumb"></div>
+                                                </div>
+                                            </span>
                                             <span class="text-xs font-semibold text-slate-700 dark:text-stone-200">GestãoClick</span>
                                         </div>
                                         <span class="badge" :class="monitoredOrigins.gestaoclick ? 'badge-accent' : ''" x-text="gestaoclickCountText"></span>
                                     </label>
                                     <label class="flex items-center justify-between p-3.5 bg-white dark:bg-neutral-900 rounded-lg border cursor-pointer transition-colors" :class="monitoredOrigins.sheets ? 'border-neutral-900 dark:border-neutral-200' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'">
                                         <div class="flex items-center gap-2.5">
-                                            <input type="checkbox" x-model="monitoredOrigins.sheets" @change="toggleOriginMonitoring('sheets', 'Planilha')" class="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-neutral-900">
+                                            <span class="dash-switch" title="Monitorar Planilha">
+                                                <input type="checkbox" :checked="Boolean(monitoredOrigins.sheets)" @change="toggleOriginMonitoring('sheets', 'Planilha', $event)" class="sr-only dash-switch-input">
+                                                <div class="dash-switch-track dash-switch-sm">
+                                                    <div class="dash-switch-thumb"></div>
+                                                </div>
+                                            </span>
                                             <span class="text-xs font-semibold text-slate-700 dark:text-stone-200">Planilha</span>
                                         </div>
                                         <span class="badge" :class="monitoredOrigins.sheets ? 'badge-accent' : ''" x-text="sheetsCountText"></span>
                                     </label>
                                     <label class="flex items-center justify-between p-3.5 bg-white dark:bg-neutral-900 rounded-lg border cursor-pointer transition-colors" :class="monitoredOrigins.manual ? 'border-neutral-900 dark:border-neutral-200' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'">
                                         <div class="flex items-center gap-2.5">
-                                            <input type="checkbox" x-model="monitoredOrigins.manual" @change="toggleOriginMonitoring('manual', 'Manual')" class="w-4 h-4 rounded border-slate-300 dark:border-stone-600 text-slate-900 dark:text-stone-100 focus:ring-slate-900">
+                                            <span class="dash-switch" title="Monitorar Manuais">
+                                                <input type="checkbox" :checked="Boolean(monitoredOrigins.manual)" @change="toggleOriginMonitoring('manual', 'Manual', $event)" class="sr-only dash-switch-input">
+                                                <div class="dash-switch-track dash-switch-sm">
+                                                    <div class="dash-switch-thumb"></div>
+                                                </div>
+                                            </span>
                                             <span class="text-xs font-semibold text-slate-700 dark:text-stone-200">Manuais</span>
                                         </div>
                                         <span class="badge" :class="monitoredOrigins.manual ? 'badge-accent' : ''" x-text="manualCountText"></span>
@@ -2379,11 +2435,19 @@
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                                 <div class="space-y-3">
                                     <label class="field-label">Tipo de busca</label>
-                                    <label class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-stone-800 rounded-xl border border-slate-100 dark:border-stone-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-stone-700 transition-all">
-                                        <input type="checkbox" x-model="currentR.is_exact_search" class="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-neutral-900">
-                                        <span class="text-xs font-semibold text-slate-700 dark:text-stone-300">Busca por termo exato</span>
+                                    <label class="flex items-center justify-between gap-3 p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                                        <span class="text-xs font-medium text-neutral-700 dark:text-neutral-300">Busca por termo exato</span>
+                                        <div class="flex items-center gap-2 shrink-0">
+                                            <span class="dash-switch" title="Alternar busca por termo exato">
+                                                <input type="checkbox" x-model="currentR.is_exact_search" class="sr-only dash-switch-input">
+                                                <div class="dash-switch-track dash-switch-sm">
+                                                    <div class="dash-switch-thumb"></div>
+                                                </div>
+                                            </span>
+                                            <span :class="currentR.is_exact_search ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="currentR.is_exact_search ? 'Ativa' : 'Desativada'"></span>
+                                        </div>
                                     </label>
-                                    <p class="text-[11px] text-slate-400 dark:text-stone-400 mt-1 italic">Desmarque para busca aproximada (pode trazer mais falso-positivos).</p>
+                                    <p class="text-[11px] text-slate-400 dark:text-stone-400 mt-1 italic">Desative para busca aproximada (pode trazer mais falso-positivos).</p>
                                 </div>
                                 <div class="space-y-1">
                                     <label class="field-label">Ignorar termos (um por linha)</label>
@@ -2396,15 +2460,19 @@
                     <!-- Notificações -->
                     <div class="space-y-6">
                         <h4 class="text-[11px] font-semibold text-blue-600 dark:text-blue-400">3. Configuração de alertas</h4>
-                        <div class="grid grid-cols-1 gap-6">
+                        <div x-show="!settings.smtp?.enabled" class="callout callout-info p-3.5 flex items-start gap-3">
+                            <i data-lucide="info" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-300">E-mail desativado em Configurações → Integrações. A busca e a gravação das menções continuam normalmente.</p>
+                        </div>
+                        <div class="grid grid-cols-1 gap-6" :class="!settings.smtp?.enabled && 'opacity-50'">
                             <div class="space-y-1">
                                 <label class="field-label">E-mails de Destino</label>
-                                <textarea x-model="currentR.emails_raw" rows="2" placeholder="email1@exemplo.com, email2@exemplo.com" class="input h-auto py-2"></textarea>
+                                <textarea x-model="currentR.emails_raw" :disabled="!settings.smtp?.enabled" rows="2" placeholder="email1@exemplo.com, email2@exemplo.com" class="input h-auto py-2 disabled:cursor-not-allowed"></textarea>
                                 <p class="text-[11px] text-slate-400 dark:text-stone-400 mt-2 italic">Separe por vírgula ou uma por linha.</p>
                             </div>
                             <div class="space-y-1">
                                 <label class="field-label">Assunto do E-mail</label>
-                                <input type="text" x-model="currentR.subject" placeholder="Alerta DOU - Identificamos uma menção" class="input">
+                                <input type="text" x-model="currentR.subject" :disabled="!settings.smtp?.enabled" placeholder="Alerta DOU - Identificamos uma menção" class="input disabled:cursor-not-allowed">
                             </div>
                         </div>
                     </div>
@@ -2431,7 +2499,7 @@
                     <button @click="exportFilteredPDF()" class="btn btn-secondary">
                         <i data-lucide="file-text"></i> PDF
                     </button>
-                    <button @click="sendReportEmail()" class="btn btn-primary">
+                    <button @click="sendReportEmail()" :disabled="!settings.smtp?.enabled" :title="settings.smtp?.enabled ? 'Enviar relatório por e-mail' : 'E-mail desativado em Configurações → Integrações'" class="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                         <i data-lucide="mail"></i> Enviar por e-mail
                     </button>
                 </div>
@@ -3406,7 +3474,7 @@
                 </template>
             </div>
             <div class="px-5 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3 shrink-0">
-                <button @click="openEmailModal(companyHistory)" class="btn btn-primary">
+                <button @click="openEmailModal(companyHistory)" :disabled="!settings.smtp?.enabled" :title="settings.smtp?.enabled ? 'Enviar por e-mail' : 'E-mail desativado em Configurações → Integrações'" class="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                     <i data-lucide="mail"></i> Enviar por Email
                 </button>
                 <button @click="historyModalOpen = false" class="btn btn-secondary">Fechar</button>
@@ -3490,11 +3558,19 @@
                     <p class="text-[11px] text-slate-400 dark:text-stone-400 mt-1">Cadastro Nacional da Pessoa Jurídica</p>
                 </div>
                 <div class="pt-2">
-                    <label class="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl">
-                        <input type="checkbox" x-model="newCompany.status" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+                    <label class="flex items-center justify-between gap-3 cursor-pointer p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg">
                         <div>
-                            <span class="text-xs font-semibold text-slate-800 dark:text-stone-200">Monitorar no DOU</span>
-                            <p class="text-[11px] text-slate-400 dark:text-stone-400">Inclui o CNPJ nas rotinas de busca diária</p>
+                            <span class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Monitorar no DOU</span>
+                            <p class="text-[11px] text-neutral-500 dark:text-neutral-400">Inclui o CNPJ nas rotinas de busca diária</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="dash-switch" title="Monitorar no DOU">
+                                <input type="checkbox" x-model="newCompany.status" class="sr-only dash-switch-input">
+                                <div class="dash-switch-track dash-switch-sm">
+                                    <div class="dash-switch-thumb"></div>
+                                </div>
+                            </span>
+                            <span :class="newCompany.status ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="newCompany.status ? 'Ativo' : 'Pausado'"></span>
                         </div>
                     </label>
                 </div>
@@ -3532,11 +3608,19 @@
                     <span class="badge" x-text="editingCompany.origem || 'Manual'"></span>
                 </div>
                 <div class="pt-2">
-                    <label class="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 dark:bg-stone-800 border border-slate-200 dark:border-stone-700 rounded-xl">
-                        <input type="checkbox" x-model="editingCompany.status" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+                    <label class="flex items-center justify-between gap-3 cursor-pointer p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg">
                         <div>
-                            <span class="text-xs font-semibold text-slate-800 dark:text-stone-200">Monitorar no DOU</span>
-                            <p class="text-[11px] text-slate-400 dark:text-stone-400">Ativar ou desativar busca diária para esta empresa</p>
+                            <span class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Monitorar no DOU</span>
+                            <p class="text-[11px] text-neutral-500 dark:text-neutral-400">Ativar ou desativar busca diária para esta empresa</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="dash-switch" title="Monitorar no DOU">
+                                <input type="checkbox" x-model="editingCompany.status" class="sr-only dash-switch-input">
+                                <div class="dash-switch-track dash-switch-sm">
+                                    <div class="dash-switch-thumb"></div>
+                                </div>
+                            </span>
+                            <span :class="editingCompany.status ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="editingCompany.status ? 'Ativo' : 'Pausado'"></span>
                         </div>
                     </label>
                 </div>
@@ -3854,6 +3938,8 @@
                     if (raw.smtp.enabled === undefined) {
                         raw.smtp.enabled = true;
                     }
+                    if (!raw.api_keys) raw.api_keys = {};
+                    raw.api_keys.gestaoclick_auto_sync = Boolean(raw.api_keys.gestaoclick_auto_sync);
                     if (!raw.google_sheets) raw.google_sheets = {};
                     if (!raw.google_sheets.mapping) {
                         raw.google_sheets.mapping = {
@@ -3896,6 +3982,11 @@
                 alertTimeoutId: null,
                 unseenMentionsCount: 0,
                 lastSeenMentionsTotal: {{ init_data.kpis.mencoes_total if init_data else 0 }},
+                activity: { busy: false, state: 'idle', label: 'Ocioso', next_search: null, retry_at: null, active_jobs: [], last_job: null },
+                activityTimer: null,
+                _wasBusy: false,
+                _lastFinishedJobId: null,
+                isRefreshingTab: false,
 
                 async fetchMentions(force = false) {
                     if (this.mentionsLoaded && !force) return;
@@ -3975,9 +4066,10 @@
                     }
                 },
 
-                async refreshKpis() {
+                async refreshKpis(forceRefresh = false) {
                     try {
-                        const r = await fetch('/api/status');
+                        const url = forceRefresh ? '/api/status?refresh=1' : '/api/status';
+                        const r = await fetch(url);
                         const data = await r.json();
                         if (data.historico) {
                             this.historico = data.historico;
@@ -3999,17 +4091,84 @@
                     } catch(e) { }
                 },
 
+                async fetchActivity() {
+                    try {
+                        const r = await fetch('/api/activity');
+                        if (!r.ok) return null;
+                        const data = await r.json();
+                        if (data && data.status === 'ok') {
+                            const finishedId = data.last_job ? data.last_job.id : null;
+                            const finishedChanged = Boolean(
+                                finishedId && this._lastFinishedJobId && finishedId !== this._lastFinishedJobId
+                            );
+                            const transitionedToIdle = Boolean(this._wasBusy && !data.busy);
+                            this._wasBusy = Boolean(data.busy);
+                            if (finishedId) this._lastFinishedJobId = finishedId;
+                            this.activity = data;
+                            if (data.next_search) this.topIndicators.next_search = data.next_search;
+                            if (transitionedToIdle || finishedChanged) {
+                                await Promise.all([
+                                    this.fetchMentions(true),
+                                    this.refreshKpis(true),
+                                    this.loadRoutines()
+                                ]);
+                            }
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                            return data;
+                        }
+                    } catch (e) { }
+                    return null;
+                },
+
+                async pollActivity() {
+                    if (this.activityTimer) {
+                        clearTimeout(this.activityTimer);
+                        this.activityTimer = null;
+                    }
+                    const data = await this.fetchActivity();
+                    const delay = (data && data.busy) ? 3000 : 30000;
+                    this.activityTimer = setTimeout(() => this.pollActivity(), delay);
+                },
+
+                async refreshCurrentTab() {
+                    this.isRefreshingTab = true;
+                    try {
+                        const tasks = [
+                            this.refreshKpis(true),
+                            this.fetchActivity(),
+                            this.checkIntegrationsStatus()
+                        ];
+                        if (this.activeTab === 'home' || this.activeTab === 'mentions' || this.activeTab === 'reports') {
+                            tasks.push(this.fetchMentions(true));
+                        } else if (this.activeTab === 'routines') {
+                            tasks.push(this.loadRoutines());
+                        } else if (this.activeTab === 'companies') {
+                            tasks.push(this.fetchCompanies());
+                        } else if (this.activeTab === 'settings') {
+                            if (this.settingsSubTab === 'logs') tasks.push(this.fetchSystemLogs());
+                            else if (this.settingsSubTab === 'pdf_archive') tasks.push(this.fetchPdfArchiveStatus());
+                            else if (this.settingsSubTab === 'system') tasks.push(this.fetchSystemUpdateInfo());
+                        }
+                        await Promise.all(tasks);
+                        this.showAlert('Dados atualizados!', 'success');
+                    } catch (e) {
+                        this.showAlert('Erro ao atualizar dados.', 'error');
+                    } finally {
+                        this.isRefreshingTab = false;
+                    }
+                },
+
                 // Integrations Wizard & Main DAG Status
                 inlabsStatus: null,
                 dismissedNotices: {{ (dismissed_notices or {}) | tojson | safe }},
                 inlabsNoticeSignature() {
-                    if (!this.inlabsStatus || (this.inlabsStatus.portal_ok && this.inlabsStatus.today_loaded)) return '';
-                    return `${this.inlabsStatus.portal_ok ? 1 : 0}:${this.inlabsStatus.today_loaded ? 1 : 0}`;
+                    if (!this.inlabsStatus || (this.inlabsStatus.portal_ok && this.inlabsStatus.today_loaded && this.inlabsStatus.local_available !== false)) return '';
+                    return `${this.inlabsStatus.portal_ok ? 1 : 0}:${this.inlabsStatus.today_loaded ? 1 : 0}:${this.inlabsStatus.local_available === false ? 0 : 1}`;
                 },
                 integrationsNoticeSignature() {
                     if (!this.integrationsStatus || this.integrationsStatus.all_configured) return '';
                     return (this.integrationsStatus.integrations || [])
-                        .filter(i => !i.is_configured)
+                        .filter(i => i.status === 'pending')
                         .map(i => i.id)
                         .sort()
                         .join(',');
@@ -4056,7 +4215,7 @@
                 monthlySearchFile: '',
                 monthlySearchRunning: false,
                 isCheckingMonthly: false,
-                currentR: { id: '', name: '', file: '', schedule: '0 8 * * MON-FRI', simple_schedule: '0 8 * * MON-FRI', terms_raw: '', organs_raw: '', sections: [], emails_raw: '', subject: '', type: 'custom', is_exact_search: true, terms_ignore_raw: '', source: 'INLABS' },
+                currentR: { id: '', name: '', file: '', schedule: '0 8 * * MON-FRI', simple_schedule: '0 8 * * MON-FRI', terms_raw: '', organs_raw: '', sections: [], emails_raw: '', subject: '', type: 'custom', is_exact_search: false, terms_ignore_raw: '', source: 'INLABS' },
                 isTestingSheets: false,
                 isSyncingSheets: false,
                 sheetsTestResult: null,
@@ -4363,6 +4522,9 @@
                 },
 
                 sendReportEmail() {
+                    if (!this.settings?.smtp?.enabled) {
+                        return this.showAlert('E-mail desativado em Configurações → Integrações.', 'warning');
+                    }
                     const mentions = this.selectedMentions.length > 0
                         ? this.allMentions.filter(m => this.selectedMentions.includes(m.id))
                         : this.filteredReports;
@@ -4555,24 +4717,28 @@
                                 name: 'MONITORAMENTO PADRÃO',
                                 schedule: '0 8 * * MON-FRI',
                                 terms: [],
-                                organs: ['ANVISA', 'Agência Nacional de Vigilância Sanitária'],
-                                sections: ['SECAO_1'],
+                                organs: [],
+                                sections: ['SECAO_1', 'SECAO_2', 'SECAO_3', 'EDICAO_EXTRA'],
                                 emails: [],
                                 subject: '',
                                 type: 'sync',
                                 active: true,
-                                is_exact_search: true,
+                                is_exact_search: false,
                                 source: 'INLABS',
                                 terms_ignore: []
                             });
                         }
-                    } else if (id === 'smtp') {
+                    } else if (id === 'smtp' || id === 'gestaoclick') {
                         this.activeTab = 'settings';
                         this.settingsSubTab = 'integrations';
                         this.$nextTick(() => {
-                            const el = document.getElementById('smtp-settings-card');
+                            const el = document.getElementById(id === 'smtp' ? 'smtp-settings-card' : 'gestaoclick-settings-card');
                             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         });
+                    } else if (id === 'pdf_archive') {
+                        this.activeTab = 'settings';
+                        this.settingsSubTab = 'pdf_archive';
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                     } else if (id === 'google_sheets') {
                         this.activeTab = 'settings';
                         this.settingsSubTab = 'google_sheets';
@@ -4635,7 +4801,7 @@
                             type: r.type,
                             active: r.active !== undefined ? r.active : true,
                             description: r.description,
-                            is_exact_search: r.is_exact_search !== undefined ? r.is_exact_search : true,
+                            is_exact_search: r.is_exact_search !== undefined ? r.is_exact_search : false,
                             source: r.source || 'INLABS',
                             terms_ignore_raw: (r.terms_ignore || []).join('\n')
                         };
@@ -4652,12 +4818,12 @@
                             simple_schedule: '0 8 * * MON-FRI', 
                             terms_raw: '', 
                             organs_raw: '', 
-                            sections: ['SECAO_1', 'SECAO_2', 'SECAO_3'], 
+                            sections: ['SECAO_1', 'SECAO_2', 'SECAO_3', 'EDICAO_EXTRA'], 
                             emails_raw: defaultEmails, 
                             subject: '[Registrale] Relatório de Monitoramento', 
                             type: 'custom', 
                             active: true, 
-                            is_exact_search: true, 
+                            is_exact_search: false, 
                             source: 'INLABS', 
                             terms_ignore_raw: '' 
                         };
@@ -4841,8 +5007,10 @@
                     return `${active}/${total}`;
                 },
 
-                async toggleOriginMonitoring(originKey, displayName) {
-                    const isChecked = Boolean(this.monitoredOrigins[originKey]);
+                async toggleOriginMonitoring(originKey, displayName, ev) {
+                    const isChecked = ev ? Boolean(ev.target.checked) : Boolean(this.monitoredOrigins[originKey]);
+                    const prev = !isChecked;
+                    this.monitoredOrigins[originKey] = isChecked;
                     try {
                         const r = await fetch('/api/companies/toggle_origin_monitoring', {
                             method: 'POST',
@@ -4850,21 +5018,26 @@
                             body: JSON.stringify({ origin: displayName, status: isChecked })
                         });
                         const res = await r.json();
-                        if (res.status === 'success') {
+                        if (r.ok && res.status === 'success') {
                             this.showAlert(res.message, 'success');
                         } else {
+                            this.monitoredOrigins[originKey] = prev;
+                            if (ev && ev.target) ev.target.checked = prev;
                             this.showAlert(res.message || 'Erro ao atualizar monitoramento', 'error');
                         }
                         await this.fetchCompanies();
                         this.updateMonitoredOriginsState();
                     } catch (e) {
                         console.error('Erro em toggleOriginMonitoring:', e);
+                        this.monitoredOrigins[originKey] = prev;
+                        if (ev && ev.target) ev.target.checked = prev;
                         this.showAlert('Erro ao atualizar monitoramento da origem ' + displayName, 'error');
                     }
                 },
 
-                async toggleRoutine(r) {
-                    const newStatus = !r.active;
+                async toggleRoutine(r, ev) {
+                    const prevStatus = Boolean(r.active);
+                    const newStatus = ev && ev.target ? Boolean(ev.target.checked) : !prevStatus;
                     try {
                         const res = await fetch(`/api/routines/toggle/${encodeURIComponent(r.file)}`, {
                             method: 'POST',
@@ -4872,13 +5045,19 @@
                             body: JSON.stringify({ active: newStatus })
                         });
                         const data = await res.json();
-                        if (data.status === 'success') {
-                            r.active = data.active;
+                        if (res.ok && data.status === 'success') {
+                            r.active = Boolean(data.active);
+                            if (ev && ev.target) ev.target.checked = r.active;
                             this.showAlert(data.message, 'success');
+                            await this.checkIntegrationsStatus();
                         } else {
+                            r.active = prevStatus;
+                            if (ev && ev.target) ev.target.checked = prevStatus;
                             this.showAlert(data.message || 'Erro ao alterar status da rotina', 'error');
                         }
                     } catch (e) {
+                        r.active = prevStatus;
+                        if (ev && ev.target) ev.target.checked = prevStatus;
                         this.showAlert('Erro ao conectar com o servidor: ' + e.message, 'error');
                     }
                 },
@@ -4934,7 +5113,8 @@
                     
                     if(terms.length === 0 && this.currentR.type !== 'sync') return this.showAlert('Adicione pelo menos um termo de busca', 'error');
                     if(sections.length === 0) return this.showAlert('Selecione pelo menos uma seção do DOU', 'error');
-                    if(emails.length === 0) return this.showAlert('Adicione pelo menos um e-mail de destino', 'error');
+                    const smtpOn = Boolean(this.settings?.smtp?.enabled);
+                    if(smtpOn && emails.length === 0) return this.showAlert('Adicione pelo menos um e-mail de destino', 'error');
                     
                     for(const email of emails) {
                         if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -5010,6 +5190,7 @@
 
                 startSearchPolling(routineFile) {
                     this.isSearchingRoutine = true;
+                    this.pollActivity();
                     if (this.searchPollingInterval) clearInterval(this.searchPollingInterval);
                     
                     let attempts = 0;
@@ -5036,7 +5217,10 @@
                             const completionEvents = [
                                 'E-mail Enviado', 
                                 'Busca Concluída', 
+                                'Busca Concluída com Pendências',
+                                'Busca Incompleta',
                                 'Busca Mensal Concluída', 
+                                'Busca Mensal com Pendências',
                                 'Erro Envio E-mail',
                                 'Erro (Busca Mensal)'
                             ];
@@ -5430,6 +5614,37 @@
                             this.onIntegrationStepCompleted();
                         }
                     } catch(e) { this.showAlert('Erro ao salvar configurações', 'error'); }
+                },
+
+                async toggleSettingSwitch(section, key, ev, labels = {}) {
+                    const newVal = Boolean(ev && ev.target ? ev.target.checked : false);
+                    const oldVal = !newVal;
+                    if (!this.settings[section]) this.settings[section] = {};
+                    this.settings[section][key] = newVal;
+                    try {
+                        const r = await fetch('/api/save_settings', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ [section]: { [key]: newVal } }),
+                        });
+                        const res = await r.json().catch(() => ({}));
+                        if (!r.ok || res.status !== 'success') {
+                            this.settings[section][key] = oldVal;
+                            if (ev && ev.target) ev.target.checked = oldVal;
+                            this.showAlert(res.message || 'Erro ao salvar configuração.', 'error');
+                            return;
+                        }
+                        if (res.settings && res.settings[section]) {
+                            this.settings[section] = Object.assign({}, this.settings[section], res.settings[section]);
+                        }
+                        const msg = newVal ? (labels.on || 'Configuração ativada!') : (labels.off || 'Configuração desativada.');
+                        this.showAlert(msg, 'success');
+                        await this.checkIntegrationsStatus();
+                    } catch (e) {
+                        this.settings[section][key] = oldVal;
+                        if (ev && ev.target) ev.target.checked = oldVal;
+                        this.showAlert('Erro de conexão ao salvar configuração.', 'error');
+                    }
                 },
 
                 togglePdfSection(secId) {
@@ -6445,7 +6660,13 @@
                         const res = await r.json();
                         this.showAlert(res.message, res.status);
                         if(res.status === 'success') {
-                            setTimeout(() => window.location.reload(), 1500);
+                            await Promise.all([
+                                this.refreshKpis(true),
+                                this.fetchMentions(true),
+                                this.fetchCompanies(),
+                                this.checkIntegrationsStatus(),
+                                this.fetchActivity()
+                            ]);
                         }
                     } catch(e) {
                         this.showAlert('Erro ao processar limpeza', 'error');
@@ -6475,6 +6696,8 @@
                     this.fetchTemplates();
                     this.fetchMentions(true);
                     this.checkMainDagStatus();
+                    this.refreshKpis();
+                    this.pollActivity();
                     
                     if(this.kpis && this.kpis.mencoes_total > 0) this.activeTab = 'mentions';
                     setInterval(() => this.refreshKpis(), 60000);

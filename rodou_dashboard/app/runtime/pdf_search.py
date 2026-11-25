@@ -83,8 +83,10 @@ def get_fallback_mode() -> str:
 def inlabs_has_date(reference_date: date) -> bool:
     """True se o banco do INLABS já tem matérias da data (mesma checagem do painel)."""
     try:
-        from ..services.inlabs_service import is_date_loaded
+        from ..services.inlabs_service import is_date_loaded, is_inlabs_local_available
 
+        if not is_inlabs_local_available():
+            return False  # sem INLABS local: vai direto para a contingência, sem tocar no banco
         loaded, _count = is_date_loaded(reference_date.strftime("%Y-%m-%d"))
         return bool(loaded)
     except Exception as exc:  # sem app context, sem Postgres etc.
@@ -146,6 +148,10 @@ def ensure_day_pdfs(
 
     res = archive_date_pdfs(date_iso, folder=folder, sections=section_keys, layout=active_layout)
     errors = list(res.get("errors") or [])
+    # Seção sem edição no portal (resposta "inexistente") vira um aviso próprio,
+    # para o chamador distinguir "não publicada" de "falhou".
+    for sec in res.get("absent_sections") or []:
+        errors.append(f"Seção {sec} (ausente): edição não encontrada no portal")
 
     candidate_dirs: List[Path] = []
     for sec in section_keys:
@@ -288,6 +294,21 @@ def scan_pages_for_terms(
     return hits
 
 
+def _today_brt() -> date:
+    from datetime import timedelta, timezone
+
+    return datetime.now(timezone(timedelta(hours=-3))).date()
+
+
+def _is_business_day(reference_date: date) -> bool:
+    try:
+        from ..services.holiday_service import is_business_day
+
+        return bool(is_business_day(reference_date)[0])
+    except Exception:
+        return reference_date.weekday() < 5
+
+
 def _ensure_src_path() -> None:
     src = str(Path(__file__).resolve().parents[3] / "src")
     if src not in sys.path:
@@ -337,8 +358,17 @@ def search_day_via_pdf(
     confirm_with_api: Optional[Callable[[List[str]], Dict[str, Any]]] = None,
     ensure_pdfs: Callable[[str, List[str]], Tuple[List[Tuple[str, int, Path]], List[str]]] = ensure_day_pdfs,
     extract_text: Callable[[Path], List[str]] = extract_pages_text,
+    report: Optional[Dict[str, Any]] = None,
+    strict_confirm: bool = False,
 ) -> Tuple[Dict[str, Any], List[str]]:
     """Busca os termos no PDF integral do dia.
+
+    ``strict_confirm``: a rotina tem filtro de órgão. O PDF não conhece órgãos
+    (procura na página inteira), então só vale o que a API do DOU, que aplica o
+    filtro, confirmar; empresa achada no PDF mas fora do órgão é descartada.
+
+    ``report`` (opcional) recebe ``{"sections": {seção: {status, detail}}, "files": n}``
+    com o resultado por seção: ``pdf`` (lida), ``ausente`` (sem edição) ou ``falhou``.
 
     Retorna ``(resultado no formato XCom, seções que falharam)``. As seções
     com falha de download devem ser cobertas pela API do DOU pelo chamador.
@@ -348,10 +378,32 @@ def search_day_via_pdf(
     files, errors = ensure_pdfs(date_iso, section_keys)
 
     present = {sec for sec, _j, _p in files}
-    failed_sections = [
-        sec for sec in section_keys
-        if sec not in present and any(e.startswith(f"Seção {sec} ") for e in errors)
-    ]
+    business_day = _is_business_day(reference_date)
+    failed_sections: List[str] = []
+    sections_report: Dict[str, Dict[str, str]] = {}
+    for sec in section_keys:
+        if sec in present:
+            sections_report[sec] = {"status": "pdf", "detail": "PDF integral lido"}
+            continue
+        err = next((e for e in errors if e.startswith(f"Seção {sec} ")), None)
+        if err and not err.startswith(f"Seção {sec} (ausente)"):
+            sections_report[sec] = {"status": "falhou", "detail": err}
+            failed_sections.append(sec)
+        elif sec == "extra" or not business_day:
+            # Edição Extra é eventual; em fim de semana/feriado não há edição normal.
+            sections_report[sec] = {"status": "ausente", "detail": "sem edição publicada no dia"}
+        else:
+            # Seção 1/2/3 sumiu num dia útil: ainda não publicada ou portal incompleto.
+            # Não dá para afirmar "sem menções": a API do DOU precisa cobrir a seção.
+            detail = "PDF da seção não encontrado no portal (dia útil)"
+            provisional = reference_date >= _today_brt()
+            if provisional:
+                detail += "; a edição de hoje pode ainda não ter sido publicada"
+            sections_report[sec] = {"status": "falhou", "detail": detail, "provisional": provisional}
+            failed_sections.append(sec)
+    if report is not None:
+        report["sections"] = sections_report
+        report["files"] = len(files)
 
     pdf_pubs: Dict[str, List[Dict[str, Any]]] = {}
     for sec, jornal, path in files:
@@ -361,19 +413,39 @@ def search_day_via_pdf(
                 pdf_pubs.setdefault(term, []).append(_pdf_publication(term, sec, jornal, date_iso, hit))
 
     logger.info(
-        "Busca no PDF integral de %s: %d arquivo(s), %d empresa(s) encontrada(s).",
+        "Busca no PDF integral de %s: %d arquivo(s), %d empresa(s) encontrada(s). Seções: %s",
         date_iso, len(files), len(pdf_pubs),
+        "; ".join(f"{k}={v['status']}" for k, v in sections_report.items()),
     )
+    for sec, info in sections_report.items():
+        if info["status"] == "falhou":
+            logger.warning("Seção %s sem PDF em %s: %s", sec, date_iso, info["detail"])
 
     final: Dict[str, List[Dict[str, Any]]] = {}
     if pdf_pubs and confirm_with_api is not None:
+        api_ok = True
+        notes: List[str] = report.setdefault("notes", []) if report is not None else []
         try:
             api_pubs = _pubs_by_term(confirm_with_api(sorted(pdf_pubs)))
         except Exception as exc:
             logger.warning("Confirmação na API do DOU falhou (%s); usando links do PDF.", exc)
             api_pubs = {}
+            api_ok = False
+            if strict_confirm:
+                notes.append(
+                    "API do DOU indisponível: menções do PDF gravadas SEM aplicar o filtro de órgão da rotina."
+                )
+        dropped = 0
         for term, pubs in pdf_pubs.items():
-            final[term] = api_pubs.get(term) or pubs
+            if strict_confirm and api_ok:
+                final[term] = api_pubs.get(term) or []
+                if not final[term]:
+                    dropped += 1
+                    logger.info("Termo %s achado no PDF, mas fora do filtro de órgão da rotina: descartado.", term)
+            else:
+                final[term] = api_pubs.get(term) or pubs
+        if dropped:
+            notes.append(f"{dropped} empresa(s) achada(s) no PDF descartada(s) por estarem fora do filtro de órgão da rotina.")
     else:
         final = pdf_pubs
 

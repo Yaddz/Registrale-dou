@@ -16,5 +16,11 @@ Use um prompt por sessão de trabalho, na ordem. Cada prompt manda o agente ler 
 | 8 | [sprint-8.md](sprint-8.md) | **Aprovação escrita do usuário** em `plano/HOMOLOGACAO.md` (assinada em 24/11/2026) e revisão do Sprint 7 aprovada |
 | 9 | [sprint-9.md](sprint-9.md) | Sprint 8 revisado |
 | 10 | [sprint-10.md](sprint-10.md) | Sprint 9 aprovado (24/11/2026) |
+| 11 | [sprint-11.md](sprint-11.md) | Agora (prioritário: a busca do app instalado não é confiável) |
+| 12 | [sprint-12.md](sprint-12.md) | Sprint 11 revisado |
+| 13 | [sprint-13.md](sprint-13.md) | Sprint 12 revisado |
+| 14 | [sprint-14.md](sprint-14.md) | Sprint 13 revisado |
+| 15 | [sprint-15.md](sprint-15.md) | Sprint 14 revisado |
+| 16 | [sprint-16.md](sprint-16.md) | Sprints 11 a 15 revisados |
 
 Depois de cada sprint, abra uma sessão separada com [revisao.md](revisao.md), trocando `<N>` pelo número do sprint. Só avance quando o veredito for "aprovado".

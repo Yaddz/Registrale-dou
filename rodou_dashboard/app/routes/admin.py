@@ -44,6 +44,9 @@ def get_settings():
                     settings[k] = v
     from ..services.email_service import is_smtp_enabled
     settings["smtp"]["enabled"] = is_smtp_enabled(settings.get("smtp"))
+    settings["api_keys"]["gestaoclick_auto_sync"] = bool(settings["api_keys"].get("gestaoclick_auto_sync", False))
+    settings["google_sheets"]["auto_sync"] = bool(settings["google_sheets"].get("auto_sync", False))
+    settings["google_sheets"]["delete_obsolete"] = bool(settings["google_sheets"].get("delete_obsolete", False))
     return jsonify({"status": "ok", "settings": settings})
 
 @admin_bp.route('/save_settings', methods=['POST'])
@@ -84,6 +87,9 @@ def save_settings():
         
         if 'api_keys' in data and isinstance(data['api_keys'], dict):
             ak = data['api_keys']
+            if 'gestaoclick_auto_sync' in ak:
+                merged_val.setdefault('api_keys', {})
+                merged_val['api_keys']['gestaoclick_auto_sync'] = bool(ak['gestaoclick_auto_sync'])
             mappings = {
                 "gestaoclick_access_token": "ACCESS_TOKEN",
                 "gestaoclick_secret_token": "SECRET_ACCESS_TOKEN",
@@ -98,30 +104,42 @@ def save_settings():
                 elif key in ak: # user sent empty string
                     unset_key(env_path, env_var)
                     os.environ.pop(env_var, None)
+
+        if 'google_sheets' in data and isinstance(data['google_sheets'], dict):
+            gs = data['google_sheets']
+            merged_val.setdefault('google_sheets', {})
+            if 'auto_sync' in gs:
+                merged_val['google_sheets']['auto_sync'] = bool(gs['auto_sync'])
+            if 'delete_obsolete' in gs:
+                merged_val['google_sheets']['delete_obsolete'] = bool(gs['delete_obsolete'])
         
         if 'smtp' in data and isinstance(data['smtp'], dict):
             smtp = data['smtp']
+            existing_smtp = existing_val.get('smtp', {}) if isinstance(existing_val.get('smtp'), dict) else {}
             
-            # Sanitizar campos SMTP
-            smtp_server = str(smtp.get('server') or '').strip()
+            # Sanitizar campos SMTP preservando valores existentes em atualizações parciais
+            smtp_server = str((smtp['server'] if 'server' in smtp else existing_smtp.get('server')) or '').strip()
             if smtp_server.lower().startswith('stmp.'):
                 smtp_server = 'smtp.' + smtp_server[5:]
             elif smtp_server.lower().startswith('smpt.'):
                 smtp_server = 'smtp.' + smtp_server[5:]
-            smtp_port = str(smtp.get('port') or '587').strip()
-            smtp_user = str(smtp.get('user') or '').strip()
-            raw_password = str(smtp.get('password') or '').strip()
+            smtp_port = str((smtp['port'] if 'port' in smtp else existing_smtp.get('port')) or '587').strip()
+            smtp_user = str((smtp['user'] if 'user' in smtp else existing_smtp.get('user')) or '').strip()
+            raw_password = str((smtp['password'] if 'password' in smtp else existing_smtp.get('password')) or '').strip()
             
             # Se não enviou senha nova, preserva a senha anterior salva
-            if not raw_password and existing_val.get('smtp', {}).get('password'):
-                raw_password = existing_val.get('smtp', {}).get('password')
+            if not raw_password and existing_smtp.get('password'):
+                raw_password = existing_smtp.get('password')
                 
             smtp_password = raw_password
             if 'gmail.com' in smtp_server.lower() or 'googlemail.com' in smtp_server.lower():
                 smtp_password = raw_password.replace(' ', '')
-            smtp_from = str(smtp.get('from_email') or smtp_user).strip()
+            if 'from_email' in smtp:
+                smtp_from = str(smtp.get('from_email') or smtp_user).strip()
+            else:
+                smtp_from = str(existing_smtp.get('from_email') or smtp_user).strip()
             from ..services.email_service import is_smtp_enabled
-            smtp_enabled = bool(smtp['enabled']) if 'enabled' in smtp else is_smtp_enabled(existing_val.get('smtp', {}))
+            smtp_enabled = bool(smtp['enabled']) if 'enabled' in smtp else is_smtp_enabled(existing_smtp)
 
             merged_val['smtp'] = {
                 "enabled": smtp_enabled,
@@ -132,28 +150,6 @@ def save_settings():
                 "from_email": smtp_from
             }
             
-            smtp_mappings = {
-                "AIRFLOW__SMTP__SMTP_HOST": smtp_server,
-                "AIRFLOW__SMTP__SMTP_PORT": smtp_port,
-                "AIRFLOW__SMTP__SMTP_USER": smtp_user,
-                "AIRFLOW__SMTP__SMTP_PASSWORD": smtp_password,
-                "AIRFLOW__SMTP__SMTP_MAIL_FROM": smtp_from
-            }
-            for env_var, val in smtp_mappings.items():
-                if val:
-                    set_key(env_path, env_var, str(val))
-                    os.environ[env_var] = str(val)
-                else:
-                    unset_key(env_path, env_var)
-                    os.environ.pop(env_var, None)
-                    
-            if smtp_port in ('587', '25'):
-                set_key(env_path, "AIRFLOW__SMTP__SMTP_STARTTLS", "true")
-                os.environ["AIRFLOW__SMTP__SMTP_STARTTLS"] = "true"
-            elif smtp_port == '465':
-                set_key(env_path, "AIRFLOW__SMTP__SMTP_SSL", "true")
-                os.environ["AIRFLOW__SMTP__SMTP_SSL"] = "true"
-                
             # Sincronizar conexão smtp_default no orquestrador (no-op no modo local)
             if smtp_server and smtp_user:
                 try:
@@ -213,22 +209,25 @@ def save_settings():
             )
 
             pa = data['pdf_archive']
-            enabled_val = bool(pa.get('enabled', True))
-            folder_val = str(pa.get('folder') or '').strip() or str(get_default_pdf_dir(create=False))
-            if enabled_val or str(pa.get('folder') or '').strip():
+            existing_pa = existing_val.get('pdf_archive', {}) if isinstance(existing_val.get('pdf_archive'), dict) else {}
+            enabled_val = bool(pa['enabled']) if 'enabled' in pa else bool(existing_pa.get('enabled', True))
+            raw_folder = pa['folder'] if 'folder' in pa else existing_pa.get('folder')
+            folder_val = str(raw_folder or '').strip() or str(get_default_pdf_dir(create=False))
+            if ('folder' in pa or enabled_val) and (enabled_val or str(raw_folder or '').strip()):
                 try:
                     checked = validate_pdf_folder(folder_val)
                     folder_val = checked["path"]
                 except ValueError as exc:
                     return jsonify({"status": "error", "message": str(exc)}), 400
             layout_val = normalize_pdf_layout(
-                pa.get('layout', existing_val.get('pdf_archive', {}).get('layout'))
+                pa.get('layout', existing_pa.get('layout'))
             )
+            sections_val = normalize_sections(pa['sections'] if 'sections' in pa else existing_pa.get('sections'))
             merged_val['pdf_archive'] = {
                 "enabled": enabled_val,
                 "folder": folder_val,
                 "layout": layout_val,
-                "sections": normalize_sections(pa.get('sections')),
+                "sections": sections_val,
             }
 
         # Salvar o dicionário final com todos os campos e sanitizações
@@ -295,16 +294,18 @@ def admin_clear_data():
     
     try:
         if action_type == 'all':
+            from ..models import JobRun
             Company.query.delete()
             SyncHistory.query.delete()
             Mention.query.delete()
+            JobRun.query.delete()
             cache_meta = Settings.query.filter_by(key='mentions_cache_meta').first()
             if not cache_meta:
                 cache_meta = Settings(key='mentions_cache_meta')
                 db.session.add(cache_meta)
             cache_meta.set_value({"last_parsed_at": 0})
             db.session.commit()
-            clear_mentions_cache()
+            clear_admin_caches()
             
             if os.path.exists(LOGS_DIR):
                 for item in os.listdir(LOGS_DIR):
@@ -316,6 +317,7 @@ def admin_clear_data():
         elif action_type == 'history':
             SyncHistory.query.delete()
             db.session.commit()
+            clear_admin_caches()
             return jsonify({"status": "success", "message": "Histórico de sincronização removido."})
             
         elif action_type == 'mentions':
@@ -326,13 +328,14 @@ def admin_clear_data():
                 db.session.add(cache_meta)
             cache_meta.set_value({"last_parsed_at": 0})
             db.session.commit()
-            clear_mentions_cache()
+            clear_admin_caches()
             return jsonify({"status": "success", "message": "Menções (alertas) limpas do painel com sucesso."})
             
         elif action_type == 'inlabs_old':
             try:
                 from ..services.inlabs_service import enforce_inlabs_retention_limit
                 deleted_days = enforce_inlabs_retention_limit(max_days=120)
+                clear_admin_caches()
                 return jsonify({"status": "success", "message": f"Limpeza INLABS concluída: {deleted_days} dia(s) mais antigo(s) removido(s) para manter o limite de 120 dias."})
             except Exception as inner_e:
                 return jsonify({"status": "error", "message": f"Falha na limpeza INLABS: {str(inner_e)}"}), 500
@@ -364,16 +367,22 @@ def manual_sync_route():
             }), 400
         
         def run_sync_in_background(app_context):
+            global _sync_running
             from ..services.sync_cnpj import executar_sincronizacao
+            with _sync_state_lock:
+                _sync_running = True
             try:
                 import logging
                 logging.info("Iniciando sincronização de CNPJs em segundo plano...")
-                executar_sincronizacao()
-                
-                # Sincronizar JSON com o banco de dados
-                with app_context:
-                    from ..services.dag_config_service import sync_json_to_db
-                    sync_json_to_db()
+                from ..services.dag_config_service import COMPANY_SYNC_LOCK
+                with COMPANY_SYNC_LOCK:
+                    executar_sincronizacao()
+
+                    # Sincronizar JSON com o banco de dados
+                    with app_context:
+                        from ..services.dag_config_service import sync_json_to_db
+                        sync_json_to_db()
+                        clear_admin_caches()
                         
                 from datetime import datetime, timezone, timedelta
                 with app_context:
@@ -397,6 +406,9 @@ def manual_sync_route():
                     )
                     db.session.add(new_event)
                     db.session.commit()
+            finally:
+                with _sync_state_lock:
+                    _sync_running = False
 
         from flask import current_app
         app_context = current_app.app_context()
@@ -421,6 +433,22 @@ import threading
 
 _inlabs_portal_lock = threading.Lock()
 _inlabs_portal_cache = {'time': 0.0, 'ok': True, 'msg': ''}
+_sync_state_lock = threading.Lock()
+_sync_running = False
+
+
+def clear_admin_caches() -> None:
+    """Invalida os caches em memória do painel (INLABS, portal e menções)."""
+    global _inlabs_cache
+    _inlabs_cache = {'time': 0, 'data': None}
+    with _inlabs_portal_lock:
+        _inlabs_portal_cache.update({'time': 0.0, 'ok': True, 'msg': ''})
+    try:
+        from ..services.inlabs_service import clear_inlabs_portal_cache
+        clear_inlabs_portal_cache()
+    except Exception:
+        pass
+    clear_mentions_cache()
 
 
 def _get_cached_inlabs_portal_status(force_refresh: bool = False):
@@ -435,6 +463,104 @@ def _get_cached_inlabs_portal_status(force_refresh: bool = False):
                 ok, msg = False, f"Não foi possível verificar o portal INLABS: {exc}"
             _inlabs_portal_cache.update({'time': now, 'ok': bool(ok), 'msg': str(msg or '')})
         return _inlabs_portal_cache['ok'], _inlabs_portal_cache['msg']
+
+
+@admin_bp.route('/activity', methods=['GET'])
+@login_required
+def get_activity():
+    """Retorna o estado leve de atividade atual do painel para o indicador global."""
+    from ..models import JobRun
+    from ..services.dag_config_service import get_next_search_time
+    from ..runtime.pdf_archiver import get_pdf_archive_status
+    from ..runtime.scheduler import get_scheduler
+
+    with _sync_state_lock:
+        sync_active = bool(_sync_running)
+
+    active_runs = (
+        JobRun.query.filter(JobRun.status.in_(["queued", "running"]))
+        .order_by(JobRun.inicio.desc())
+        .limit(5)
+        .all()
+    )
+    last_finished = (
+        JobRun.query.filter(~JobRun.status.in_(["queued", "running"]))
+        .order_by(JobRun.fim.desc(), JobRun.inicio.desc())
+        .first()
+    )
+
+    pdf_status = get_pdf_archive_status() or {}
+    pdf_running = bool(pdf_status.get("running", False))
+
+    retry_at = None
+    sched = get_scheduler()
+    if sched is not None:
+        try:
+            for job in sched.list_jobs():
+                if str(job.get("id") or "").startswith("retry::") and job.get("next_run_time"):
+                    nrt = str(job["next_run_time"])
+                    # Formato ISO: YYYY-MM-DDTHH:MM:SS...
+                    if "T" in nrt:
+                        retry_at = nrt.split("T", 1)[1][:5]
+                    elif " " in nrt:
+                        retry_at = nrt.split(" ", 1)[1][:5]
+                    break
+        except Exception:
+            pass
+
+    if active_runs:
+        j = active_runs[0]
+        r_name = str(j.rotina or "").replace(".yaml", "")
+        dt_part = f" ({j.data})" if j.data else ""
+        state = "running"
+        label = f"Executando: {r_name}{dt_part}"
+        busy = True
+    elif sync_active:
+        state = "syncing"
+        label = "Sincronizando planilha"
+        busy = True
+    elif pdf_running:
+        state = "downloading"
+        label = "Baixando PDFs"
+        busy = True
+    elif (last_finished and last_finished.status == "partial") or retry_at:
+        state = "partial"
+        label = "Concluída com pendências"
+        if retry_at:
+            label += f" · Nova tentativa às {retry_at}"
+        busy = False
+    else:
+        state = "idle"
+        label = "Ocioso"
+        busy = False
+
+    return jsonify({
+        "status": "ok",
+        "busy": busy,
+        "state": state,
+        "label": label,
+        "next_search": get_next_search_time(),
+        "retry_at": retry_at,
+        "active_jobs": [
+            {
+                "id": j.id,
+                "routine": j.rotina,
+                "logical_date": j.data,
+                "status": j.status,
+            }
+            for j in active_runs
+        ],
+        "last_job": (
+            {
+                "id": last_finished.id,
+                "routine": last_finished.rotina,
+                "logical_date": last_finished.data,
+                "status": last_finished.status,
+            }
+            if last_finished
+            else None
+        ),
+    })
 
 
 @admin_bp.route('/status', methods=['GET'])
@@ -465,7 +591,11 @@ def api_status():
     last_sync = SyncHistory.get_last_sync_display()
 
     from ..runtime.pdf_search import FALLBACK_API, FALLBACK_OFF, FALLBACK_PDF, get_fallback_mode
-    from ..services.inlabs_service import is_date_loaded
+    from ..services.inlabs_service import (
+        INLABS_LOCAL_UNAVAILABLE_MESSAGE,
+        is_date_loaded,
+        is_inlabs_local_available,
+    )
 
     today_iso = datetime.now(timezone(timedelta(hours=-3))).strftime('%Y-%m-%d')
     portal_ok, portal_msg = _get_cached_inlabs_portal_status(
@@ -498,6 +628,8 @@ def api_status():
             "portal_ok": portal_ok,
             "portal_message": portal_msg,
             "today_loaded": bool(today_loaded),
+            "local_available": is_inlabs_local_available(),
+            "local_message": INLABS_LOCAL_UNAVAILABLE_MESSAGE,
             "fallback_mode": fb_mode,
             "fallback_label": fb_labels.get(fb_mode, "PDF integral + API do DOU"),
             "executor_mode": "local",
@@ -518,7 +650,7 @@ def get_inlabs_stats():
         return jsonify(_inlabs_cache['data'])
         
     from sqlalchemy import text
-    from ..services.inlabs_service import get_inlabs_postgres_engine
+    from ..services.inlabs_service import InlabsUnavailable, get_inlabs_postgres_engine
     import logging
     try:
         engine = get_inlabs_postgres_engine()
@@ -556,6 +688,9 @@ def get_inlabs_stats():
         }
         _inlabs_cache['time'] = time.time()
         return jsonify(_inlabs_cache['data'])
+    except InlabsUnavailable as e:
+        # Sem INLABS local (Postgres portátil não instalado): não é erro, é a contingência.
+        return jsonify({"status": "unavailable", "message": str(e), "size": None, "days_stored": 0, "days": []})
     except Exception as e:
         logging.error(f"Erro ao consultar DB Inlabs: {e}")
         return jsonify({"status": "error", "message": "Não foi possível conectar ao banco de dados INLABS."}), 500

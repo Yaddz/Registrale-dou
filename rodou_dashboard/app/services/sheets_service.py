@@ -337,6 +337,13 @@ def get_sheet_cnpjs_list(credentials_json=None, spreadsheet_url=None, sheet_name
 
 
 def executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
+    from .dag_config_service import COMPANY_SYNC_LOCK
+
+    with COMPANY_SYNC_LOCK:
+        return _executar_sincronizacao_sheets(app=app, config_override=config_override)
+
+
+def _executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
     """
     Executa a sincronização completa da planilha Google Sheets com o banco de dados do Registrale.
     Atualiza/insere registros na tabela Company, atualiza os arquivos YAML de busca e registra no SyncHistory.

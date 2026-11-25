@@ -184,7 +184,7 @@ def test_archive_empty_on_weekend_or_holiday(app_ctx):
 
     class FakeSession:
         def request(self, method, url, headers=None, timeout=30):
-            return _FakeResponse(text="<html>Edição não encontrada</html>")
+            return _FakeResponse(text="<title>Página Inexistente - Imprensa Nacional</title>")
 
     res = archive_date_pdfs(
         "20/11/2026",

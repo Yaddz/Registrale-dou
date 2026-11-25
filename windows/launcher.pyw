@@ -350,6 +350,34 @@ class RegistraleTrayController:
         main_log = logs_dir / "registrale.log"
         _open_path(main_log if main_log.is_file() else logs_dir)
 
+    def check_updates(self, *_args) -> None:
+        def _run():
+            version = get_app_version()
+            try:
+                from rodou_dashboard.app.runtime.updater import check_for_updates
+                info = check_for_updates()
+            except Exception as exc:
+                _show_message_box(
+                    "Atualizações — Registrale-DOU",
+                    f"Versão atual: v{version}\n\nNão foi possível verificar atualizações:\n{exc}",
+                )
+                return
+            if info.get("update_available"):
+                latest = info.get("latest_version") or ""
+                _show_message_box(
+                    "Atualizações — Registrale-DOU",
+                    f"Versão atual: v{version}\nNova versão disponível: v{latest}\n\n"
+                    "Abra o painel em Configurações → Sistema e atualizações para baixar.",
+                )
+                self.open_panel()
+            else:
+                _show_message_box(
+                    "Atualizações — Registrale-DOU",
+                    f"Você já está na versão mais recente (v{version}).",
+                )
+
+        threading.Thread(target=_run, daemon=True).start()
+
     def restart_server(self, *_args) -> None:
         logger.info("Reiniciando servidor...")
         self.stop_server()
@@ -454,9 +482,11 @@ class RegistraleTrayController:
                     if self.open_browser_on_start:
                         webbrowser.open(self.panel_url)
 
+        version = get_app_version()
         menu = pystray.Menu(
             pystray.MenuItem("Abrir painel", self.open_panel, default=True),
-            pystray.MenuItem("Status", self.show_status),
+            pystray.MenuItem(f"Status (v{version})", self.show_status),
+            pystray.MenuItem("Verificar atualizações", self.check_updates),
             pystray.MenuItem("Ver logs", self.open_logs),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Reiniciar", self.restart_server),

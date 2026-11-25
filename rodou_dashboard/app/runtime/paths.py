@@ -110,11 +110,10 @@ _EMPTY_MAIN_ROUTINE_YAML = """dag:
   dataset: inlabs
   search:
     - header: MONITORAMENTO PADRÃO
-      is_exact_search: true
+      is_exact_search: false
       force_rematch: true
-      department:
-        - ANVISA
-        - Agência Nacional de Vigilância Sanitária
+      field: TUDO
+      department: []
       dou_sections:
         - SECAO_1
         - SECAO_2

@@ -7,15 +7,64 @@ logger = logging.getLogger(__name__)
 
 _inlabs_engine = None
 _inlabs_engine_url = None
+_unavailable_warned = False
+
+INLABS_LOCAL_UNAVAILABLE_MESSAGE = "INLABS local não instalado: usando contingência (PDF/API)."
+
+
+class InlabsUnavailable(RuntimeError):
+    """Não há INLABS local: sem ``INLABS_DB_URL`` e sem Postgres portátil instalado."""
+
+
+def _warn_unavailable_once() -> None:
+    """Registra o aviso de INLABS ausente uma única vez por início do app."""
+    global _unavailable_warned
+    if not _unavailable_warned:
+        _unavailable_warned = True
+        logger.warning("%s", INLABS_LOCAL_UNAVAILABLE_MESSAGE)
+
+
+def reset_inlabs_state_for_tests():
+    """Reseta o motor e o aviso único (uso exclusivo em testes)."""
+    global _inlabs_engine, _inlabs_engine_url, _unavailable_warned
+    _inlabs_engine = None
+    _inlabs_engine_url = None
+    _unavailable_warned = False
+
+
+def _resolve_inlabs_db_url():
+    """URL do banco do INLABS ou ``None`` quando não há INLABS local."""
+    inlabs_db_url = os.getenv('INLABS_DB_URL')
+    if inlabs_db_url:
+        return inlabs_db_url
+    try:
+        from ..runtime.pg_portable import PostgresBinariesNotFoundError, get_portable_postgres
+        pg = get_portable_postgres()
+        try:
+            pg._resolve_bin_dir()  # binários do Postgres portátil presentes?
+        except PostgresBinariesNotFoundError:
+            return None
+        return pg.get_sqlalchemy_url(driver='psycopg')
+    except Exception:
+        return None
+
+
+def is_inlabs_local_available() -> bool:
+    """True se há um banco INLABS local (URL do ambiente ou Postgres portátil instalado)."""
+    return _resolve_inlabs_db_url() is not None
+
 
 def get_inlabs_postgres_engine():
-    """Retorna uma engine singleton com pool de conexões para o PostgreSQL do INLABS."""
+    """Retorna uma engine singleton com pool de conexões para o PostgreSQL do INLABS.
+
+    Levanta ``InlabsUnavailable`` (com um único aviso no log) quando não há INLABS local.
+    """
     global _inlabs_engine, _inlabs_engine_url
-    inlabs_db_url = os.getenv('INLABS_DB_URL')
+    inlabs_db_url = _resolve_inlabs_db_url()
     if not inlabs_db_url:
-        from ..runtime.pg_portable import get_portable_postgres
-        inlabs_db_url = get_portable_postgres().get_sqlalchemy_url(driver='psycopg')
-    
+        _warn_unavailable_once()
+        raise InlabsUnavailable(INLABS_LOCAL_UNAVAILABLE_MESSAGE)
+
     if _inlabs_engine is None or _inlabs_engine_url != inlabs_db_url:
         _inlabs_engine_url = inlabs_db_url
         connect_args = {'connect_timeout': 5} if '+psycopg' in inlabs_db_url else {'timeout': 5}
@@ -29,6 +78,11 @@ def get_inlabs_postgres_engine():
     return _inlabs_engine
 
 _portal_status_cache = {'time': 0, 'data': None}
+
+
+def clear_inlabs_portal_cache() -> None:
+    """Invalida o cache em memória do status do portal INLABS."""
+    _portal_status_cache.update(time=0, data=None)
 
 def check_inlabs_portal_status(timeout=10, cache_seconds=60):
     """Verifica se o portal INLABS está operacional.
@@ -82,6 +136,8 @@ def get_downloaded_dates(start_date=None, end_date=None):
             else:
                 result = conn.execute(text("SELECT DISTINCT CAST(pubdate AS DATE)::text FROM dou_inlabs.article_raw"))
             downloaded = set(row[0] for row in result)
+    except InlabsUnavailable:
+        return set()
     except Exception as e:
         logger.warning(f"Erro ao consultar datas no PostgreSQL do INLABS: {e}")
         try:
@@ -108,6 +164,8 @@ def is_date_loaded(date_str):
             ).scalar()
             count = int(res or 0)
             return (count > 0), count
+    except InlabsUnavailable:
+        return False, 0
     except Exception as e:
         logger.warning(f"Erro ao checar data {date_str} no PostgreSQL: {e}")
         try:

@@ -98,6 +98,12 @@ def index():
                     else:
                         settings[k] = v
         users_list = [{"username": u.username, "role": u.role} for u in User.query.all()]
+
+    from ..services.email_service import is_smtp_enabled
+    settings["smtp"]["enabled"] = is_smtp_enabled(settings.get("smtp"))
+    settings["api_keys"]["gestaoclick_auto_sync"] = bool(settings["api_keys"].get("gestaoclick_auto_sync", False))
+    settings["google_sheets"]["auto_sync"] = bool(settings["google_sheets"].get("auto_sync", False))
+    settings["google_sheets"]["delete_obsolete"] = bool(settings["google_sheets"].get("delete_obsolete", False))
         
     history = [h.to_dict() for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(50).all()]
     total_m, hoje_m, mes_m = get_mentions_kpis()

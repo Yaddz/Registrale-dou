@@ -203,6 +203,13 @@ def create_app(config=None):
     except Exception as e:
         app.logger.warning(f"Erro ao limpar DAGs temporárias na inicialização: {e}")
 
+    # Execuções que ficaram "em andamento" porque o app foi fechado no meio da busca
+    try:
+        from .runtime.executor import recover_orphan_runs
+        recover_orphan_runs(app)
+    except Exception as e:
+        app.logger.warning(f"Erro ao recuperar execuções órfãs na inicialização: {e}")
+
     # No modo local, a sincronização do Google Sheets roda como job único no APScheduler.
 
     @app.after_request

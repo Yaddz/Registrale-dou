@@ -523,7 +523,16 @@ def _discover_pesquisa_total_pages(
         sleep_fn=sleep_fn,
     )
     m = re.search(r"totalArquivos=(\d+)", resp.text)
-    return int(m.group(1)) if m else 0
+    if m:
+        return int(m.group(1))
+    low = resp.text.lower()
+    if "inexistente" in low:  # "Página Inexistente": confirmado ao vivo em domingo e feriado
+        return 0  # o portal diz explicitamente que não há edição
+    # Resposta sem total e sem a mensagem de "página inexistente" (truncada,
+    # captcha, manutenção): não é "sem edição", é falha de descoberta.
+    raise PdfArchiverError(
+        f"Resposta inesperada do portal ao descobrir o total de páginas (jornal={jornal_code}, data={date_br})."
+    )
 
 
 def _download_pesquisa_page(
@@ -666,6 +675,9 @@ def archive_date_pdfs(
     skipped_files: List[str] = []
     errors: List[str] = []
     missing_sections: List[str] = []
+    absent_sections: List[str] = []  # portal sem edição (vazio) para a seção
+    failed_sections: List[str] = []  # erro ao obter a seção
+    section_status: Dict[str, str] = {}  # seção -> existente | baixado | ausente | falhou
 
     with _ARCHIVE_LOCK:
         _ARCHIVE_RUNNING = True
@@ -676,12 +688,14 @@ def archive_date_pdfs(
                     target = build_pdf_target_path(base_folder, date_iso, sec, layout=active_layout)
                     if is_valid_pdf_file(target):
                         skipped_files.append(str(target))
+                        section_status[sec] = "existente"
                     else:
                         missing_sections.append(sec)
                 else:
                     target_extra = build_pdf_target_path(base_folder, date_iso, "extra", layout=active_layout)
                     if is_valid_pdf_file(target_extra):
                         skipped_files.append(str(target_extra))
+                        section_status["extra"] = "existente"
                     else:
                         missing_sections.append("extra")
 
@@ -706,6 +720,8 @@ def archive_date_pdfs(
                         target = build_pdf_target_path(base_folder, date_iso, sec, layout=active_layout)
                         if not is_valid_pdf_file(target):
                             still_missing.append(sec)
+                        else:
+                            section_status[sec] = "baixado"
                     missing_sections = still_missing
 
             # 3. Fallback (ou fonte padrão se INLABS indisponível): pesquisa.in.gov.br
@@ -713,6 +729,9 @@ def archive_date_pdfs(
                 used_source = "pesquisa.in.gov.br" if not saved_files else "inlabs+pesquisa.in.gov.br"
                 for sec in missing_sections:
                     jornal_codes = _SECTION_TO_JORNAL.get(sec, ())
+                    errors_before = len(errors)
+                    saved_before = len(saved_files)
+                    skipped_before = len(skipped_files)
                     for idx, j_code in enumerate(jornal_codes):
                         suffix = None if (sec != "extra" or idx == 0) else chr(ord("A") + idx)
                         target = build_pdf_target_path(
@@ -740,6 +759,16 @@ def archive_date_pdfs(
                             errors.append(f"Seção {sec} (jornal {j_code}): {exc}")
                             if sec == "extra":
                                 break
+                    if len(errors) > errors_before:
+                        section_status[sec] = "falhou"
+                        failed_sections.append(sec)
+                    elif len(saved_files) > saved_before:
+                        section_status[sec] = "baixado"
+                    elif len(skipped_files) > skipped_before:
+                        section_status[sec] = "existente"
+                    else:
+                        section_status[sec] = "ausente"
+                        absent_sections.append(sec)
 
             if errors and not saved_files and not skipped_files:
                 status = "error"
@@ -767,6 +796,9 @@ def archive_date_pdfs(
                 "saved_files": saved_files,
                 "skipped_files": skipped_files,
                 "errors": errors,
+                "section_status": section_status,
+                "absent_sections": absent_sections,
+                "failed_sections": failed_sections,
                 "message": msg,
                 "last_run_at": datetime.now(_BRASILIA_TZ).strftime("%d/%m/%Y %H:%M:%S"),
             }

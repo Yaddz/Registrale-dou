@@ -114,6 +114,45 @@ def _parse_term_list(term_list: Any) -> Any:
     return cleaned
 
 
+class NoMonitoredCompanies(ValueError):
+    """Rotina sem termos de busca (nenhuma empresa monitorada)."""
+
+
+NO_COMPANIES_MESSAGE = "Nenhuma empresa monitorada: sincronize a planilha ou o GestãoClick."
+
+
+def routine_has_no_terms(yaml_source: Union[str, Path, Dict[str, Any]]) -> bool:
+    """True se todos os blocos de busca têm ``terms`` vazio e nenhum outro critério.
+
+    Esse é o estado da rotina principal antes da primeira sincronização; o
+    Pydantic o rejeitaria com um erro técnico.
+    """
+    import yaml as _yaml
+
+    try:
+        if isinstance(yaml_source, dict):
+            data = yaml_source
+        else:
+            with open(os.fspath(yaml_source), "r", encoding="utf-8") as fh:
+                data = _yaml.safe_load(fh) or {}
+        blocks = (data.get("dag") or {}).get("search") or []
+        if isinstance(blocks, dict):
+            blocks = [blocks]
+    except Exception:
+        return False
+    if not blocks:
+        return True  # rotina sem nenhum bloco de busca
+    return all(
+        isinstance(b, dict)
+        and "terms" in b
+        and isinstance(b.get("terms"), list)
+        and not [t for t in b["terms"] if t]
+        and not b.get("department")
+        and not b.get("pubtype")
+        for b in blocks
+    )
+
+
 def load_specs(yaml_source: Union[str, Path, Dict[str, Any]]) -> Any:
     """Carrega um arquivo YAML ou dicionário em memória para `DAGConfig`."""
     _ensure_src_imports()
@@ -224,19 +263,54 @@ def _merge_term_results(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str
     return merged
 
 
+_SECTION_LABELS = {
+    "1": ("SECAO_1", "Seção 1"),
+    "2": ("SECAO_2", "Seção 2"),
+    "3": ("SECAO_3", "Seção 3"),
+    "extra": ("EDICAO_EXTRA", "Edição Extra"),
+}
+_SECTION_KEY_BY_NAME = {name: key for key, (name, _label) in _SECTION_LABELS.items()}
+
+
+def _coverage_entry(key: str, status: str, source: str, detail: str = "") -> Dict[str, str]:
+    """Linha de cobertura de uma seção: ``status`` = coberta | sem_edicao | pendente."""
+    name, label = _SECTION_LABELS.get(key, (key, key))
+    return {"section": name, "label": label, "status": status, "source": source, "detail": detail}
+
+
+def _api_coverage(keys: List[str], source: str, error: Optional[str] = None) -> List[Dict[str, str]]:
+    if error:
+        return [_coverage_entry(k, "pendente", source, f"API do DOU falhou: {error}") for k in keys]
+    return [_coverage_entry(k, "coberta", source) for k in keys]
+
+
+def _accepted_kwargs(fn: Any) -> Optional[set]:
+    """Nomes de parâmetros nomeados que ``fn`` aceita; ``None`` se aceita ``**kwargs`` (tudo)."""
+    import inspect
+
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return None
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params):
+        return None
+    return {p.name for p in params if p.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)}
+
+
 def _run_inlabs_fallback(
     subsearch: Any,
     term_list: Any,
     reference_date: date,
     active_searchers: Dict[str, Any],
-) -> tuple[Dict[str, Any], str]:
+) -> tuple[Dict[str, Any], str, List[Dict[str, str]], List[str]]:
     """PDF integral do dia (confirmado na API) ou, se configurado/necessário, só a API.
 
-    Retorna ``(resultado_xcom, fonte_efetiva)``.
+    Retorna ``(resultado_xcom, fonte_efetiva, cobertura_por_seção, avisos)``. Seção que
+    nenhuma fonte cobriu aparece como ``pendente`` (a execução termina "com pendências").
     """
     import logging
 
-    from .pdf_search import FALLBACK_API, get_fallback_mode, search_day_via_pdf
+    from .pdf_search import FALLBACK_API, get_fallback_mode, search_day_via_pdf, section_keys_from_dou_sections
 
     log = logging.getLogger(__name__)
     terms = _parse_term_list(term_list)
@@ -245,33 +319,82 @@ def _run_inlabs_fallback(
     pdf_search = active_searchers.get("INLABS_FALLBACK", search_day_via_pdf)
     if not callable(pdf_search):
         pdf_search = search_day_via_pdf
+    all_keys = section_keys_from_dou_sections(subsearch.dou_sections)
 
     date_spec = str(getattr(subsearch.date, "value", subsearch.date) or "DIA").upper()
     if get_fallback_mode() == FALLBACK_API or date_spec != "DIA":
         log.info("INLABS sem %s: buscando via API do DOU.", reference_date)
-        return _dou_api_search(subsearch, terms, reference_date, dou), "API do DOU"
+        try:
+            result = _dou_api_search(subsearch, terms, reference_date, dou)
+        except Exception as exc:
+            log.error("API do DOU falhou em %s: %s", reference_date, exc)
+            return {}, "API do DOU", _api_coverage(all_keys, "API do DOU", str(exc)), []
+        return result, "API do DOU", _api_coverage(all_keys, "API do DOU"), []
 
+    report: Dict[str, Any] = {}
+    pdf_kwargs: Dict[str, Any] = {
+        "confirm_with_api": lambda hit_terms: _dou_api_search(subsearch, hit_terms, reference_date, dou),
+        "report": report,
+        "strict_confirm": bool(subsearch.department),
+    }
+    # Buscador injetado (testes) pode não aceitar ``report``/``strict_confirm``: confere a
+    # assinatura em vez de capturar TypeError, que também vem de dentro do PDF (ex.: arquivo corrompido).
+    accepted = _accepted_kwargs(pdf_search)
+    if accepted is not None:
+        pdf_kwargs = {k: v for k, v in pdf_kwargs.items() if k in accepted}
     try:
         result, failed_sections = pdf_search(
             terms,
             subsearch.dou_sections,
             reference_date,
-            confirm_with_api=lambda hit_terms: _dou_api_search(subsearch, hit_terms, reference_date, dou),
+            **pdf_kwargs,
         )
     except Exception as exc:
         log.warning("PDF integral de %s indisponível (%s): buscando via API do DOU.", reference_date, exc)
-        return _dou_api_search(subsearch, terms, reference_date, dou), "API do DOU"
+        try:
+            result = _dou_api_search(subsearch, terms, reference_date, dou)
+        except Exception as api_exc:
+            log.error("API do DOU também falhou em %s: %s", reference_date, api_exc)
+            return {}, "API do DOU", _api_coverage(all_keys, "API do DOU", str(api_exc)), []
+        return result, "API do DOU", _api_coverage(all_keys, "API do DOU"), []
+
+    sections_report = report.get("sections") or {}
+    coverage: List[Dict[str, str]] = []
+    for key in all_keys:
+        info = sections_report.get(key)
+        if key in failed_sections:
+            continue  # decidido abaixo, conforme a API cobrir ou não
+        if info and info.get("status") == "ausente":
+            coverage.append(_coverage_entry(key, "sem_edicao", "PDF integral", info.get("detail", "")))
+        else:
+            coverage.append(_coverage_entry(key, "coberta", "PDF integral"))
 
     if failed_sections:
-        section_map = {"1": "SECAO_1", "2": "SECAO_2", "3": "SECAO_3", "extra": "EDICAO_EXTRA"}
-        missing = [section_map[s] for s in failed_sections if s in section_map]
+        missing = [_SECTION_LABELS[s][0] for s in failed_sections if s in _SECTION_LABELS]
         log.warning("PDF de %s sem as seções %s: completando via API do DOU.", reference_date, missing)
         try:
             api_part = _dou_api_search(subsearch, terms, reference_date, dou, dou_sections=missing)
             result = _merge_term_results(result, api_part)
+            for key in failed_sections:
+                info = sections_report.get(key) or {}
+                why = info.get("detail", "")
+                if info.get("provisional"):
+                    # Hoje, seção ainda sem PDF: a API responder vazio não prova "sem menções",
+                    # a edição pode não ter sido publicada. Fica pendente (nova tentativa no dia).
+                    coverage.append(_coverage_entry(
+                        key, "pendente", "API do DOU",
+                        "cobertura provisória pela API: a edição pode não ter sido publicada ainda",
+                    ))
+                else:
+                    coverage.append(_coverage_entry(key, "coberta", "API do DOU", f"PDF sem a seção ({why})" if why else ""))
         except Exception as exc:
             log.error("API do DOU também falhou para %s em %s: %s", missing, reference_date, exc)
-    return result, "PDF integral + API do DOU"
+            for key in failed_sections:
+                why = (sections_report.get(key) or {}).get("detail", "")
+                coverage.append(_coverage_entry(key, "pendente", "API do DOU", f"{why}; API do DOU falhou: {exc}"))
+    coverage.sort(key=lambda c: list(_SECTION_KEY_BY_NAME).index(c["section"]) if c["section"] in _SECTION_KEY_BY_NAME else 99)
+    source = "PDF integral + API do DOU"
+    return result, source, coverage, list(report.get("notes") or [])
 
 
 def run_search_block(
@@ -308,6 +431,8 @@ def run_search_block(
     qd_result: Dict[str, Any] = {}
     doesp_result: Dict[str, Any] = {}
     sources_used: List[str] = []
+    coverage: List[Dict[str, str]] = []
+    notes: List[str] = []
 
     if "DOU" in sources:
         dou_result = active_searchers["DOU"].exec_search(
@@ -325,8 +450,10 @@ def run_search_block(
             reference_date=reference_date,
         )
         sources_used.append("API do DOU")
+        from .pdf_search import section_keys_from_dou_sections
+        coverage = _api_coverage(section_keys_from_dou_sections(subsearch.dou_sections), "API do DOU")
     elif "INLABS" in sources and _use_inlabs_fallback(subsearch, reference_date, searchers):
-        inlabs_result, fallback_source = _run_inlabs_fallback(
+        inlabs_result, fallback_source, coverage, notes = _run_inlabs_fallback(
             subsearch, term_list, reference_date, active_searchers
         )
         sources_used.append(fallback_source)
@@ -353,6 +480,8 @@ def run_search_block(
             reference_date=reference_date,
         )
         sources_used.append("INLABS")
+        from .pdf_search import section_keys_from_dou_sections
+        coverage = _api_coverage(section_keys_from_dou_sections(subsearch.dou_sections), "INLABS")
 
     if "QD" in sources:
         qd_result = active_searchers["QD"].exec_search(
@@ -403,6 +532,9 @@ def run_search_block(
         "department_ignore": subsearch.department_ignore,
         "pubtype": subsearch.pubtype,
         "source_used": " + ".join(dict.fromkeys(sources_used)) if sources_used else "",
+        "coverage": coverage,
+        "notes": notes,
+        "incomplete": any(c.get("status") == "pendente" for c in coverage),
     }
 
 
@@ -412,6 +544,8 @@ def run_routine(
     searchers: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Executa todos os blocos `search` de uma rotina e retorna os resultados XCom."""
+    if routine_has_no_terms(yaml_source):
+        raise NoMonitoredCompanies(NO_COMPANIES_MESSAGE)
     specs = load_specs(yaml_source)
     reference_date = parse_reference_date(execution_date)
     active_searchers = searchers if searchers is not None else _build_default_searchers()

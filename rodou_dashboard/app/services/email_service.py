@@ -51,19 +51,19 @@ class EmailSender:
         if not to_emails:
             raise ValueError("Nenhum destinatário de e-mail válido informado.")
 
-        host = (smtp_config.get('server') or smtp_config.get('host') or os.getenv('AIRFLOW__SMTP__SMTP_HOST', 'smtp4dev')).strip()
+        host = (smtp_config.get('server') or smtp_config.get('host') or 'localhost').strip()
         if host.lower().startswith('stmp.'):
             host = 'smtp.' + host[5:]
         elif host.lower().startswith('smpt.'):
             host = 'smtp.' + host[5:]
-        port_raw = smtp_config.get('port') or os.getenv('AIRFLOW__SMTP__SMTP_PORT', 25)
+        port_raw = smtp_config.get('port') or 25
         port = int(str(port_raw).strip())
-        user = (smtp_config.get('user') or os.getenv('AIRFLOW__SMTP__SMTP_USER', '')).strip()
-        raw_password = smtp_config.get('password') or os.getenv('AIRFLOW__SMTP__SMTP_PASSWORD', '')
+        user = (smtp_config.get('user') or '').strip()
+        raw_password = smtp_config.get('password') or ''
         password = str(raw_password).strip()
         if 'gmail.com' in host.lower() or 'googlemail.com' in host.lower():
             password = password.replace(' ', '')
-        sender_email = (smtp_config.get('from_email') or smtp_config.get('sender') or user or os.getenv('AIRFLOW__SMTP__SMTP_MAIL_FROM', 'rodou@gestao.gov.br')).strip()
+        sender_email = (smtp_config.get('from_email') or smtp_config.get('sender') or user or 'rodou@gestao.gov.br').strip()
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject

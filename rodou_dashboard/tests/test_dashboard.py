@@ -653,6 +653,8 @@ class TestNewOptimizedFeatures:
 
     def test_trigger_individual_routine_historical_date_executes_api_dou(self, auth_client, monkeypatch):
         from app.routes import dags
+        from app.runtime import runner as _runner
+        monkeypatch.setattr(_runner, "routine_has_no_terms", lambda *_a, **_k: False)  # a rotina de teste vem vazia
         
         triggered_calls = []
         class MockExec:
@@ -677,6 +679,8 @@ class TestNewOptimizedFeatures:
 
     def test_trigger_individual_routine_with_brazilian_date_format(self, auth_client, monkeypatch):
         from app.routes import dags
+        from app.runtime import runner as _runner
+        monkeypatch.setattr(_runner, "routine_has_no_terms", lambda *_a, **_k: False)  # a rotina de teste vem vazia
         from app.services import inlabs_service
         
         triggered_calls = []
@@ -1181,7 +1185,8 @@ class TestSprint10PanelAdjustments:
         })
         st_off = auth_client.get('/api/system/integrations_status').get_json()
         assert st_off['smtp_enabled'] is False
-        assert 'smtp' not in [i['id'] for i in st_off['integrations']]
+        smtp_item = next((i for i in st_off['integrations'] if i['id'] == 'smtp'), None)
+        assert smtp_item is not None and smtp_item['status'] == 'disabled'
         assert 'smtp' not in st_off['missing_fields']
 
         fake_mentions = [{

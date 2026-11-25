@@ -25,7 +25,7 @@ from app import create_app
 from app.models import JobRun, Mention, db
 from app.routes.dags import extract_mentions_from_results
 from app.runtime.executor import LocalExecutor, get_executor, normalize_date_str
-from app.runtime.runner import run_routine
+from app.runtime.runner import NoMonitoredCompanies, run_routine
 from app.services.dag_config_service import get_last_search_time
 
 
@@ -121,7 +121,7 @@ class TestRunnerOffline:
         assert len(outputs) == 1
         xcom = outputs[0]
 
-        assert set(xcom.keys()) == {"result", "header", "department", "department_ignore", "pubtype", "source_used"}
+        assert set(xcom.keys()) == {"result", "header", "department", "department_ignore", "pubtype", "source_used", "coverage", "notes", "incomplete"}
         assert xcom["header"] == "MONITORAMENTO TESTE"
 
         group = xcom["result"]["single_group"]
@@ -523,11 +523,8 @@ def test_rotina_principal_vazia_nao_busca_todo_o_orgao():
 
     spy = _SpySearcher()
     searchers = {"DOU": spy, "INLABS": spy, "QD": spy, "DOESP": spy}
-    outputs = run_routine(
-        yaml.safe_load(_EMPTY_MAIN_ROUTINE_YAML), execution_date="2026-11-23", searchers=searchers
-    )
-
+    with pytest.raises(NoMonitoredCompanies, match="Nenhuma empresa monitorada"):
+        run_routine(
+            yaml.safe_load(_EMPTY_MAIN_ROUTINE_YAML), execution_date="2026-11-23", searchers=searchers
+        )
     assert calls == []
-    assert len(outputs) == 1
-    assert outputs[0]["result"] == {}
-    assert extract_mentions_from_results([outputs[0]], cnpj_map={}) == []

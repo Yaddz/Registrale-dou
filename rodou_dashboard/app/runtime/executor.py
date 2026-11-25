@@ -55,6 +55,24 @@ def normalize_date_str(value: Any) -> Optional[str]:
     return datetime(int(y), int(m), int(d)).strftime("%Y-%m-%d")
 
 
+STATUS_PARTIAL = "partial"  # "Concluída com pendências": alguma seção não foi coberta
+TERMINAL_STATES = ("success", "partial", "failed")
+
+
+def _pending_sections(results: Any) -> List[str]:
+    """Seções (de qualquer bloco) que nenhuma fonte cobriu."""
+    pending: List[str] = []
+    for block in results or []:
+        if not isinstance(block, dict):
+            continue
+        for cov in block.get("coverage") or []:
+            if isinstance(cov, dict) and cov.get("status") == "pendente":
+                label = str(cov.get("label") or cov.get("section"))
+                if label not in pending:
+                    pending.append(label)
+    return pending
+
+
 class Executor(ABC):
     """Interface comum para execução de rotinas de busca."""
 
@@ -69,7 +87,7 @@ class Executor(ABC):
 
     @abstractmethod
     def status(self, run_id: str, routine: Optional[str] = None) -> str:
-        """Retorna o estado da execução: queued, running, success, failed ou unknown."""
+        """Retorna o estado da execução: queued, running, success, partial (com pendências), failed ou unknown."""
 
     @abstractmethod
     def wait(
@@ -235,7 +253,7 @@ class LocalExecutor(Executor):
     ) -> None:
         from ..models import JobRun, db
         from .logging_setup import run_log_context
-        from .runner import run_routine
+        from .runner import NoMonitoredCompanies, run_routine
 
         with run_log_context(run_id):
             logger.info("Iniciando execução local %s (data=%s)", run_id, norm_date or "atual")
@@ -260,13 +278,34 @@ class LocalExecutor(Executor):
                             searchers=self._searchers,
                         )
 
+                    pending = _pending_sections(results)
                     job = db.session.get(JobRun, run_id)
                     if job is not None:
-                        job.status = "success"
+                        job.status = STATUS_PARTIAL if pending else "success"
                         job.fim = datetime.now(_BRASILIA_TZ).isoformat()
+                        if pending:
+                            job.erro = "Seções sem cobertura: " + ", ".join(pending)
                         job.set_resultado(results)
                         db.session.commit()
-                    logger.info("Execução local %s concluída com sucesso (%d blocos)", run_id, len(results))
+                    if pending:
+                        logger.warning(
+                            "Execução local %s concluída com pendências (%d blocos): %s",
+                            run_id, len(results), ", ".join(pending),
+                        )
+                    else:
+                        logger.info("Execução local %s concluída com sucesso (%d blocos)", run_id, len(results))
+                except NoMonitoredCompanies as exc:
+                    logger.warning("Execução local %s não executada: %s", run_id, exc)
+                    try:
+                        db.session.rollback()
+                        job = db.session.get(JobRun, run_id)
+                        if job is not None:
+                            job.status = "failed"
+                            job.fim = datetime.now(_BRASILIA_TZ).isoformat()
+                            job.erro = str(exc)
+                            db.session.commit()
+                    except Exception:
+                        db.session.rollback()
                 except Exception as exc:
                     logger.exception("Erro ao executar job local %s: %s", run_id, exc)
                     try:
@@ -332,13 +371,13 @@ class LocalExecutor(Executor):
             for rid in pending_ids:
                 st = self.status(rid, routine=routine)
                 states[rid] = st
-                if st not in ("success", "failed", "unknown"):
+                if st not in TERMINAL_STATES + ("unknown",):
                     all_terminal = False
             if all_terminal or time.monotonic() >= deadline:
                 break
             time.sleep(0.2)
 
-        finished = all(st in ("success", "failed") for st in states.values())
+        finished = all(st in TERMINAL_STATES for st in states.values())
         return finished, states
 
     def result(self, run_id: str, routine: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -382,6 +421,48 @@ class LocalExecutor(Executor):
 
     def shutdown(self, wait: bool = True) -> None:
         self._pool.shutdown(wait=wait)
+
+
+ORPHAN_RUN_MESSAGE = "Interrompida: o app foi fechado durante a execução"
+
+
+def recover_orphan_runs(app: Any) -> int:
+    """Marca como ``failed`` as execuções ``queued``/``running`` que sobraram de um app fechado.
+
+    Sem isto o indicador de atividade ficaria em "Executando" para sempre. Execuções que
+    este mesmo processo ainda está rodando (futuros do executor singleton) são preservadas.
+    """
+    from ..models import JobRun, SyncHistory, db
+
+    live: set = set()
+    inst = _LOCAL_EXECUTOR_INSTANCE
+    if inst is not None:
+        with inst._lock:
+            live = {rid for rid, fut in inst._futures.items() if not fut.done()}
+    count = 0
+    with app.app_context():
+        try:
+            rows = JobRun.query.filter(JobRun.status.in_(["queued", "running"])).all()
+            now_iso = datetime.now(_BRASILIA_TZ).isoformat()
+            for job in rows:
+                if job.id in live:
+                    continue
+                job.status = "failed"
+                job.fim = now_iso
+                job.erro = ORPHAN_RUN_MESSAGE
+                count += 1
+            if count:
+                db.session.commit()
+                SyncHistory.log_event(
+                    "Execução Interrompida",
+                    f"{count} execução(ões) ficaram sem terminar porque o app foi fechado e foram marcadas como interrompidas.",
+                )
+        except Exception as exc:
+            db.session.rollback()
+            logger.warning("Não foi possível recuperar execuções órfãs: %s", exc)
+    if count:
+        logger.warning("%d execução(ões) órfã(s) marcada(s) como interrompida(s).", count)
+    return count
 
 
 _EXECUTOR_LOCK = threading.Lock()
