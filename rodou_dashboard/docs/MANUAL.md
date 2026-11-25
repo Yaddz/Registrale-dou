@@ -78,6 +78,8 @@ Para acessar o sistema, informe seu usuário e senha na tela inicial de login:
 > **Janela Própria e Bandeja do Sistema:** No Windows, o Registrale-DOU abre em uma janela própria (WebView2) fora do navegador. Fechar a janela pelo `X` apenas a esconde, mantendo o servidor e o agendador ativos na bandeja do sistema — clique em **Abrir painel** no ícone da bandeja para reabri-la (ou em **Sair** para encerrar tudo). Caso o WebView2 não esteja disponível, o sistema abre no navegador padrão em `http://localhost:5000`.
 >
 > **Pasta e Organização dos PDFs:** No primeiro acesso, escolha onde guardar os PDFs integrais do DOU e como organizá-los (`Por ano e mês`, `Só por ano` ou `Tudo na mesma pasta`). Você pode alterar essas opções depois em **Configurações → Arquivo PDF DOU** e usar **Reorganizar PDFs existentes** (com confirmação) para mover arquivos antigos sem sobrescrever nada.
+>
+> **Como abrir o painel:** Em seguida, escolha se o painel pede usuário e senha ou abre direto, sem login. A abertura direta entra como administrador e só vale neste computador (`127.0.0.1`); acessos por outro endereço continuam pedindo login. Altere depois em **Configurações → Usuários → Acesso ao painel**.
 
 ---
 
@@ -328,6 +330,7 @@ Na barra lateral, clique em **Relatórios** para gerar documentos corporativos p
 Na sub-aba **Usuários**:
 * Para criar um novo acesso, informe o nome de usuário, a senha e selecione o papel (`master` para administradores ou `user` para operadores).
 * Para revogar um acesso, clique no botão de excluir ao lado do usuário desejado.
+* **Acesso ao painel:** o interruptor **Exigir login** define se o painel pede usuário e senha. Desligado, o painel abre direto como administrador, sem tempo de sessão, apenas neste computador. Ao religar, será preciso entrar com um usuário `master` (o padrão é `admin`).
 
 ---
 

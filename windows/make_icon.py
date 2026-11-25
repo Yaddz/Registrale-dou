@@ -1,4 +1,4 @@
-"""Gera ``windows/registrale.ico`` a partir de ``rodou_dashboard/static/icon.svg``.
+"""Gera ``windows/registrale.ico`` e as imagens do assistente do instalador a partir de ``rodou_dashboard/static/icon.svg``.
 
 Tamanhos embutidos no .ico: 16, 24, 32, 48, 64, 128 e 256 px.
 Usa ``cairosvg`` ou ``rsvg-convert`` se disponíveis; caso contrário, renderiza o
@@ -114,6 +114,24 @@ def generate_ico(svg_path: Path, ico_path: Path) -> Path:
     return ico_path
 
 
+def generate_wizard_images(svg_path: Path, out_dir: Path) -> list[Path]:
+    """Gera ``wizard-small-55.bmp`` e ``wizard-small-110.bmp`` (canto do assistente do Inno Setup)."""
+    base_img = (
+        _render_via_cairosvg(svg_path, size=512)
+        or _render_via_rsvg(svg_path, size=512)
+        or _render_svg_fallback_pillow(svg_path, size=512)
+    )
+    paths = []
+    for size in (55, 110):
+        canvas = Image.new("RGB", (size, size), (255, 255, 255))
+        img = base_img.resize((size, size), Image.Resampling.LANCZOS)
+        canvas.paste(img, (0, 0), img)
+        path = out_dir / f"wizard-small-{size}.bmp"
+        canvas.save(path, format="BMP")
+        paths.append(path)
+    return paths
+
+
 def main(argv: list[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Gera windows/registrale.ico a partir de icon.svg.")
@@ -130,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out = generate_ico(args.svg, args.out)
     print(f"Ícone gerado: {out} ({out.stat().st_size} bytes)")
+    for bmp in generate_wizard_images(args.svg, args.out.parent):
+        print(f"Imagem do assistente gerada: {bmp}")
     return 0
 
 

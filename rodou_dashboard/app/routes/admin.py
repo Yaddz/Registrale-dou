@@ -617,6 +617,7 @@ def get_first_run_status():
     from ..runtime.migrator import detect_legacy_sources
     from ..runtime.pdf_archiver import get_pdf_archive_config
     from ..runtime.version import get_app_version
+    from ..services.access_service import is_access_onboarding_done, is_login_required
 
     done_rec = Settings.query.filter_by(key='first_run_import_done').first()
     import_done = bool(done_rec and done_rec.get_value())
@@ -631,6 +632,8 @@ def get_first_run_status():
         "is_fresh_install": is_fresh,
         "pdf_onboarding_done": pdf_onboarding_done,
         "needs_pdf_onboarding": not pdf_onboarding_done,
+        "needs_access_onboarding": not is_access_onboarding_done(),
+        "login_required": is_login_required(),
         "pdf_archive": get_pdf_archive_config(),
         "legacy_sources": detect_legacy_sources(),
     })
@@ -919,3 +922,64 @@ def api_dismiss_notice():
     return jsonify({"status": "ok", "dismissed": updated})
 
 
+@admin_bp.route('/admin/access_settings', methods=['GET'])
+@login_required
+def get_access_settings():
+    from ..services.access_service import (
+        is_access_onboarding_done,
+        is_local_request,
+        is_login_required,
+    )
+    return jsonify({
+        "status": "ok",
+        "login_required": is_login_required(),
+        "onboarding_done": is_access_onboarding_done(),
+        "can_disable": is_local_request(request),
+    })
+
+
+@admin_bp.route('/admin/access_settings', methods=['POST'])
+@login_required
+def save_access_settings():
+    """Liga/desliga o login (Configurações → Usuários e passo do primeiro acesso)."""
+    if session.get('user', {}).get('role') != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+
+    from ..services.access_service import (
+        get_auto_login_user,
+        is_local_request,
+        is_login_required,
+        mark_access_onboarding_done,
+        set_login_required,
+    )
+
+    data = request.get_json(silent=True) or {}
+    if 'login_required' not in data:
+        return jsonify({"status": "error", "message": "Informe login_required."}), 400
+    required = bool(data.get('login_required'))
+
+    if not required:
+        if not is_local_request(request):
+            return jsonify({
+                "status": "error",
+                "message": "O login só pode ser desligado acessando o painel neste computador (127.0.0.1).",
+            }), 400
+        if not get_auto_login_user():
+            return jsonify({"status": "error", "message": "É preciso ter um usuário master."}), 400
+
+    changed = required != is_login_required()
+    set_login_required(required)
+    mark_access_onboarding_done()
+    if changed:
+        SyncHistory.log_event(
+            "Acesso ao painel",
+            "Login exigido para abrir o painel." if required
+            else "Login desligado: o painel abre direto neste computador.",
+        )
+    if required:
+        from datetime import datetime, timedelta, timezone
+        # A sessão aberta sem senha vira uma sessão normal até expirar.
+        if session.pop('auto_login', None):
+            session.permanent = True
+            session['expires_at'] = (datetime.now(timezone(timedelta(hours=-3))) + timedelta(minutes=30)).timestamp()
+    return jsonify({"status": "ok", "login_required": required, "onboarding_done": True})

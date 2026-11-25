@@ -119,12 +119,21 @@ def create_tray_image():
         except Exception:
             pass
 
-    img = Image.new("RGBA", (64, 64), (15, 23, 42, 255))
+    # Fallback: robô da marca (mesmo desenho de static/icon.svg, grade 24 -> 64 px)
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle([4, 4, 60, 60], radius=12, fill=(15, 23, 42, 255), outline=(6, 172, 255, 255), width=4)
-    draw.rectangle([20, 18, 28, 46], fill=(255, 255, 255, 255))
-    draw.rectangle([28, 18, 44, 26], fill=(255, 255, 255, 255))
-    draw.rectangle([28, 30, 42, 37], fill=(6, 172, 255, 255))
+    draw.rounded_rectangle([0, 0, 63, 63], radius=12, fill=(28, 25, 23, 255))
+
+    def pt(x: float, y: float) -> tuple[float, float]:
+        return (32 + 1.5 * (x - 12), 32 + 1.5 * (y - 12))
+
+    white = (255, 255, 255, 255)
+    for path in (
+        [(12, 6), (12, 2), (8, 2)],
+        [(8, 18), (4, 22), (4, 7.5), (5.5, 6), (18.5, 6), (20, 7.5), (20, 16.5), (18.5, 18), (8, 18)],
+        [(2, 12), (4, 12)], [(9, 11), (9, 13)], [(15, 11), (15, 13)], [(20, 12), (22, 12)],
+    ):
+        draw.line([pt(x, y) for x, y in path], fill=white, width=3, joint="curve")
     return img
 
 

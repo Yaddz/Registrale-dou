@@ -12,6 +12,15 @@ auth_bp = Blueprint('auth', __name__)
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        from ..services.access_service import is_login_required, is_same_origin_write, try_auto_login
+        if not is_login_required():
+            if not is_same_origin_write(request):
+                return jsonify({"status": "error", "message": "Pedido recusado: origem diferente do painel."}), 403
+            if try_auto_login(session, request):
+                return f(*args, **kwargs)
+        elif session.get('auto_login'):
+            # Login foi religado: a sessão aberta sem senha não vale mais.
+            session.clear()
         expires_at = session.get('expires_at')
         now_ts = datetime.now(timezone(timedelta(hours=-3))).timestamp()
         if 'user' not in session or (expires_at and now_ts > expires_at):
@@ -24,12 +33,16 @@ def login_required(f):
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    from ..services.access_service import is_login_required, is_local_request
+    if not is_login_required() and is_local_request(request):
+        return redirect(url_for('auth.index'))
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
         # In a real app, from flask import current_app to get permanent_session_lifetime
         if user and user.check_password(password):
+            session.clear()
             session.permanent = True
             session['user'] = {'username': user.username, 'role': user.role}
             session['expires_at'] = (datetime.now(timezone(timedelta(hours=-3))) + timedelta(minutes=30)).timestamp()
@@ -112,8 +125,10 @@ def index():
     from .admin import get_user_dismissed_notices
     dismissed_notices = get_user_dismissed_notices(session['user'].get('username', ''))
 
+    from ..services.access_service import is_login_required
     return render_template('index.html', 
                            user=session['user'],
+                           login_required=is_login_required(),
                            init_data=init_data,
                            last_sync=last_sync,
                            last_search=last_search,

@@ -365,6 +365,7 @@ html.dark .dash-switch-input:checked + .dash-switch-track { background: #2a9663;
     background: var(--primary); color: var(--text-on-strong);
     font-family: var(--font-mono); font-weight: 600; font-size: 0.9375rem;
 }
+.brand-mark svg { width: 1.25rem; height: 1.25rem; }
 
 /* ------------------------------------------------- 4. Compatibilidade legada */
 /* Classes Tailwind sem variante dark: nos templates antigos. */

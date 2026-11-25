@@ -39,6 +39,8 @@ UninstallDisplayIcon={app}\app\windows\registrale.ico
 Compression=lzma2/normal
 SolidCompression=yes
 WizardStyle=modern
+; Robô da marca no canto do assistente (gerado por make_icon.py)
+WizardSmallImageFile=wizard-small-55.bmp,wizard-small-110.bmp
 CloseApplications=yes
 CloseApplicationsFilter=python.exe,pythonw.exe,pg_ctl.exe,postgres.exe
 RestartApplications=no
