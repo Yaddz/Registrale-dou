@@ -1075,3 +1075,171 @@ def reorganize_pdfs(
         "errors": errors,
         "message": msg,
     }
+
+
+_LAYOUT_LABELS = {
+    LAYOUT_ANO_MES: "Por ano e mês",
+    LAYOUT_ANO: "Só por ano",
+    LAYOUT_NENHUM: "Tudo na mesma pasta",
+}
+
+_DOU_PDF_DATE_RE = re.compile(r"^DOU_(\d{4}-\d{2}-\d{2})_", re.IGNORECASE)
+
+
+def _format_bytes(num_bytes: int) -> str:
+    """Formata bytes em unidade legível (pt-BR com vírgula decimal)."""
+    size = float(max(0, int(num_bytes or 0)))
+    units = ["B", "KB", "MB", "GB", "TB"]
+    idx = 0
+    while size >= 1024.0 and idx < len(units) - 1:
+        size /= 1024.0
+        idx += 1
+    if idx == 0:
+        return f"{int(size)} B"
+    return f"{size:.1f}".replace(".", ",") + f" {units[idx]}"
+
+
+def _iter_pdfs_for_layout(base_folder: Path, layout: Optional[str] = None):
+    """Itera ``(arquivo_pdf, month_key, day_key)`` de todos os PDFs da pasta.
+
+    A busca é recursiva e independe do layout ativo, para contar também PDFs de
+    layouts anteriores ou soltos na raiz. O mês vem da data do nome do arquivo;
+    sem ela, da pasta ``AAAA/MM``; sem ela, da data de modificação.
+    """
+    if not base_folder.is_dir():
+        return
+
+    seen = set()
+    for pdf_path in sorted(base_folder.rglob("*")):
+        if not pdf_path.is_file() or pdf_path.suffix.lower() != ".pdf":
+            continue
+        try:
+            real = pdf_path.resolve()
+        except OSError:
+            real = pdf_path
+        if real in seen:
+            continue
+        seen.add(real)
+
+        m = _DOU_PDF_DATE_RE.match(pdf_path.name)
+        if m:
+            day_key = m.group(1)
+            month_key = day_key[:7]
+        else:
+            folder_month = None
+            try:
+                rel = pdf_path.relative_to(base_folder).parts
+            except ValueError:
+                rel = ()
+            if len(rel) >= 3 and re.fullmatch(r"\d{4}", rel[0]) and re.fullmatch(r"\d{2}", rel[1]):
+                folder_month = f"{rel[0]}-{rel[1]}"
+            try:
+                day_key = datetime.fromtimestamp(pdf_path.stat().st_mtime).strftime("%Y-%m-%d")
+            except OSError:
+                day_key = pdf_path.name
+            month_key = folder_month or (day_key[:7] if re.match(r"^\d{4}-\d{2}", day_key) else "Outros")
+        yield pdf_path, month_key, day_key
+
+
+def _summarize_cache_dir(path: Path, pattern: str) -> Dict[str, Any]:
+    """Calcula contagem de arquivos e tamanho ocupado em uma pasta de cache."""
+    files = 0
+    total_bytes = 0
+    exists = path.is_dir()
+    if exists:
+        for item in path.rglob(pattern):
+            if item.is_file():
+                files += 1
+                try:
+                    total_bytes += item.stat().st_size
+                except OSError:
+                    pass
+    return {
+        "folder": str(path),
+        "exists": exists,
+        "files": files,
+        "size_bytes": total_bytes,
+        "size_human": _format_bytes(total_bytes),
+    }
+
+
+def get_pdf_storage_summary(
+    folder: Optional[Path] = None,
+    layout: Optional[str] = None,
+    data_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Retorna o resumo de armazenamento dos PDFs do DOU por mês e do cache interno."""
+    cfg = get_pdf_archive_config()
+    enabled = bool(cfg.get("enabled", True))
+    active_layout = normalize_pdf_layout(layout if layout is not None else cfg.get("layout"))
+    analyst_folder = Path(folder) if folder is not None else Path(cfg["folder"])
+
+    by_month: Dict[str, Dict[str, Any]] = {}
+    all_days = set()
+    total_files = 0
+    total_bytes = 0
+
+    for pdf_path, month_key, day_key in _iter_pdfs_for_layout(analyst_folder, active_layout):
+        try:
+            fsize = pdf_path.stat().st_size
+        except OSError:
+            fsize = 0
+        bucket = by_month.setdefault(month_key, {"days": set(), "files": 0, "size_bytes": 0})
+        bucket["days"].add(day_key)
+        bucket["files"] += 1
+        bucket["size_bytes"] += fsize
+        all_days.add(day_key)
+        total_files += 1
+        total_bytes += fsize
+
+    months = []
+    for month_key in sorted(by_month.keys(), reverse=True):
+        bucket = by_month[month_key]
+        if re.fullmatch(r"\d{4}-\d{2}", month_key):
+            yyyy, mm = month_key.split("-")
+            month_label = f"{mm}/{yyyy}"
+        else:
+            month_label = month_key
+        months.append({
+            "month": month_key,
+            "month_label": month_label,
+            "days": len(bucket["days"]),
+            "files": bucket["files"],
+            "size_bytes": bucket["size_bytes"],
+            "size_human": _format_bytes(bucket["size_bytes"]),
+        })
+
+    if data_dir is not None:
+        resolved_data_dir = Path(data_dir)
+    else:
+        from .paths import get_data_dir
+
+        resolved_data_dir = get_data_dir(create=False)
+    pdf_cache_info = _summarize_cache_dir(resolved_data_dir / "pdf_cache", "*.pdf")
+    pdf_text_info = _summarize_cache_dir(resolved_data_dir / "pdf_text", "*.json.gz")
+    cache_total_files = pdf_cache_info["files"] + pdf_text_info["files"]
+    cache_total_bytes = pdf_cache_info["size_bytes"] + pdf_text_info["size_bytes"]
+
+    return {
+        "status": "success",
+        "enabled": enabled,
+        "layout": active_layout,
+        "layout_label": _LAYOUT_LABELS.get(active_layout, active_layout),
+        "folder": str(analyst_folder),
+        "folder_exists": analyst_folder.is_dir(),
+        "months": months,
+        "totals": {
+            "months": len(months),
+            "days": len(all_days),
+            "files": total_files,
+            "size_bytes": total_bytes,
+            "size_human": _format_bytes(total_bytes),
+        },
+        "internal_cache": {
+            "pdf_cache": pdf_cache_info,
+            "pdf_text": pdf_text_info,
+            "total_files": cache_total_files,
+            "total_bytes": cache_total_bytes,
+            "size_human": _format_bytes(cache_total_bytes),
+        },
+    }

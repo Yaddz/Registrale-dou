@@ -695,6 +695,64 @@ def get_inlabs_stats():
         logging.error(f"Erro ao consultar DB Inlabs: {e}")
         return jsonify({"status": "error", "message": "Não foi possível conectar ao banco de dados INLABS."}), 500
 
+
+@admin_bp.route('/pdf_storage_stats', methods=['GET'])
+@login_required
+def get_pdf_storage_stats():
+    """Retorna estatísticas dos PDFs do DOU por mês e do cache interno."""
+    import logging
+
+    try:
+        from ..runtime.pdf_archiver import get_pdf_storage_summary
+
+        return jsonify(get_pdf_storage_summary())
+    except Exception as e:
+        logging.error(f"Erro ao consultar armazenamento dos PDFs: {e}")
+        return jsonify({"status": "error", "message": "Não foi possível consultar o armazenamento dos PDFs."}), 500
+
+
+@admin_bp.route('/pdf_storage/open_folder', methods=['POST'])
+@login_required
+def open_pdf_storage_folder():
+    """Abre a pasta de PDFs (ou cache interno) no gerenciador de arquivos do sistema."""
+    if (session.get('user') or {}).get('role') != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+    import logging
+    import subprocess
+    import sys
+    from pathlib import Path
+    from ..runtime.paths import get_data_dir
+    from ..runtime.pdf_archiver import get_pdf_archive_config
+
+    data = request.get_json(silent=True) or {}
+    target = str(data.get("target") or "analyst").strip().lower()
+    cfg = get_pdf_archive_config()
+    data_dir = get_data_dir(create=False)
+
+    allowed_targets = {
+        "analyst": Path(cfg["folder"]),
+        "pdf_cache": data_dir / "pdf_cache",
+        "pdf_text": data_dir / "pdf_text",
+    }
+    if target not in allowed_targets:
+        return jsonify({"status": "error", "message": "Destino de pasta inválido."}), 400
+
+    folder = allowed_targets[target]
+    if not folder.is_dir():
+        return jsonify({"status": "error", "message": f"A pasta ainda não existe: {folder}"}), 404
+
+    try:
+        if os.name == "nt":
+            os.startfile(str(folder))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(folder)])
+        else:
+            subprocess.Popen(["xdg-open", str(folder)])
+        return jsonify({"status": "success", "path": str(folder)})
+    except Exception as e:
+        logging.error(f"Erro ao abrir pasta {folder}: {e}")
+        return jsonify({"status": "error", "message": f"Não foi possível abrir a pasta: {e}"}), 500
+
 @admin_bp.route('/manual', methods=['GET'])
 @login_required
 def get_user_manual():
@@ -1077,7 +1135,7 @@ def get_access_settings():
 @login_required
 def save_access_settings():
     """Liga/desliga o login (Configurações → Usuários e passo do primeiro acesso)."""
-    if session.get('user', {}).get('role') != 'master':
+    if (session.get('user') or {}).get('role') != 'master':
         return jsonify({"status": "error", "message": "Acesso negado."}), 403
 
     from ..services.access_service import (

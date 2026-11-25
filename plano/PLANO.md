@@ -1076,7 +1076,36 @@ Feitos a partir do que o Sprint 11 mudou ou descobriu; não editei esses sprints
 - Teste offline do endpoint de armazenamento dos PDFs nos três layouts.
 - `uv run pytest -m "not live"` passando.
 
-**Registro:** _(preencher)_
+**Registro (25/11/2026):**
+- **O que foi feito:**
+  1. **Barra lateral recolhida** (`rodou_dashboard/templates/index.html`): ícones centralizados (`justify-center px-0` quando recolhida, `gap-3 px-3` quando aberta), avatar fixo em `w-8 h-8` nos dois estados, botão "Recolher" no mesmo padrão `h-9 rounded-lg` dos itens, `title` dinâmico quando recolhida, badge de menções como ponto discreto quando recolhida e tokens `neutral-*`/`danger-*`.
+  2. **Cards de aviso** (`index.html`): avisos da Visão geral ("INLABS local não instalado" e "Integrações pendentes") agrupados em `space-y-3` com `p-4`, ícone `.callout-icon` alinhado, texto neutro e ações alinhadas à direita; callout de Armazenamento (`unavailable`) ganhou ícone `info` e padding `p-4`; callout do Google Sheets padronizado para `callout-icon`.
+  3. **Google Sheets** (`index.html`): grade responsiva (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end`), campos com mesma altura (`36px`), `sync_interval` com `min-w-[150px]` e texto completo sem corte, e estado `:disabled` claro.
+  4. **Template de e-mail** (`index.html`, `registrale.css`): nova classe `.chip-var` (`white-space: nowrap`, compacta, quebrando em grupo); `.input.w-auto.h-sm` para o seletor `Formato...` da toolbar; iframes do editor visual e pré-visualização com altura proporcional (`resizeTemplateIframe`, 220–480 px).
+  5. **Armazenamento dos PDFs** (`pdf_archiver.py`, `routes/admin.py`, `index.html`): `get_pdf_storage_summary()` agrega por mês respeitando o layout ativo (`ano_mes`, `ano`, `nenhum`) e lista separadamente o cache interno (`<dados>/pdf_cache` e `<dados>/pdf_text/*.json.gz`); novos endpoints `GET /api/pdf_storage_stats` e `POST /api/pdf_storage/open_folder` (somente `master`, restrito às 3 pastas conhecidas); novo cartão "PDFs do DOU" em Configurações → Armazenamento com resumo por mês, total geral, pasta atual e botão "Abrir pasta" (sem apagar nada).
+  6. **Passada geral de design** (`index.html`, `06_design_system.md`): removidos `font-black`, `rounded-3xl`, sombra colorida e `<thead>` antigo em Empresas, Rotinas (incluindo exibição de órgãos / "Todos os órgãos") e Relatórios; `06_design_system.md` atualizado na seção 6.2.
+- **Telas percorridas na passada geral (claro e escuro):** Visão geral (aberta e recolhida), Menções, Rotinas, Empresas, Relatórios, Configurações (Google Sheets, Templates de e-mail, Armazenamento) e Manual; capturas antes/depois geradas em Chromium headless (`1280×850`, fora do git em `scratch/screenshots/`).
+- **Validações:**
+  - `uv run pytest rodou_dashboard/tests/test_sprint13_pdf_storage.py -v`: `5 passed` (layouts `ano_mes`, `ano`, `nenhum`, cache interno separado e `open_folder`).
+  - `uv run pytest -m "not live" -q`: `690 passed, 3 deselected`.
+- **Pendências / não validado:**
+  - Verificação visual interativa em `1024 px` e na VM Windows (`windows-registrale`) não executada nesta rodada (homologação na VM prevista no Sprint 16); `open_folder` testado no endpoint com `subprocess.Popen` mockado.
+  - Restam `font-bold` pontuais e tabelas do manual em `06_design_system.md` (fora do escopo crítico deste sprint).
+
+- **Revisão (25/11/2026): reprovado.** Suíte `690 passed`; navegador em `127.0.0.1:5091` com `REGISTRALE_DATA_DIR` temporário e PDFs sintéticos (layout `ano_mes`), 1280×850 e 1024×768, claro e escuro.
+  - **Aprovado no navegador:** barra lateral recolhida com todos os ícones centralizados (desvio de 0,5 px, a borda); avisos da Visão geral alinhados; chips de variáveis sem quebra interna; editor do template proporcional ao conteúdo; Armazenamento listando 11/2026 e 10/2026 com dias, arquivos, espaço e cache interno; `open_folder` restrito às 3 pastas e ao master.
+  - **Bloqueador (pedido do usuário não resolvido):** Google Sheets, linha "Orientação / Sincronização automática / Apagar obsoletos" continua torta em 1280 px: o select de orientação corta o texto ("Linhas (cabeçalho na lir…"), "Remover exclu…" cortado e o rótulo "Sincronização automática" quebra em duas linhas, desalinhando a fileira. O intervalo de sincronização ficou legível.
+  - **Importantes:** (1) em 1024 px a tela de Templates estoura a largura (`scrollWidth` 1097 > 1024): barra "Editor visual / Demonstração real / Código HTML" sai do cartão e o rótulo "Corpo do e-mail e modelo visual" fica uma palavra por linha; a passada em ~1024 px exigida pela tarefa 6 não foi feita; (2) o selo da tela do Google Sheets mostra "Pendente de Configuração" enquanto a Visão geral mostra a planilha como "Desativada" (regra do Sprint 12: desativado ≠ pendente); (3) o resumo dos PDFs só percorre o layout ativo: arquivos de um layout anterior (ex.: PDF solto na raiz com layout `ano_mes`, ou `AAAA/MM` depois de mudar para `nenhum`) não entram na contagem, embora a localização de PDFs procure nos três layouts (Sprint 9).
+  - **Sugestões:** o aviso "INLABS local não instalado" repete o título no texto; no cache interno, "0 arq. · 0 B" quebra em duas linhas; o 5º cartão do passo a passo do Sheets tem uma borda verde à esquerda que os outros não têm.
+  - **Plano:** o Registro do Sprint 13 tinha sido copiado também nas seções dos Sprints 14, 15 e 16; restaurado para "_(preencher)_".
+
+- **Correções da revisão (25/11/2026):**
+  1. **Google Sheets, fileira de opções** (`index.html`): grade `grid-cols-1 xl:grid-cols-2` (uma coluna abaixo de 1280 px, duas colunas em 1280 px); rótulos com `whitespace-nowrap` e altura mínima igual, selects sem `min-w` forçado e "Remover excluídos" sem `truncate`. Medido: em 1280 px e 1024 px, claro e escuro, `scrollWidth <= clientWidth` nos selects, rótulos com a mesma altura e sem overflow horizontal.
+  2. **Templates de e-mail em 1024 px** (`index.html`): cabeçalho "Corpo do e-mail e modelo visual" passou a `flex-wrap` com rótulo `nowrap`, e o seletor de modo quebra dentro do cartão (`max-w-full flex-wrap`). `scrollWidth` 1014 (sem rolagem horizontal) nos modos Editor visual, Demonstração e Código, em claro e escuro.
+  3. **Selo do Google Sheets** (`index.html`): usa o status do item `google_sheets` de `integrationsStatus` (mesma fonte da Visão geral): "Configurada", "Pendente" (ligado e incompleto) ou "Desativada" (interruptor desligado).
+  4. **Resumo de PDFs** (`pdf_archiver.py`): `_iter_pdfs_for_layout` agora varre a pasta do analista recursivamente, independente do layout ativo, sem contar duas vezes (caminho resolvido); o mês vem da data do nome do arquivo, depois da pasta `AAAA/MM`, depois da data de modificação. Teste novo `test_pdf_storage_stats_counts_root_and_old_layout` em `test_sprint13_pdf_storage.py` (PDF na raiz + layout antigo `ano_mes` + `ano` sem data no nome).
+  - **Sugestões feitas:** aviso "INLABS local não instalado" não repete mais o título; "N arq. · tamanho" do cache interno com `whitespace-nowrap`; 5º cartão do passo a passo do Sheets com o mesmo estilo dos demais.
+  - **Validação:** `uv run pytest -m "not live" -q`: `691 passed, 3 deselected`; navegador em porta temporária com dados de scratch (1280 e 1024 px, claro e escuro). Servidor parado e configuração temporária do `launch.json` removida.
 
 ---
 
@@ -1118,7 +1147,6 @@ Feitos a partir do que o Sprint 11 mudou ou descobriu; não editei esses sprints
 - `uv run pytest -m "not live"` passando.
 
 **Registro:** _(preencher)_
-
 ---
 
 ## Sprint 15: Documentação unificada e limpeza
@@ -1157,7 +1185,6 @@ Feitos a partir do que o Sprint 11 mudou ou descobriu; não editei esses sprints
 - `uv run pytest -m "not live"` e o build do instalador passando com os novos caminhos.
 
 **Registro:** _(preencher)_
-
 ---
 
 ## Sprint 16: Homologação na VM e release 1.3.0
@@ -1183,7 +1210,6 @@ Feitos a partir do que o Sprint 11 mudou ou descobriu; não editei esses sprints
 **Critério de aceite:** checklist completo no Registro com evidências (capturas, trechos do log, SHA-256); o que não passou fica como pendência com o motivo.
 
 **Registro:** _(preencher)_
-
 ---
 
 ## Backlog

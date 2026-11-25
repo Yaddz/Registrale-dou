@@ -219,6 +219,8 @@ table, .tabular { font-variant-numeric: tabular-nums; }
 }
 .input::placeholder { color: var(--text-muted); }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+.input.w-auto { width: auto; }
+.input.h-sm { height: var(--control-h-sm); font-size: 0.75rem; }
 select.input option { background: var(--surface); color: var(--text); }
 
 /* Cartão ------------------------------------------------------------------ */
@@ -250,6 +252,22 @@ select.input option { background: var(--surface); color: var(--text); }
 .badge-success { background: var(--success-soft); color: var(--success); border-color: var(--success-border); }
 .badge-warning { background: var(--warning-soft); color: var(--warning); border-color: var(--warning-border); }
 .badge-danger  { background: var(--danger-soft);  color: var(--danger);  border-color: var(--danger-border); }
+
+/* Chip de variável (template de e-mail) */
+.chip-var {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 1.625rem; padding: 0 0.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.75rem; font-weight: 500;
+    white-space: nowrap; flex-shrink: 0;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s;
+}
+.chip-var:hover { background: var(--surface-hover); border-color: var(--accent); }
 
 /* Aviso (callout) --------------------------------------------------------
  * Superfície neutra com faixa lateral de 3px na cor do estado. Substitui as

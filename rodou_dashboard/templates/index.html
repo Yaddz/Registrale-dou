@@ -61,72 +61,73 @@
     </div>
 
     <!-- Sidebar -->
-    <aside :class="sidebarOpen ? 'w-64' : 'w-20'" class="fixed left-0 top-0 h-screen bg-white border-r border-slate-200 transition-all duration-300 z-30 flex flex-col">
-        <div :class="sidebarOpen ? 'p-6' : 'py-6 px-0 justify-center'" class="flex items-center gap-3 overflow-hidden transition-all duration-300">
+    <aside :class="sidebarOpen ? 'w-64' : 'w-20'" class="fixed left-0 top-0 h-screen bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 transition-all duration-300 z-30 flex flex-col">
+        <div :class="sidebarOpen ? 'p-6 gap-3' : 'py-6 px-0 justify-center'" class="flex items-center overflow-hidden transition-all duration-300">
             <span class="brand-mark shrink-0" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6V2H8"/><path d="m8 18-4 4V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2Z"/><path d="M2 12h2"/><path d="M9 11v2"/><path d="M15 11v2"/><path d="M20 12h2"/></svg></span>
             <span x-show="sidebarOpen" x-transition.opacity class="font-semibold text-lg tracking-tight">Registrale</span>
         </div>
 
         <div class="mb-6 flex justify-center transition-all duration-300">
-            <div :class="sidebarOpen ? 'px-3 py-2 mx-3 w-full' : 'p-0'" class="flex items-center gap-3 rounded-lg transition-all duration-300">
-                <div :class="sidebarOpen ? 'w-8 h-8' : 'w-12 h-12 shadow-sm border border-slate-100'" class="rounded-full bg-slate-200 flex items-center justify-center shrink-0 transition-all">
+            <div :class="sidebarOpen ? 'px-3 py-2 mx-3 w-full gap-3' : 'p-0 justify-center'" class="flex items-center rounded-lg transition-all duration-300" :title="!sidebarOpen ? '{{ user.username }} ({{ 'Administrador' if user.role == 'master' else 'Consulta' }})' : ''">
+                <div class="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center shrink-0">
                     {% if user.role == 'master' %}
-                    <i data-lucide="user-cog" class="w-4 h-4 text-slate-600"></i>
+                    <i data-lucide="user-cog" class="w-4 h-4 text-neutral-600 dark:text-neutral-300"></i>
                     {% else %}
-                    <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
+                    <i data-lucide="user" class="w-4 h-4 text-neutral-500 dark:text-neutral-400"></i>
                     {% endif %}
                 </div>
                 <div x-show="sidebarOpen" x-transition.opacity class="min-w-0">
                     <p class="text-sm font-medium truncate">{{ user.username }}</p>
-                    <p class="text-xs text-slate-500 dark:text-stone-400 truncate">{{ 'Administrador' if user.role == 'master' else 'Consulta' }}</p>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400 truncate">{{ 'Administrador' if user.role == 'master' else 'Consulta' }}</p>
                 </div>
             </div>
         </div>
 
         <nav class="flex-1 px-3 space-y-0.5">
-            <button @click="activeTab = 'home'" :class="activeTab === 'home' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors">
-                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+            <button type="button" @click="activeTab = 'home'" :class="[activeTab === 'home' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Visão geral' : ''" :aria-label="'Visão geral'">
+                <i data-lucide="layout-dashboard" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Visão geral</span>
             </button>
-            <button @click="activeTab = 'mentions'; fetchMentions(true);" :class="activeTab === 'mentions' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors">
-                <i data-lucide="megaphone" class="w-4 h-4"></i>
+            <button type="button" @click="activeTab = 'mentions'; fetchMentions(true);" :class="[activeTab === 'mentions' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="relative w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Menções' : ''" :aria-label="'Menções'">
+                <i data-lucide="megaphone" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium flex-1 text-left">Menções</span>
-                <span x-show="unseenMentionsCount > 0" class="ml-auto bg-red-500 text-white text-[11px] font-black px-2 py-0.5 rounded-full" x-text="unseenMentionsCount"></span>
+                <span x-show="sidebarOpen && unseenMentionsCount > 0" class="ml-auto bg-danger-500 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full tabular" x-text="unseenMentionsCount"></span>
+                <span x-show="!sidebarOpen && unseenMentionsCount > 0" class="absolute top-1.5 right-3 w-2 h-2 rounded-full bg-danger-500" aria-hidden="true"></span>
             </button>
-            <button @click="activeTab = 'routines'" :class="activeTab === 'routines' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors">
-                <i data-lucide="calendar-clock" class="w-4 h-4"></i>
+            <button type="button" @click="activeTab = 'routines'" :class="[activeTab === 'routines' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Rotinas' : ''" :aria-label="'Rotinas'">
+                <i data-lucide="calendar-clock" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Rotinas</span>
             </button>
-            <button @click="activeTab = 'companies'" :class="activeTab === 'companies' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors">
-                <i data-lucide="building-2" class="w-4 h-4"></i>
+            <button type="button" @click="activeTab = 'companies'" :class="[activeTab === 'companies' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Empresas' : ''" :aria-label="'Empresas'">
+                <i data-lucide="building-2" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Empresas</span>
             </button>
-            <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors">
-                <i data-lucide="file-text" class="w-4 h-4"></i>
+            <button type="button" @click="activeTab = 'reports'" :class="[activeTab === 'reports' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Relatórios' : ''" :aria-label="'Relatórios'">
+                <i data-lucide="file-text" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Relatórios</span>
             </button>
         </nav>
 
-        <div class="p-3 border-t border-slate-200 dark:border-stone-800 space-y-0.5">
-            <button @click="activeTab = 'manual'" :class="activeTab === 'manual' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors" title="Manual do Usuário">
-                <i data-lucide="book-open" class="w-4 h-4"></i>
+        <div class="p-3 border-t border-neutral-200 dark:border-neutral-800 space-y-0.5">
+            <button type="button" @click="activeTab = 'manual'" :class="[activeTab === 'manual' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Manual do usuário' : ''" :aria-label="'Manual'">
+                <i data-lucide="book-open" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Manual</span>
             </button>
             {% if user.role == 'master' %}
-            <button @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900' : 'text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 hover:text-slate-900 dark:hover:text-stone-100'" class="w-full flex items-center gap-3 px-3 h-9 rounded-lg transition-colors">
-                <i data-lucide="settings" class="w-4 h-4"></i>
+            <button type="button" @click="activeTab = 'settings'" :class="[activeTab === 'settings' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100', sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0']" class="w-full flex items-center h-9 rounded-lg transition-colors" :title="!sidebarOpen ? 'Configurações' : ''" :aria-label="'Configurações'">
+                <i data-lucide="settings" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Configurações</span>
             </button>
             {% endif %}
             {% if login_required %}
-            <a href="/logout" class="w-full flex items-center gap-4 p-3 rounded-xl text-slate-600 dark:text-stone-400 hover:bg-red-50 hover:text-red-700 transition-colors">
-                <i data-lucide="log-out" class="w-4 h-4"></i>
+            <a href="/logout" :class="sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0'" class="w-full flex items-center h-9 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-danger-50 dark:hover:bg-danger-950/40 hover:text-danger-700 dark:hover:text-danger-300 transition-colors" :title="!sidebarOpen ? 'Sair' : ''" :aria-label="'Sair'">
+                <i data-lucide="log-out" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Sair</span>
             </a>
             {% endif %}
-            <button @click="sidebarOpen = !sidebarOpen" class="w-full flex items-center gap-4 p-3 rounded-xl text-slate-500 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 transition-colors">
-                <i x-show="sidebarOpen" data-lucide="chevron-left" class="w-4 h-4"></i>
-                <i x-show="!sidebarOpen" data-lucide="chevron-right" class="w-4 h-4"></i>
+            <button type="button" @click="sidebarOpen = !sidebarOpen" :class="sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0'" class="w-full flex items-center h-9 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors" :title="sidebarOpen ? 'Recolher menu' : 'Expandir menu'" :aria-label="sidebarOpen ? 'Recolher menu' : 'Expandir menu'">
+                <i x-show="sidebarOpen" data-lucide="chevron-left" class="w-4 h-4 shrink-0"></i>
+                <i x-show="!sidebarOpen" data-lucide="chevron-right" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Recolher</span>
             </button>
         </div>
@@ -203,83 +204,88 @@
 
         <!-- Tab: Home -->
         <div x-show="activeTab === 'home'" x-cloak class="space-y-6">
-            <!-- Aviso de Contingência INLABS -->
-            <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded || inlabsStatus.local_available === false) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
-                <div class="callout callout-warning px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div class="flex items-start gap-3">
-                        <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
-                        <div class="space-y-1">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <h4 class="font-semibold text-slate-900 dark:text-stone-100 text-sm" x-text="inlabsStatus.local_available === false ? 'INLABS local não instalado' : (!inlabsStatus.portal_ok ? 'Portal INLABS indisponível / em manutenção' : 'INLABS sem a edição de hoje')"></h4>
-                                <span class="badge" x-text="'Fonte em uso: ' + (inlabsStatus.fallback_label || 'PDF integral + API do DOU')"></span>
+            <!-- Avisos de configuração e contingência -->
+            <div class="space-y-3" x-show="(inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded || inlabsStatus.local_available === false) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())) || (integrationsStatus && !integrationsStatus.all_configured && !isNoticeDismissed('integrations', integrationsNoticeSignature()))">
+                <!-- Aviso de Contingência INLABS -->
+                <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded || inlabsStatus.local_available === false) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
+                    <div class="callout callout-warning p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div class="flex items-start gap-3 min-w-0">
+                            <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
+                            <div class="space-y-1 min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h4 class="font-semibold text-neutral-900 dark:text-neutral-100 text-sm" x-text="inlabsStatus.local_available === false ? 'INLABS local não instalado' : (!inlabsStatus.portal_ok ? 'Portal INLABS indisponível / em manutenção' : 'INLABS sem a edição de hoje')"></h4>
+                                    <span class="badge" x-text="'Fonte em uso: ' + (inlabsStatus.fallback_label || 'PDF integral + API do DOU')"></span>
+                                </div>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400" x-text="inlabsStatus.local_available === false ? 'As buscas usam a fonte de contingência (PDF integral e API do DOU) enquanto o INLABS local não estiver instalado.' : (inlabsStatus.portal_message || 'A edição do dia ainda não foi carregada no banco INLABS. As buscas utilizam a fonte de contingência configurada.')"></p>
                             </div>
-                            <p class="text-xs text-amber-800 dark:text-amber-300/90" x-text="inlabsStatus.local_available === false ? (inlabsStatus.local_message || 'INLABS local não instalado: usando contingência (PDF/API).') : (inlabsStatus.portal_message || 'A edição do dia ainda não foi carregada no banco INLABS. As buscas utilizam a fonte de contingência configurada.')"></p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            {% if user.role == 'master' %}
+                            <button type="button" @click="activeTab = 'settings'; settingsSubTab = 'integrations'" class="btn btn-secondary btn-sm shrink-0">
+                                Configurar contingência
+                            </button>
+                            {% endif %}
+                            <button type="button" @click="dismissNotice('inlabs', inlabsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
+                                <i data-lucide="x"></i>
+                            </button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        {% if user.role == 'master' %}
-                        <button @click="activeTab = 'settings'; settingsSubTab = 'integrations'" class="btn btn-secondary btn-sm shrink-0">
-                            Configurar contingência
-                        </button>
-                        {% endif %}
-                        <button type="button" @click="dismissNotice('inlabs', inlabsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
-                            <i data-lucide="x"></i>
-                        </button>
-                    </div>
-                </div>
-            </template>
+                </template>
 
-            <!-- Integrações pendentes (aviso recolhível e dispensável; volta se surgir pendência nova) -->
-            <template x-if="integrationsStatus && !integrationsStatus.all_configured && !isNoticeDismissed('integrations', integrationsNoticeSignature())">
-                <div class="callout callout-warning"
-                     x-data="{
-                        open: true,
-                        get pendingKey() { return (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.id).join(','); },
-                        init() { try { this.open = localStorage.getItem('integrationsCollapsed') !== this.pendingKey; } catch (e) {} },
-                        toggle() {
-                            this.open = !this.open;
-                            try { this.open ? localStorage.removeItem('integrationsCollapsed') : localStorage.setItem('integrationsCollapsed', this.pendingKey); } catch (e) {}
-                        }
-                     }">
-                    <div class="flex items-center gap-2 px-4 py-3">
-                        <button type="button" class="callout-toggle flex-1 min-w-0" @click="toggle()" :aria-expanded="open.toString()" aria-controls="integrations-body">
-                            <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 shrink-0"></i>
-                            <span class="text-sm font-semibold text-slate-900 dark:text-stone-100 whitespace-nowrap">Integrações pendentes</span>
-                            <span class="text-xs text-slate-500 dark:text-stone-400 truncate"
-                                  x-text="open
-                                    ? `${integrationsStatus.pending_count} pendente(s)`
-                                    : (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.name).join(', ')"></span>
-                        </button>
-                        <button @click="startIntegrationWizard()" class="btn btn-primary btn-sm shrink-0 hidden sm:inline-flex">
-                            <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
-                        </button>
-                        <button type="button" class="btn btn-ghost btn-icon btn-sm shrink-0" @click="toggle()" :title="open ? 'Recolher' : 'Expandir'" :aria-label="open ? 'Recolher' : 'Expandir'">
-                            <span class="callout-chevron inline-flex" :class="open && 'is-open'"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>
-                        </button>
-                        <button type="button" @click="dismissNotice('integrations', integrationsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
-                            <i data-lucide="x"></i>
-                        </button>
-                    </div>
-                    <div id="integrations-body" x-show="open" class="px-4 pb-4 space-y-3">
-                        <p class="text-xs text-slate-500 dark:text-stone-400">Configure as integrações pendentes abaixo. Itens desativados não impedem o funcionamento.</p>
-                        <div class="flex flex-wrap gap-2">
-                            <template x-for="item in (integrationsStatus.integrations || [])" :key="item.id">
-                                <button @click="openIntegrationTarget(item.id)" class="btn btn-sm"
-                                        :class="item.status === 'pending' ? 'btn-secondary' : 'btn-ghost'">
-                                    <i :data-lucide="item.status === 'configured' ? 'check' : (item.status === 'pending' ? 'circle' : 'pause-circle')"
-                                       :class="item.status === 'configured' ? 'text-success-600 dark:text-success-400' : (item.status === 'pending' ? 'text-warning-600 dark:text-warning-400' : 'text-neutral-400')"></i>
-                                    <span x-text="item.name"></span>
-                                    <span x-show="item.status === 'disabled' || item.status === 'unavailable'" class="badge text-[11px]"
-                                          x-text="item.status === 'unavailable' ? 'Indisponível' : 'Desativada'"></span>
+                <!-- Integrações pendentes (aviso recolhível e dispensável; volta se surgir pendência nova) -->
+                <template x-if="integrationsStatus && !integrationsStatus.all_configured && !isNoticeDismissed('integrations', integrationsNoticeSignature())">
+                    <div class="callout callout-warning"
+                         x-data="{
+                            open: true,
+                            get pendingKey() { return (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.id).join(','); },
+                            init() { try { this.open = localStorage.getItem('integrationsCollapsed') !== this.pendingKey; } catch (e) {} },
+                            toggle() {
+                                this.open = !this.open;
+                                try { this.open ? localStorage.removeItem('integrationsCollapsed') : localStorage.setItem('integrationsCollapsed', this.pendingKey); } catch (e) {}
+                            }
+                         }">
+                        <div class="flex items-center justify-between gap-3 p-4">
+                            <button type="button" class="callout-toggle flex-1 min-w-0 !gap-3" @click="toggle()" :aria-expanded="open.toString()" aria-controls="integrations-body">
+                                <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 shrink-0"></i>
+                                <span class="text-sm font-semibold text-neutral-900 dark:text-neutral-100 whitespace-nowrap">Integrações pendentes</span>
+                                <span class="text-xs text-neutral-500 dark:text-neutral-400 truncate"
+                                      x-text="open
+                                        ? `${integrationsStatus.pending_count} pendente(s)`
+                                        : (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.name).join(', ')"></span>
+                            </button>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button type="button" @click="startIntegrationWizard()" class="btn btn-primary btn-sm shrink-0 hidden sm:inline-flex">
+                                    <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
                                 </button>
-                            </template>
+                                <button type="button" class="btn btn-ghost btn-icon btn-sm shrink-0" @click="toggle()" :title="open ? 'Recolher' : 'Expandir'" :aria-label="open ? 'Recolher' : 'Expandir'">
+                                    <span class="callout-chevron inline-flex" :class="open && 'is-open'"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>
+                                </button>
+                                <button type="button" @click="dismissNotice('integrations', integrationsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
+                                    <i data-lucide="x"></i>
+                                </button>
+                            </div>
                         </div>
-                        <button @click="startIntegrationWizard()" class="btn btn-primary w-full sm:hidden">
-                            <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
-                        </button>
+                        <div id="integrations-body" x-show="open" class="px-4 pb-4 space-y-3">
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Configure as integrações pendentes abaixo. Itens desativados não impedem o funcionamento.</p>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="item in (integrationsStatus.integrations || [])" :key="item.id">
+                                    <button type="button" @click="openIntegrationTarget(item.id)" class="btn btn-sm"
+                                            :class="item.status === 'pending' ? 'btn-secondary' : 'btn-ghost'">
+                                        <i :data-lucide="item.status === 'configured' ? 'check' : (item.status === 'pending' ? 'circle' : 'pause-circle')"
+                                           :class="item.status === 'configured' ? 'text-success-600 dark:text-success-400' : (item.status === 'pending' ? 'text-warning-600 dark:text-warning-400' : 'text-neutral-400')"></i>
+                                        <span x-text="item.name"></span>
+                                        <span x-show="item.status === 'disabled' || item.status === 'unavailable'" class="badge text-[11px]"
+                                              x-text="item.status === 'unavailable' ? 'Indisponível' : 'Desativada'"></span>
+                                    </button>
+                                </template>
+                            </div>
+                            <button type="button" @click="startIntegrationWizard()" class="btn btn-primary w-full sm:hidden">
+                                <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
+                            </button>
+                        </div>
                     </div>
-                </div>
-            </template>
+                </template>
+            </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="card p-5">
@@ -547,39 +553,39 @@
                     <table class="w-full text-left">
                         <thead class="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-widest border-b select-none">
                             <tr>
-                                <th @click="toggleCompanySort('nome')" class="px-6 py-4 cursor-pointer hover:text-slate-900 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('nome')" class="px-6 py-4 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5">
                                         Razão social / nome
-                                        <span x-show="companiesSort === 'nome_asc'" class="text-slate-900 font-black">▲</span>
-                                        <span x-show="companiesSort === 'nome_desc'" class="text-slate-900 font-black">▼</span>
+                                        <span x-show="companiesSort === 'nome_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
+                                        <span x-show="companiesSort === 'nome_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('cnpj')" class="px-6 py-4 cursor-pointer hover:text-slate-900 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('cnpj')" class="px-6 py-4 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5">
                                         CNPJ
-                                        <span x-show="companiesSort === 'cnpj_asc'" class="text-slate-900 font-black">▲</span>
-                                        <span x-show="companiesSort === 'cnpj_desc'" class="text-slate-900 font-black">▼</span>
+                                        <span x-show="companiesSort === 'cnpj_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
+                                        <span x-show="companiesSort === 'cnpj_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('origem')" class="px-6 py-4 cursor-pointer hover:text-slate-900 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('origem')" class="px-6 py-4 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5">
                                         Origem
-                                        <span x-show="companiesSort === 'origem_asc'" class="text-slate-900 font-black">▲</span>
-                                        <span x-show="companiesSort === 'origem_desc'" class="text-slate-900 font-black">▼</span>
+                                        <span x-show="companiesSort === 'origem_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
+                                        <span x-show="companiesSort === 'origem_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('mencoes')" class="px-6 py-4 text-center cursor-pointer hover:text-slate-900 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('mencoes')" class="px-6 py-4 text-center cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5 justify-center">
                                         Menções
-                                        <span x-show="companiesSort === 'mencoes_desc'" class="text-blue-600 font-black">▼</span>
-                                        <span x-show="companiesSort === 'mencoes_asc'" class="text-blue-600 font-black">▲</span>
+                                        <span x-show="companiesSort === 'mencoes_desc'" class="text-ink-600 dark:text-ink-400 font-semibold">▼</span>
+                                        <span x-show="companiesSort === 'mencoes_asc'" class="text-ink-600 dark:text-ink-400 font-semibold">▲</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('status')" class="px-6 py-4 text-center cursor-pointer hover:text-slate-900 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('status')" class="px-6 py-4 text-center cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5 justify-center">
-                                        Monitor (DAG)
-                                        <span x-show="companiesSort === 'status_desc'" class="text-slate-900 font-black">▼</span>
-                                        <span x-show="companiesSort === 'status_asc'" class="text-slate-900 font-black">▲</span>
+                                        Status
+                                        <span x-show="companiesSort === 'status_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
+                                        <span x-show="companiesSort === 'status_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
                                     </span>
                                 </th>
                                 <th class="px-6 py-4 text-center whitespace-nowrap">Ações</th>
@@ -606,14 +612,14 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-center whitespace-nowrap">
-                                        <span x-show="c.status" class="bg-stone-700 text-white px-2.5 py-1 rounded-md text-[11px] font-black shadow-sm shadow-stone-500 whitespace-nowrap">Monitorado</span>
-                                        <span x-show="!c.status" class="bg-slate-100 text-slate-400 px-2.5 py-1 rounded-md text-[11px] font-black whitespace-nowrap">Inativo</span>
+                                        <span x-show="c.status" class="badge badge-success">Monitorado</span>
+                                        <span x-show="!c.status" class="badge">Inativo</span>
                                     </td>
                                     <td class="px-6 py-4 text-center whitespace-nowrap">
-                                        <div class="flex items-center justify-center gap-2">
-                                            <!-- Botão Editar com SVG inline 100% garantido -->
-                                            <button @click="openEditCompany(c)" class="inline-flex items-center justify-center p-2.5 bg-slate-50 text-slate-500 hover:bg-stone-700 hover:text-white border border-slate-200 rounded-xl transition-all shadow-sm " title="Editar Empresa">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <!-- Botão Editar -->
+                                            <button type="button" @click="openEditCompany(c)" class="btn btn-ghost btn-icon btn-sm" title="Editar empresa" aria-label="Editar empresa">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                                             </button>
                                             <!-- Botão Histórico com SVG inline -->
                                             <button @click="openHistory(c)" class="inline-flex items-center justify-center p-2.5 bg-slate-50 text-slate-500 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl transition-all shadow-sm " title="Histórico no DOU">
@@ -995,11 +1001,14 @@
                                 </div>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
-                                <span x-show="settings.google_sheets?.credentials_json && settings.google_sheets?.spreadsheet_url" class="badge badge-success">
+                                <span x-show="((integrationsStatus?.integrations || []).find(i => i.id === 'google_sheets') || {}).status === 'configured'" class="badge badge-success">
                                     <span class="status-dot status-dot-success"></span> Configurada
                                 </span>
-                                <span x-show="!settings.google_sheets?.credentials_json || !settings.google_sheets?.spreadsheet_url" class="badge badge-warning">
-                                    <span class="status-dot status-dot-warning"></span> Pendente de Configuração
+                                <span x-show="((integrationsStatus?.integrations || []).find(i => i.id === 'google_sheets') || {}).status === 'pending'" class="badge badge-warning">
+                                    <span class="status-dot status-dot-warning"></span> Pendente
+                                </span>
+                                <span x-show="((integrationsStatus?.integrations || []).find(i => i.id === 'google_sheets') || {}).status === 'disabled'" class="badge">
+                                    <span class="status-dot"></span> Desativada
                                 </span>
                                 <span x-show="settings.google_sheets?.auto_sync" class="badge badge-accent">
                                     <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync Automático Ativo
@@ -1076,13 +1085,13 @@
                                     </div>
 
                                     <!-- Step 5 -->
-                                    <div class="callout callout-success p-4 space-y-2 relative">
+                                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 space-y-2 relative">
                                         <div class="flex items-center justify-between">
-                                            <span class="w-6 h-6 rounded-full bg-emerald-700 dark:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center">5</span>
-                                            <span class="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">Compartilhamento</span>
+                                            <span class="w-6 h-6 rounded-full bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-semibold flex items-center justify-center">5</span>
+                                            <span class="text-[11px] font-semibold text-slate-400 dark:text-stone-400">Compartilhamento</span>
                                         </div>
-                                        <h5 class="text-xs font-semibold text-emerald-950 dark:text-emerald-300">Compartilhe sua planilha privada</h5>
-                                        <p class="text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed">
+                                        <h5 class="text-xs font-semibold text-slate-800 dark:text-stone-100">Compartilhe sua planilha privada</h5>
+                                        <p class="text-xs text-slate-600 dark:text-stone-300 leading-relaxed">
                                             Abra a planilha no Google Sheets, clique em <b>Compartilhar</b> e adicione o e-mail da Conta de Serviço com permissão de <b>Leitor (Viewer)</b>.
                                         </p>
                                     </div>
@@ -1102,73 +1111,64 @@
 
                                 <!-- Box de auxílio para o email da conta de serviço -->
                                 <div class="callout callout-info p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                                    <div class="flex items-center gap-3">
-                                        <i data-lucide="info" class="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0"></i>
-                                        <div>
-                                            <p class="text-xs font-semibold text-blue-900 dark:text-blue-300">E-mail da conta de serviço para compartilhar a planilha:</p>
-                                            <p class="text-xs text-blue-700 dark:text-blue-200 font-mono mt-0.5" x-text="serviceAccountEmail || 'Cole o JSON de credenciais abaixo para detectar o e-mail automaticamente'"></p>
+                                    <div class="flex items-start gap-3 min-w-0">
+                                        <i data-lucide="info" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-semibold text-neutral-900 dark:text-neutral-100">E-mail da conta de serviço para compartilhar a planilha:</p>
+                                            <p class="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5 break-all" x-text="serviceAccountEmail || 'Cole o JSON de credenciais abaixo para detectar o e-mail automaticamente'"></p>
                                         </div>
                                     </div>
-                                    <button x-show="serviceAccountEmail" @click="copyText(serviceAccountEmail)" class="btn btn-secondary btn-sm shrink-0">
+                                    <button type="button" x-show="serviceAccountEmail" @click="copyText(serviceAccountEmail)" class="btn btn-secondary btn-sm shrink-0">
                                         <i data-lucide="copy"></i> Copiar e-mail
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        <hr class="border-slate-100">
+                        <hr class="border-neutral-200 dark:border-neutral-800">
 
                         <!-- Formulário de Configuração -->
                         <div class="space-y-6">
-                            <h4 class="font-semibold text-sm text-slate-900 flex items-center gap-2">
-                                <i data-lucide="settings" class="w-4 h-4 text-slate-400"></i> Parâmetros da Planilha
+                            <h4 class="font-semibold text-sm text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+                                <i data-lucide="settings" class="w-4 h-4 text-neutral-400"></i> Parâmetros da planilha
                             </h4>
 
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div class="md:col-span-2 space-y-1">
                                     <label class="field-label">URL ou ID da planilha Google Sheets</label>
                                     <input type="text" x-model="settings.google_sheets.spreadsheet_url" placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit" class="input">
-                                    <p class="text-[11px] text-slate-400">Pode ser o link completo do navegador ou apenas o identificador alfanumérico.</p>
+                                    <p class="field-hint">Pode ser o link completo do navegador ou apenas o identificador alfanumérico.</p>
                                 </div>
                                 <div class="space-y-1">
                                     <label class="field-label">Nome da página / aba (opcional)</label>
                                     <input type="text" x-model="settings.google_sheets.sheet_name" placeholder="Ex: Página1, Dados, Sheet1" class="input">
-                                    <p class="text-[11px] text-slate-400">Deixe em branco para ler a primeira aba automaticamente.</p>
+                                    <p class="field-hint">Deixe em branco para ler a primeira aba automaticamente.</p>
                                 </div>
                             </div>
 
                             <div class="space-y-1">
-                                <div class="flex items-center justify-between">
-                                    <label class="field-label">Credenciais da conta de serviço (arquivo JSON)</label>
-                                    <span x-show="serviceAccountEmail" class="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                                <div class="flex items-center justify-between gap-2">
+                                    <label class="field-label !mb-0">Credenciais da conta de serviço (arquivo JSON)</label>
+                                    <span x-show="serviceAccountEmail" class="text-[11px] font-semibold text-success-600 dark:text-success-400 flex items-center gap-1">
                                         <i data-lucide="check-circle" class="w-3 h-3"></i> Conta detectada: <span x-text="serviceAccountEmail" class="font-mono"></span>
                                     </span>
                                 </div>
                                 <textarea x-model="settings.google_sheets.credentials_json" rows="5" placeholder='{ "type": "service_account", "project_id": "...", "private_key_id": "...", "private_key": "-----BEGIN PRIVATE KEY-----\n...", "client_email": "...@...iam.gserviceaccount.com" }' class="input h-auto py-2 font-mono"></textarea>
-                                <p class="text-[11px] text-slate-400">Abra o arquivo .json baixado no Google Cloud em um editor de texto, copie todo o conteúdo e cole aqui.</p>
+                                <p class="field-hint">Abra o arquivo .json baixado no Google Cloud em um editor de texto, copie todo o conteúdo e cole aqui.</p>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-                                <div class="space-y-1">
-                                    <label class="field-label">Orientação dos dados na planilha</label>
+                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-4 pt-2 items-start">
+                                <div>
+                                    <div class="flex items-center min-h-[28px] mb-1.5"><label class="field-label !mb-0 whitespace-nowrap">Orientação dos dados na planilha</label></div>
                                     <select x-model="settings.google_sheets.orientation" class="input">
-                                        <option value="rows">Linhas (1 cabeçalho no topo na linha 1, dados nas linhas abaixo)</option>
-                                        <option value="columns">Colunas (1 cabeçalho à esquerda na coluna 1, dados nas colunas à direita)</option>
+                                        <option value="rows">Linhas (cabeçalho na linha 1)</option>
+                                        <option value="columns">Colunas (cabeçalho na coluna 1)</option>
                                     </select>
                                 </div>
-                                <div class="space-y-1">
-                                    <label class="field-label">Sincronização automática</label>
-                                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-4 p-2.5">
-                                        <select x-model="settings.google_sheets.sync_interval" class="input flex-1 font-semibold" :disabled="!settings.google_sheets.auto_sync">
-                                            <option value="15">A cada 15 min</option>
-                                            <option value="30">A cada 30 min</option>
-                                            <option value="60">A cada 1 hora</option>
-                                            <option value="120">A cada 2 horas</option>
-                                            <option value="360">A cada 6 horas</option>
-                                            <option value="720">A cada 12 horas</option>
-                                            <option value="1440">A cada 24 horas</option>
-                                        </select>
-                                        <div class="flex items-center gap-2 pr-2">
+                                <div>
+                                    <div class="flex flex-wrap items-center justify-between gap-x-2 min-h-[28px] mb-1.5">
+                                        <label class="field-label !mb-0 whitespace-nowrap">Sincronização automática</label>
+                                        <div class="flex items-center gap-2 shrink-0">
                                             <label class="dash-switch" title="Sincronização automática da planilha">
                                                 <input type="checkbox" :checked="Boolean(settings.google_sheets?.auto_sync)" @change="toggleSettingSwitch('google_sheets', 'auto_sync', $event, {on: 'Sincronização automática da planilha ativada!', off: 'Sincronização automática da planilha desativada.'})" class="sr-only dash-switch-input">
                                                 <div class="dash-switch-track dash-switch-sm">
@@ -1178,14 +1178,21 @@
                                             <span :class="settings.google_sheets?.auto_sync ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.google_sheets?.auto_sync ? 'Ativo' : 'Inativo'"></span>
                                         </div>
                                     </div>
+                                    <select x-model="settings.google_sheets.sync_interval" class="input font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-neutral-100 dark:disabled:bg-neutral-800" :disabled="!settings.google_sheets.auto_sync" title="Intervalo de sincronização automática">
+                                        <option value="15">A cada 15 minutos</option>
+                                        <option value="30">A cada 30 minutos</option>
+                                        <option value="60">A cada 1 hora</option>
+                                        <option value="120">A cada 2 horas</option>
+                                        <option value="360">A cada 6 horas</option>
+                                        <option value="720">A cada 12 horas</option>
+                                        <option value="1440">A cada 24 horas</option>
+                                    </select>
                                 </div>
-                                <div class="space-y-1">
-                                    <div class="flex items-center justify-between">
-                                        <label class="field-label">Apagar obsoletos</label>
-                                    </div>
-                                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between gap-3 p-2.5 h-[46px]" title="Remove do sistema registros com origem Google Sheets que forem excluídos da planilha">
-                                        <span class="text-xs text-slate-600 font-medium truncate">Remover excluídos</span>
-                                        <div class="flex items-center gap-2 pr-2 shrink-0">
+                                <div>
+                                    <div class="flex items-center min-h-[28px] mb-1.5"><label class="field-label !mb-0 whitespace-nowrap">Apagar obsoletos</label></div>
+                                    <div class="input flex items-center justify-between gap-3" title="Remove do sistema registros com origem Google Sheets que forem excluídos da planilha">
+                                        <span class="text-xs text-neutral-600 dark:text-neutral-300 font-medium">Remover excluídos</span>
+                                        <div class="flex items-center gap-2 shrink-0">
                                             <label class="dash-switch" title="Apagar registros que não constam mais na planilha">
                                                 <input type="checkbox" :checked="Boolean(settings.google_sheets?.delete_obsolete)" @change="toggleSettingSwitch('google_sheets', 'delete_obsolete', $event, {on: 'Remoção de obsoletos ativada.', off: 'Remoção de obsoletos desativada.'})" class="sr-only dash-switch-input">
                                                 <div class="dash-switch-track dash-switch-sm">
@@ -1298,22 +1305,22 @@
                                 </div>
                                 <div class="space-y-1">
                                     <label class="field-label">Assunto</label>
-                                    <input type="text" x-ref="templateSubjectInput" x-model="editingTemplate.subject" class="input" placeholder="Assunto do email (ex: Alerta DOU - Publicação de {empresa})">
-                                <div class="flex flex-wrap items-center gap-1 pt-1">
-                                        <span class="text-[11px] text-slate-400 mr-1">Variáveis:</span>
+                                    <input type="text" x-ref="templateSubjectInput" x-model="editingTemplate.subject" class="input" placeholder="Assunto do e-mail (ex: Alerta DOU - Publicação de {empresa})">
+                                    <div class="flex flex-wrap items-center gap-1.5 pt-1.5">
+                                        <span class="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap mr-0.5">Variáveis:</span>
                                         <template x-for="v in ['{empresa}','{cnpj}','{secao}','{data}','{total}']" :key="v">
-                                            <button type="button" @mousedown.prevent @click="insertVariableInField($refs.templateSubjectInput, 'subject', v)" class="btn btn-secondary btn-sm font-mono" x-text="v"></button>
+                                            <button type="button" @mousedown.prevent @click="insertVariableInField($refs.templateSubjectInput, 'subject', v)" class="chip-var" x-text="v"></button>
                                         </template>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="space-y-3">
-                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <label class="field-label">Corpo do e-mail e modelo visual</label>
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <label class="field-label !mb-0 whitespace-nowrap">Corpo do e-mail e modelo visual</label>
                                     
                                     <!-- Seletor de Modo -->
-                                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-1 text-xs shrink-0">
+                                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-1 text-xs max-w-full flex flex-wrap gap-0.5">
                                         <button type="button" @click="setTemplateEditorMode('visual')" class="btn btn-ghost btn-sm whitespace-nowrap" :class="templateEditorMode === 'visual' ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200'">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                                             Editor visual (prévia)
@@ -1349,7 +1356,7 @@
                                     <div class="h-5 w-px bg-slate-300 dark:bg-stone-700 shrink-0"></div>
 
                                     <!-- Grupo 3: Formato de Título -->
-                                    <select @change="execEditorCommand('formatBlock', $event.target.value); $event.target.value='';" class="input font-semibold">
+                                    <select @change="execEditorCommand('formatBlock', $event.target.value); $event.target.value='';" class="input w-auto h-sm font-medium">
                                         <option value="">Formato…</option>
                                         <option value="p">Parágrafo</option>
                                         <option value="h1">Título (H1)</option>
@@ -1435,28 +1442,28 @@
                                 </div>
 
                                 <!-- 1. Iframe do Editor Visual (WYSIWYG Direto no Preview) -->
-                                <div x-show="templateEditorMode === 'visual'" class="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden focus-within:border-ink-600 transition-colors">
-                                    <iframe x-ref="visualEditorIframe" @load="initVisualEditorIframe()" class="w-full bg-white" style="min-height:380px;height:420px;border:none;"></iframe>
+                                <div x-show="templateEditorMode === 'visual'" class="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden focus-within:border-ink-600 transition-colors bg-white">
+                                    <iframe x-ref="visualEditorIframe" @load="initVisualEditorIframe()" class="w-full bg-white block" style="min-height:220px;height:260px;border:none;"></iframe>
                                 </div>
 
                                 <!-- 2. Iframe de Demonstração com Dados Reais -->
-                                <div x-show="templateEditorMode === 'preview'" class="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+                                <div x-show="templateEditorMode === 'preview'" class="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden bg-white">
                                     <div class="bg-neutral-50 dark:bg-neutral-800 px-4 py-2 border-b border-neutral-200 dark:border-neutral-700 text-[11px] font-medium text-neutral-600 dark:text-neutral-300 flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
                                         Demonstração real: Visualizando com publicações de exemplo e destaque amarelo aplicado.
                                     </div>
-                                    <iframe class="w-full bg-white" style="min-height:380px;height:420px;border:none;" :srcdoc="getTemplatePreviewHtml(editingTemplate.body_html) || '<p style=&quot;color:#94a3b8;padding:20px;&quot;>Nenhum conteúdo para visualizar...</p>'"></iframe>
+                                    <iframe class="w-full bg-white block" style="min-height:220px;height:280px;border:none;" @load="resizeTemplateIframe($el)" :srcdoc="getTemplatePreviewHtml(editingTemplate.body_html) || '<p style=&quot;color:#94a3b8;padding:20px;&quot;>Nenhum conteúdo para visualizar...</p>'"></iframe>
                                 </div>
 
                                 <!-- 3. Código HTML Puro -->
                                 <div x-show="templateEditorMode === 'code'" class="space-y-2">
-                                    <div class="flex flex-wrap items-center gap-1 pt-1">
-                                        <span class="text-[11px] text-slate-400 mr-1">Variáveis:</span>
+                                    <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                                        <span class="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap mr-0.5">Variáveis:</span>
                                         <template x-for="v in ['{content}','{empresa}','{cnpj}','{secao}','{data}','{trecho}','{link}']" :key="v">
-                                            <button type="button" @mousedown.prevent @click="insertVariableInField($refs.codeEditorTextarea, 'body_html', v)" class="btn btn-secondary btn-sm font-mono" x-text="v"></button>
+                                            <button type="button" @mousedown.prevent @click="insertVariableInField($refs.codeEditorTextarea, 'body_html', v)" class="chip-var" x-text="v"></button>
                                         </template>
                                     </div>
-                                    <textarea x-ref="codeEditorTextarea" x-model="editingTemplate.body_html" rows="14" class="input h-auto py-2 font-mono" placeholder="<!DOCTYPE html><html>..."></textarea>
+                                    <textarea x-ref="codeEditorTextarea" x-model="editingTemplate.body_html" rows="10" class="input h-auto py-2 font-mono text-xs" placeholder="<!DOCTYPE html><html>..."></textarea>
                                 </div>
 
                                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400 pt-1">
@@ -1537,7 +1544,175 @@
                 </div>
 
                 <!-- Sub Tab: Storage -->
-                <div x-show="settingsSubTab === 'storage'" class="space-y-8" x-cloak>
+                <div x-show="settingsSubTab === 'storage'" class="space-y-6" x-cloak>
+                    <!-- PDFs do DOU -->
+                    <div class="card overflow-hidden" x-data="{
+                        pdfStats: null,
+                        loadingPdf: false,
+                        pdfError: '',
+                        openingFolder: false,
+                        fetchPdfStats() {
+                            this.loadingPdf = true;
+                            this.pdfError = '';
+                            fetch('/api/pdf_storage_stats')
+                                .then(r => r.json())
+                                .then(data => {
+                                    if (data && data.status === 'success') {
+                                        this.pdfStats = data;
+                                    } else {
+                                        this.pdfError = (data && data.message) || 'Não foi possível carregar os PDFs.';
+                                    }
+                                })
+                                .catch(() => {
+                                    this.pdfError = 'Erro ao consultar o armazenamento de PDFs.';
+                                })
+                                .finally(() => {
+                                    this.loadingPdf = false;
+                                    this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
+                                });
+                        },
+                        openPdfFolder(target = 'analyst') {
+                            this.openingFolder = true;
+                            fetch('/api/pdf_storage/open_folder', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ target })
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (!data || data.status !== 'success') {
+                                    this.showAlert((data && data.message) || 'Não foi possível abrir a pasta.', 'warning');
+                                }
+                            })
+                            .catch(() => this.showAlert('Erro ao tentar abrir a pasta.', 'error'))
+                            .finally(() => { this.openingFolder = false; });
+                        }
+                    }" x-init="$watch('settingsSubTab', value => { if (value === 'storage' && !pdfStats && !loadingPdf) fetchPdfStats(); }); $watch('activeTab', value => { if (value === 'settings' && settingsSubTab === 'storage' && !pdfStats && !loadingPdf) fetchPdfStats(); }); if (settingsSubTab === 'storage') fetchPdfStats();">
+                        <div class="card-header flex-wrap">
+                            <div class="min-w-0">
+                                <h3 class="card-title">PDFs do DOU</h3>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Edições integrais salvas no computador e cache interno de leitura.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button type="button" @click="openPdfFolder('analyst')" class="btn btn-secondary btn-sm" :disabled="openingFolder || !pdfStats || !pdfStats.folder_exists" title="Abrir pasta dos PDFs no gerenciador de arquivos">
+                                    <i data-lucide="folder-open"></i>
+                                    <span>Abrir pasta</span>
+                                </button>
+                                <button type="button" @click="fetchPdfStats()" class="btn btn-secondary btn-sm" :disabled="loadingPdf" title="Atualizar contagem de PDFs">
+                                    <i data-lucide="refresh-cw" :class="loadingPdf && 'animate-spin'"></i>
+                                    <span>Atualizar</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="p-6 space-y-5">
+                            <!-- Pasta atual e layout -->
+                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400">Pasta atual do analista</p>
+                                    <p class="font-mono text-xs text-neutral-900 dark:text-neutral-100 mt-1 break-all" x-text="pdfStats ? pdfStats.folder : '—'"></p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                    <span class="badge" x-text="pdfStats ? ('Organização: ' + pdfStats.layout_label) : 'Organização: —'"></span>
+                                    <span class="badge" :class="pdfStats && pdfStats.enabled ? 'badge-success' : 'badge-warning'" x-text="pdfStats ? (pdfStats.enabled ? 'Arquivamento ativo' : 'Arquivamento desativado') : '—'"></span>
+                                </div>
+                            </div>
+
+                            <!-- Totais gerais -->
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 text-center">
+                                    <div class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">Dias arquivados</div>
+                                    <div class="text-2xl font-semibold tabular text-neutral-900 dark:text-neutral-100" x-text="pdfStats ? pdfStats.totals.days : '—'"></div>
+                                </div>
+                                <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 text-center">
+                                    <div class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">Arquivos PDF</div>
+                                    <div class="text-2xl font-semibold tabular text-neutral-900 dark:text-neutral-100" x-text="pdfStats ? pdfStats.totals.files : '—'"></div>
+                                </div>
+                                <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 text-center">
+                                    <div class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">Espaço ocupado</div>
+                                    <div class="text-2xl font-semibold tabular text-ink-600 dark:text-ink-400" x-text="pdfStats ? pdfStats.totals.size_human : '—'"></div>
+                                </div>
+                            </div>
+
+                            <!-- Lista por mês -->
+                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                                <div class="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-2">
+                                    <h4 class="text-xs font-semibold text-neutral-700 dark:text-neutral-200 flex items-center gap-2">
+                                        <i data-lucide="calendar" class="w-4 h-4 text-neutral-400"></i>
+                                        <span>Resumo por mês</span>
+                                    </h4>
+                                    <span class="text-xs text-neutral-500 dark:text-neutral-400 tabular" x-show="pdfStats && pdfStats.months" x-text="pdfStats ? (pdfStats.months.length + ' mês(es)') : ''"></span>
+                                </div>
+                                <div class="max-h-72 overflow-y-auto">
+                                    <table class="table text-left">
+                                        <thead class="sticky top-0 z-10">
+                                            <tr>
+                                                <th>Mês</th>
+                                                <th>Dias</th>
+                                                <th>Arquivos</th>
+                                                <th class="text-right">Espaço ocupado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="text-xs">
+                                            <template x-for="m in (pdfStats ? pdfStats.months : [])" :key="m.month">
+                                                <tr>
+                                                    <td class="font-mono font-medium text-neutral-900 dark:text-neutral-100" x-text="m.month_label"></td>
+                                                    <td class="tabular text-neutral-600 dark:text-neutral-300" x-text="m.days"></td>
+                                                    <td class="tabular text-neutral-600 dark:text-neutral-300" x-text="m.files"></td>
+                                                    <td class="text-right font-mono tabular text-neutral-900 dark:text-neutral-100" x-text="m.size_human"></td>
+                                                </tr>
+                                            </template>
+                                            <tr x-show="loadingPdf">
+                                                <td colspan="4" class="text-center text-neutral-400 py-6">Carregando armazenamento dos PDFs…</td>
+                                            </tr>
+                                            <tr x-show="!loadingPdf && pdfError">
+                                                <td colspan="4" class="text-center text-danger-600 dark:text-danger-400 py-6" x-text="pdfError"></td>
+                                            </tr>
+                                            <tr x-show="!loadingPdf && !pdfError && (!pdfStats || !pdfStats.months || pdfStats.months.length === 0)">
+                                                <td colspan="4" class="text-center text-neutral-500 dark:text-neutral-400 py-6">Nenhum PDF encontrado para o layout atual.</td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot x-show="pdfStats && pdfStats.months && pdfStats.months.length > 0" class="bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 text-xs font-semibold">
+                                            <tr>
+                                                <td class="px-4 py-2.5 text-neutral-900 dark:text-neutral-100">Total geral</td>
+                                                <td class="px-4 py-2.5 tabular text-neutral-900 dark:text-neutral-100" x-text="pdfStats ? pdfStats.totals.days : 0"></td>
+                                                <td class="px-4 py-2.5 tabular text-neutral-900 dark:text-neutral-100" x-text="pdfStats ? pdfStats.totals.files : 0"></td>
+                                                <td class="px-4 py-2.5 text-right font-mono tabular text-neutral-900 dark:text-neutral-100" x-text="pdfStats ? pdfStats.totals.size_human : '0 B'"></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Cache interno (separado da pasta do analista) -->
+                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 space-y-3">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h4 class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Cache interno</h4>
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Usado automaticamente na busca por PDF quando o arquivamento está desativado e para acelerar releituras.</p>
+                                    </div>
+                                    <span class="badge tabular" x-text="pdfStats ? ('Total: ' + pdfStats.internal_cache.size_human) : '—'"></span>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                                    <div class="rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3 space-y-1">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="font-medium text-neutral-800 dark:text-neutral-200">PDFs temporários (pdf_cache)</span>
+                                            <span class="font-mono tabular whitespace-nowrap text-neutral-600 dark:text-neutral-300" x-text="pdfStats ? (pdfStats.internal_cache.pdf_cache.files + ' arq. · ' + pdfStats.internal_cache.pdf_cache.size_human) : '—'"></span>
+                                        </div>
+                                        <p class="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 break-all" x-text="pdfStats ? pdfStats.internal_cache.pdf_cache.folder : '—'"></p>
+                                    </div>
+                                    <div class="rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3 space-y-1">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="font-medium text-neutral-800 dark:text-neutral-200">Textos extraídos (pdf_text)</span>
+                                            <span class="font-mono tabular whitespace-nowrap text-neutral-600 dark:text-neutral-300" x-text="pdfStats ? (pdfStats.internal_cache.pdf_text.files + ' arq. · ' + pdfStats.internal_cache.pdf_text.size_human) : '—'"></span>
+                                        </div>
+                                        <p class="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 break-all" x-text="pdfStats ? pdfStats.internal_cache.pdf_text.folder : '—'"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card overflow-hidden" x-data="{
                         stats: null,
                         unavailable: '',
@@ -1592,7 +1767,10 @@
                                 <span>Atualizar dados</span>
                             </button>
                         </div>
-                        <div x-show="unavailable" x-cloak class="callout callout-info mx-6 mt-6 px-4 py-3 text-xs" x-text="unavailable"></div>
+                        <div x-show="unavailable" x-cloak class="callout callout-info mx-6 mt-6 p-4 flex items-start gap-3">
+                            <i data-lucide="info" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-300" x-text="unavailable"></p>
+                        </div>
                         <div class="p-6 grid grid-cols-2 gap-6">
                             <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 text-center">
                                 <div class="text-[11px] font-semibold text-slate-400 dark:text-stone-400 mb-2">Tamanho utilizado</div>
@@ -1827,9 +2005,9 @@
                                             <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
                                             <span class="text-xs font-mono text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="r.schedule"></span>
                                         </div>
-                                        <div class="flex items-center gap-2">
-                                            <i data-lucide="layers" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-                                            <span class="text-xs text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="(r.organs && r.organs.length) ? 'Filtro de órgão ativo: ' + r.organs.join(', ') : 'Todos os órgãos'" :title="(r.organs && r.organs.length) ? 'Só publicações destes órgãos são consideradas. Para buscar em todos, esvazie o campo Órgãos específicos na rotina.' : ''"></span>
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <i data-lucide="layers" class="w-3.5 h-3.5 text-neutral-400 shrink-0"></i>
+                                            <span class="text-xs text-neutral-600 dark:text-neutral-300 truncate max-w-[360px]" x-text="(r.organs && r.organs.length) ? 'Filtro de órgão ativo: ' + r.organs.join(', ') : 'Todos os órgãos'" :title="(r.organs && r.organs.length) ? 'Só publicações destes órgãos são consideradas. Para buscar em todos, esvazie o campo Órgãos específicos na rotina.' : ''"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1880,9 +2058,9 @@
                         <div class="mt-8 pt-6 border-t border-slate-50">
                             <div class="flex items-center justify-between mb-3">
                                 <label class="field-label">Termos Monitorados</label>
-                                <div class="flex gap-2">
+                                <div class="flex flex-wrap gap-1.5">
                                     <template x-for="s in r.sections" :key="s">
-                                        <span class="text-[11px] font-black px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100" x-text="s.replace('_', ' ')"></span>
+                                        <span class="badge badge-accent" x-text="s.replace('_', ' ')"></span>
                                     </template>
                                 </div>
                             </div>
@@ -2506,7 +2684,7 @@
             </div>
 
             <!-- Filtros -->
-            <div class="bg-white dark:bg-stone-900 p-6 rounded-3xl border border-slate-200 dark:border-stone-800 shadow-sm space-y-6">
+            <div class="card p-6 space-y-6">
                 <!-- Atalhos de Período Rápido -->
                 <div class="flex flex-wrap items-center gap-2 pb-4 border-b border-slate-100 dark:border-stone-800">
                     <span class="text-xs text-slate-500 dark:text-stone-400 mr-1 whitespace-nowrap">
@@ -2586,64 +2764,64 @@
                 </div>
 
                 <!-- Tags das Empresas Selecionadas (Linha dedicada abaixo das 3 colunas) -->
-                <div class="flex flex-wrap gap-2 pt-3 border-t border-slate-100 dark:border-stone-800 items-center" x-show="reportFilters.selectedCompanies.length > 0">
-                    <span class="text-[11px] font-black text-slate-400 mr-1">Selecionadas:</span>
+                <div class="flex flex-wrap gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800 items-center" x-show="reportFilters.selectedCompanies.length > 0">
+                    <span class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mr-1">Selecionadas:</span>
                     <template x-for="cnpj in reportFilters.selectedCompanies" :key="cnpj">
-                        <span class="bg-slate-900 dark:bg-stone-100 text-white dark:text-stone-900 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm whitespace-nowrap">
+                        <span class="bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm whitespace-nowrap">
                             <span x-text="uniqueMentionedCompanies.find(c => c.cnpj === cnpj)?.nome || companies.find(c => c.cnpj === cnpj)?.nome || cnpj" class="truncate max-w-[180px]"></span>
-                            <button @click="toggleCompanyFilter(cnpj)" class="text-slate-400 dark:text-stone-500 hover:text-white dark:hover:text-stone-900 transition-colors p-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                            <button type="button" @click="toggleCompanyFilter(cnpj)" class="text-neutral-400 dark:text-neutral-500 hover:text-white dark:hover:text-neutral-900 transition-colors p-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                         </span>
                     </template>
-                    <button @click="reportFilters.selectedCompanies = []" class="text-xs font-bold text-slate-400 hover:text-red-600 underline px-2 py-1 whitespace-nowrap">Limpar Todas</button>
+                    <button type="button" @click="reportFilters.selectedCompanies = []" class="btn btn-ghost btn-sm text-danger-600 dark:text-danger-400">Limpar todas</button>
                 </div>
             </div>
 
             <!-- Tabela de Resultados (Responsivo) -->
-            <div class="bg-white dark:bg-stone-900 border border-slate-200 dark:border-stone-800 rounded-3xl overflow-hidden shadow-sm relative h-[calc(100vh-380px)] min-h-[440px] flex flex-col">
-                <div x-show="loadingMentions" class="absolute inset-0 bg-white/50 dark:bg-stone-900/50 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
-                    <div class="w-10 h-10 border-4 border-slate-200 dark:border-stone-700 border-t-slate-900 dark:border-t-stone-100 rounded-full animate-spin mb-4"></div>
-                    <p class="text-sm font-bold text-slate-600 dark:text-stone-300">Carregando dados...</p>
+            <div class="card overflow-hidden relative h-[calc(100vh-380px)] min-h-[440px] flex flex-col">
+                <div x-show="loadingMentions" class="absolute inset-0 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
+                    <div class="w-10 h-10 border-4 border-neutral-200 dark:border-neutral-700 border-t-neutral-900 dark:border-t-neutral-100 rounded-full animate-spin mb-4"></div>
+                    <p class="text-sm font-medium text-neutral-600 dark:text-neutral-300">Carregando dados…</p>
                 </div>
                 
-                <div class="p-6 border-b border-slate-100 dark:border-stone-800 flex items-center justify-between bg-slate-50/50 dark:bg-stone-900/50 shrink-0">
-                    <p class="text-sm font-bold text-slate-600 dark:text-stone-300">Mostrando <span x-text="filteredReports.length"></span> resultados filtrados</p>
-                    <button @click="clearReportFilters()" class="text-xs font-bold text-slate-400 hover:text-slate-900 dark:hover:text-stone-100 transition-colors underline whitespace-nowrap">Limpar Filtros</button>
+                <div class="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-900/50 shrink-0">
+                    <p class="text-sm font-medium text-neutral-600 dark:text-neutral-300">Mostrando <span class="tabular font-semibold" x-text="filteredReports.length"></span> resultados filtrados</p>
+                    <button type="button" @click="clearReportFilters()" class="btn btn-ghost btn-sm">Limpar filtros</button>
                 </div>
 
                 <div class="flex-1 overflow-x-auto overflow-y-auto">
-                    <table class="w-full text-left">
-                        <thead class="bg-white text-[11px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                    <table class="table text-left">
+                        <thead class="sticky top-0 z-10">
                             <tr>
-                                <th class="px-6 py-4 w-12 text-center">
+                                <th class="w-12 text-center">
                                     <input type="checkbox" 
                                            :checked="filteredReports.length > 0 && selectedMentions.length === filteredReports.length"
                                            @change="$event.target.checked ? selectedMentions = filteredReports.map(m => m.id) : selectedMentions = []"
-                                           class="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer">
+                                           class="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 cursor-pointer">
                                 </th>
-                                <th class="px-6 py-4 whitespace-nowrap">Data</th>
-                                <th class="px-6 py-4">Empresa / CNPJ</th>
-                                <th class="px-6 py-4 whitespace-nowrap">Seção</th>
-                                <th class="px-6 py-4 max-w-md">Trecho</th>
+                                <th class="whitespace-nowrap">Data</th>
+                                <th>Empresa / CNPJ</th>
+                                <th class="whitespace-nowrap">Seção</th>
+                                <th class="max-w-md">Trecho</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
+                        <tbody>
                             <template x-if="filteredReports.length === 0">
                                 <tr>
-                                    <td colspan="5" class="px-6 py-12 text-center text-slate-400 text-sm">Nenhum resultado encontrado para os filtros atuais.</td>
+                                    <td colspan="5" class="px-6 py-12 text-center text-neutral-500 text-sm">Nenhum resultado encontrado para os filtros atuais.</td>
                                 </tr>
                             </template>
                             <template x-for="m in filteredReports.slice(0, 100)" :key="m.cnpj + '_' + m.id">
-                                <tr class="hover:bg-slate-50/50 transition-colors" :class="selectedMentions.includes(m.id) ? 'bg-blue-50/30' : ''">
-                                    <td class="px-6 py-4 text-center">
-                                        <input type="checkbox" :value="m.id" x-model="selectedMentions" class="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer">
+                                <tr :class="selectedMentions.includes(m.id) ? 'bg-ink-50/40 dark:bg-ink-950/30' : ''">
+                                    <td class="text-center">
+                                        <input type="checkbox" :value="m.id" x-model="selectedMentions" class="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 cursor-pointer">
                                     </td>
-                                    <td class="px-6 py-4 text-xs font-bold text-slate-600 whitespace-nowrap" x-text="m.data"></td>
-                                    <td class="px-6 py-4">
-                                        <p class="text-xs font-bold text-slate-900 line-clamp-1" x-text="m.empresa"></p>
-                                        <p class="text-[11px] text-slate-400 font-mono mt-0.5 whitespace-nowrap" x-text="m.cnpj"></p>
+                                    <td class="text-xs font-mono font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap" x-text="m.data"></td>
+                                    <td>
+                                        <p class="text-xs font-semibold text-neutral-900 dark:text-neutral-100 line-clamp-1" x-text="m.empresa"></p>
+                                        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono mt-0.5 whitespace-nowrap" x-text="m.cnpj"></p>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-[11px] font-black border border-blue-100 whitespace-nowrap" x-text="m.secao"></span>
+                                    <td class="whitespace-nowrap">
+                                        <span class="badge badge-accent" x-text="m.secao"></span>
                                     </td>
                                     <td class="px-6 py-4 max-w-md">
                                         <p class="text-xs text-slate-500 italic line-clamp-2" x-html="formatTrechoWithHighlight(m.trecho, m.cnpj, m.empresa)"></p>
@@ -6152,6 +6330,16 @@
                     } catch(e) { console.error('Erro ao carregar templates:', e); }
                 },
 
+                resizeTemplateIframe(iframe) {
+                    if (!iframe) return;
+                    try {
+                        const doc = iframe.contentDocument || (iframe.contentWindow ? iframe.contentWindow.document : null);
+                        if (!doc || !doc.documentElement) return;
+                        const h = Math.max(220, Math.min(doc.documentElement.scrollHeight + 16, 480));
+                        iframe.style.height = h + 'px';
+                    } catch (e) {}
+                },
+
                 initVisualEditorIframe() {
                     const iframe = this.$refs.visualEditorIframe;
                     if (!iframe) return;
@@ -6168,9 +6356,10 @@
                         if (doc.body) {
                             doc.body.contentEditable = 'true';
                             doc.body.style.outline = 'none';
-                            doc.body.style.minHeight = '320px';
+                            doc.body.style.minHeight = '160px';
                             doc.body.style.cursor = 'text';
                             doc.body.spellcheck = false;
+                            this.resizeTemplateIframe(iframe);
                             
                             // Inicializa histórico
                             this.editorHistory = [doc.body.innerHTML];
