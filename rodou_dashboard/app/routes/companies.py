@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify, session
-from sqlalchemy import func
 import logging
 from .auth import login_required
 from ..models import db, Company, Mention
@@ -9,30 +8,46 @@ from ..services.mention_service import get_real_mentions
 companies_bp = Blueprint('companies', __name__)
 logger = logging.getLogger(__name__)
 
+CNPJ_ROOT_LEN = 8
+
+
+def cnpj_root_key(value) -> str:
+    """Raiz do CNPJ (8 primeiros caracteres normalizados), aceitando alfanumérico.
+
+    Regra 1 do AGENTS.md: a empresa é identificada pela raiz, então matriz,
+    filiais e menções só pela raiz contam para a mesma empresa. Aceita também
+    a raiz isolada (8 caracteres), formato gravado nas menções `root_only`.
+    """
+    norm = normalize_cnpj(value)
+    return norm[:CNPJ_ROOT_LEN] if len(norm) >= CNPJ_ROOT_LEN else ""
+
+
+def count_mentions_by_root() -> dict:
+    """Quantidade de menções por raiz de CNPJ (cada menção conta uma vez)."""
+    counts: dict = {}
+    rows = db.session.query(Mention.id, Mention.cnpj_norm, Mention.cnpj).all()
+    for _mention_id, c_norm, c_raw in rows:
+        root = cnpj_root_key(c_norm) or cnpj_root_key(c_raw)
+        if root:
+            counts[root] = counts.get(root, 0) + 1
+    return counts
+
+
 def get_companies_data():
     all_metadata = Company.query.all()
-    
-    # Mapeamento de contagem agregada de menções por CNPJ
-    mention_counts = {}
+
+    # Contagem agregada pela raiz do CNPJ (matriz + filiais + só raiz)
     try:
-        norm_counts = db.session.query(Mention.cnpj_norm, func.count(Mention.id)).filter(Mention.cnpj_norm.isnot(None)).group_by(Mention.cnpj_norm).all()
-        for c_norm, cnt in norm_counts:
-            if c_norm:
-                mention_counts[c_norm] = cnt
-        raw_counts = db.session.query(Mention.cnpj, func.count(Mention.id)).filter(Mention.cnpj.isnot(None)).group_by(Mention.cnpj).all()
-        for c_raw, cnt in raw_counts:
-            if c_raw:
-                c_clean = normalize_cnpj(c_raw)
-                if c_clean and c_clean not in mention_counts:
-                    mention_counts[c_clean] = cnt
-    except Exception:
-        pass
+        mention_counts = count_mentions_by_root()
+    except Exception as exc:  # noqa: BLE001 - painel continua listando empresas
+        logger.warning("Falha ao contar menções por raiz de CNPJ: %s", exc)
+        mention_counts = {}
 
     empresas = []
     for meta in all_metadata:
         cnpj_bruto = meta.cnpj
         cnpj_norm = normalize_cnpj(cnpj_bruto)
-        total_mencoes = mention_counts.get(cnpj_norm, 0)
+        total_mencoes = mention_counts.get(cnpj_root_key(cnpj_norm), 0)
         empresas.append({
             "id": meta.id,
             "nome": meta.nome or "N/A",

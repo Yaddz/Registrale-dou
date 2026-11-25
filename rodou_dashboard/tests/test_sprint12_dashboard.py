@@ -50,7 +50,7 @@ def test_switches_persist_partial_updates_and_gestaoclick_default_off(app_ctx):
     assert s0["api_keys"]["gestaoclick_auto_sync"] is False
     assert s0["google_sheets"]["auto_sync"] is False
     assert s0["google_sheets"]["delete_obsolete"] is False
-    assert s0["smtp"]["enabled"] is True
+    assert s0["smtp"]["enabled"] is False  # desligado por padrão (1.3.2)
 
     # Salva SMTP completo primeiro
     r_smtp = client.post(

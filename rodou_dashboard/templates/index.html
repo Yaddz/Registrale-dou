@@ -61,7 +61,9 @@
     </div>
 
     <!-- Sidebar -->
-    <aside :class="sidebarOpen ? 'w-64' : 'w-20'" class="fixed left-0 top-0 h-screen bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 transition-all duration-300 z-30 flex flex-col">
+    <!-- Fundo da gaveta de navegação (telas < 768 px) -->
+    <div x-show="mobileNavOpen" x-cloak x-transition.opacity @click="mobileNavOpen = false" class="fixed inset-0 z-[29] bg-neutral-950/50 md:hidden" aria-hidden="true"></div>
+    <aside :class="[sidebarOpen ? 'w-64' : 'w-20', mobileNavOpen ? 'translate-x-0 shadow-2xl' : (isMobileLayout() ? '-translate-x-full' : 'translate-x-0')]" class="fixed left-0 top-0 h-screen bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 transition-all duration-300 z-30 flex flex-col">
         <div :class="sidebarOpen ? 'p-6 gap-3' : 'py-6 px-0 justify-center'" class="flex items-center overflow-hidden transition-all duration-300">
             <span class="brand-mark shrink-0" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6V2H8"/><path d="m8 18-4 4V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2Z"/><path d="M2 12h2"/><path d="M9 11v2"/><path d="M15 11v2"/><path d="M20 12h2"/></svg></span>
             <span x-show="sidebarOpen" x-transition.opacity class="font-semibold text-lg tracking-tight">Registrale</span>
@@ -125,7 +127,11 @@
                 <span x-show="sidebarOpen" class="text-sm font-medium">Sair</span>
             </a>
             {% endif %}
-            <button type="button" @click="sidebarOpen = !sidebarOpen" :class="sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0'" class="w-full flex items-center h-9 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors" :title="sidebarOpen ? 'Recolher menu' : 'Expandir menu'" :aria-label="sidebarOpen ? 'Recolher menu' : 'Expandir menu'">
+            <button type="button" @click="mobileNavOpen = false" class="md:hidden w-full flex items-center gap-3 px-3 h-9 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors" aria-label="Fechar menu">
+                <i data-lucide="x" class="w-4 h-4 shrink-0"></i>
+                <span class="text-sm font-medium">Fechar menu</span>
+            </button>
+            <button type="button" @click="sidebarOpen = !sidebarOpen" :class="sidebarOpen ? 'gap-3 px-3' : 'justify-center px-0'" class="hidden md:flex w-full items-center h-9 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors" :title="sidebarOpen ? 'Recolher menu' : 'Expandir menu'" :aria-label="sidebarOpen ? 'Recolher menu' : 'Expandir menu'">
                 <i x-show="sidebarOpen" data-lucide="chevron-left" class="w-4 h-4 shrink-0"></i>
                 <i x-show="!sidebarOpen" data-lucide="chevron-right" class="w-4 h-4 shrink-0"></i>
                 <span x-show="sidebarOpen" class="text-sm font-medium">Recolher</span>
@@ -133,11 +139,18 @@
         </div>
     </aside>
 
-    <main :class="sidebarOpen ? 'ml-64' : 'ml-20'" class="transition-all duration-300 p-4 sm:p-6 md:p-8 min-h-screen">
+    <main :style="{ marginLeft: mainOffset() }" :class="layoutReady ? 'transition-all duration-300' : ''" class="p-4 sm:p-6 md:p-8 min-h-screen min-w-0 overflow-x-clip">
+        <script>
+            // Mesma regra de mainOffset(), aplicada antes de o Alpine iniciar (evita o conteúdo sob o menu no primeiro quadro).
+            (function (el) { var w = window.innerWidth; el.style.marginLeft = w < 768 ? '0px' : (w < 1024 ? '5rem' : '16rem'); })(document.currentScript.parentElement);
+        </script>
         <!-- Header -->
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
-            <div>
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-stone-400">
+        <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-6 md:mb-8">
+            <div class="flex items-start gap-3 min-w-0">
+                <button type="button" @click="mobileNavOpen = true" class="btn btn-secondary btn-icon md:hidden shrink-0" title="Abrir menu" aria-label="Abrir menu">
+                    <i data-lucide="menu"></i>
+                </button>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-stone-400 min-w-0">
                     <!-- Indicador de Atividade Global -->
                     <div id="global-activity-indicator" class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900" :title="activity.next_search ? ('Próximo agendamento: ' + activity.next_search) : ''">
                         <span x-show="activity.busy" class="inline-flex text-ink-600 dark:text-ink-400 animate-spin"><i data-lucide="loader-2" class="w-3.5 h-3.5"></i></span>
@@ -178,20 +191,20 @@
                     </div>
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <button @click="toggleDarkMode()" class="btn btn-secondary btn-icon" title="Alternar modo escuro">
+            <div class="flex flex-wrap xl:flex-nowrap items-center gap-2 md:gap-3 shrink-0">
+                <button @click="toggleDarkMode()" class="btn btn-secondary btn-icon" title="Alternar modo escuro" aria-label="Alternar modo escuro">
                     <i data-lucide="moon" x-show="!darkMode"></i>
                     <i data-lucide="sun" x-show="darkMode" x-cloak></i>
                 </button>
                 <button id="refresh-tab-btn" @click="refreshCurrentTab()" :disabled="isRefreshingTab" class="btn btn-secondary" title="Atualizar dados da aba atual">
                     <span :class="{'animate-spin': isRefreshingTab}" class="inline-flex shrink-0"><i data-lucide="rotate-cw"></i></span>
-                    <span>Atualizar</span>
+                    <span class="hidden md:inline">Atualizar</span>
                 </button>
                 <button @click="showSyncModal = true" 
                         :disabled="isSyncing"
-                        class="btn btn-secondary">
+                        class="btn btn-secondary" title="Sincronizar bases" aria-label="Sincronizar bases">
                     <span :class="{'animate-spin': isSyncing}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span>
-                    <span x-text="isSyncing ? 'Sincronizando…' : 'Sincronizar bases'"></span>
+                    <span class="hidden md:inline" x-text="isSyncing ? 'Sincronizando…' : 'Sincronizar bases'"></span>
                 </button>
                 {% if login_required %}
                 <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-stone-400 whitespace-nowrap shrink-0" title="Tempo restante da sessão">
@@ -205,9 +218,9 @@
         <!-- Tab: Home -->
         <div x-show="activeTab === 'home'" x-cloak class="space-y-6">
             <!-- Avisos de configuração e contingência -->
-            <div class="space-y-3" x-show="(inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded || inlabsStatus.local_available === false) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())) || (integrationsStatus && !integrationsStatus.all_configured && !isNoticeDismissed('integrations', integrationsNoticeSignature()))">
+            <div class="space-y-3" x-show="(inlabsStatus && inlabsStatus.local_available !== false && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())) || (healthAlerts.length && !isNoticeDismissed('health', healthNoticeSignature()))">
                 <!-- Aviso de Contingência INLABS -->
-                <template x-if="inlabsStatus && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded || inlabsStatus.local_available === false) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
+                <template x-if="inlabsStatus && inlabsStatus.local_available !== false && (!inlabsStatus.portal_ok || !inlabsStatus.today_loaded) && !isNoticeDismissed('inlabs', inlabsNoticeSignature())">
                     <div class="callout callout-warning p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div class="flex items-start gap-3 min-w-0">
                             <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
@@ -232,57 +245,34 @@
                     </div>
                 </template>
 
-                <!-- Integrações pendentes (aviso recolhível e dispensável; volta se surgir pendência nova) -->
-                <template x-if="integrationsStatus && !integrationsStatus.all_configured && !isNoticeDismissed('integrations', integrationsNoticeSignature())">
-                    <div class="callout callout-warning"
-                         x-data="{
-                            open: true,
-                            get pendingKey() { return (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.id).join(','); },
-                            init() { try { this.open = localStorage.getItem('integrationsCollapsed') !== this.pendingKey; } catch (e) {} },
-                            toggle() {
-                                this.open = !this.open;
-                                try { this.open ? localStorage.removeItem('integrationsCollapsed') : localStorage.setItem('integrationsCollapsed', this.pendingKey); } catch (e) {}
-                            }
-                         }">
-                        <div class="flex items-center justify-between gap-3 p-4">
-                            <button type="button" class="callout-toggle flex-1 min-w-0 !gap-3" @click="toggle()" :aria-expanded="open.toString()" aria-controls="integrations-body">
-                                <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 shrink-0"></i>
-                                <span class="text-sm font-semibold text-neutral-900 dark:text-neutral-100 whitespace-nowrap">Integrações pendentes</span>
-                                <span class="text-xs text-neutral-500 dark:text-neutral-400 truncate"
-                                      x-text="open
-                                        ? `${integrationsStatus.pending_count} pendente(s)`
-                                        : (integrationsStatus.integrations || []).filter(i => i.status === 'pending').map(i => i.name).join(', ')"></span>
-                            </button>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <button type="button" @click="startIntegrationWizard()" class="btn btn-primary btn-sm shrink-0 hidden sm:inline-flex">
-                                    <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
-                                </button>
-                                <button type="button" class="btn btn-ghost btn-icon btn-sm shrink-0" @click="toggle()" :title="open ? 'Recolher' : 'Expandir'" :aria-label="open ? 'Recolher' : 'Expandir'">
-                                    <span class="callout-chevron inline-flex" :class="open && 'is-open'"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>
-                                </button>
-                                <button type="button" @click="dismissNotice('integrations', integrationsNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
-                                    <i data-lucide="x"></i>
-                                </button>
+                <!-- Problemas reais de configuração ou erros recentes (integração desligada não gera aviso) -->
+                <template x-if="healthAlerts.length && !isNoticeDismissed('health', healthNoticeSignature())">
+                    <div class="callout callout-warning p-4 space-y-3" role="status">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex items-start gap-3 min-w-0">
+                                <i data-lucide="alert-triangle" class="callout-icon w-4 h-4 mt-0.5 shrink-0"></i>
+                                <h4 class="font-semibold text-neutral-900 dark:text-neutral-100 text-sm" x-text="healthAlerts.length === 1 ? 'Atenção' : `${healthAlerts.length} problemas precisam de atenção`"></h4>
                             </div>
+                            <button type="button" @click="dismissNotice('health', healthNoticeSignature())" class="btn btn-ghost btn-icon btn-sm shrink-0" title="Fechar aviso" aria-label="Fechar aviso">
+                                <i data-lucide="x"></i>
+                            </button>
                         </div>
-                        <div id="integrations-body" x-show="open" class="px-4 pb-4 space-y-3">
-                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Configure as integrações pendentes abaixo. Itens desativados não impedem o funcionamento.</p>
-                            <div class="flex flex-wrap gap-2">
-                                <template x-for="item in (integrationsStatus.integrations || [])" :key="item.id">
-                                    <button type="button" @click="openIntegrationTarget(item.id)" class="btn btn-sm"
-                                            :class="item.status === 'pending' ? 'btn-secondary' : 'btn-ghost'">
-                                        <i :data-lucide="item.status === 'configured' ? 'check' : (item.status === 'pending' ? 'circle' : 'pause-circle')"
-                                           :class="item.status === 'configured' ? 'text-success-600 dark:text-success-400' : (item.status === 'pending' ? 'text-warning-600 dark:text-warning-400' : 'text-neutral-400')"></i>
-                                        <span x-text="item.name"></span>
-                                        <span x-show="item.status === 'disabled' || item.status === 'unavailable'" class="badge text-[11px]"
-                                              x-text="item.status === 'unavailable' ? 'Indisponível' : 'Desativada'"></span>
+                        <ul class="space-y-2">
+                            <template x-for="alert in healthAlerts" :key="alert.key">
+                                <li class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pl-7">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-neutral-900 dark:text-neutral-100 break-words" x-text="alert.title"></p>
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 break-words" x-text="alert.message"></p>
+                                    </div>
+                                    {% if user.role == 'master' %}
+                                    <button type="button" @click="openAlertTarget(alert)" class="btn btn-secondary btn-sm shrink-0 self-start sm:self-center">
+                                        <span>Resolver</span>
+                                        <i data-lucide="arrow-right"></i>
                                     </button>
-                                </template>
-                            </div>
-                            <button type="button" @click="startIntegrationWizard()" class="btn btn-primary w-full sm:hidden">
-                                <span x-text="integrationsStatus.next_pending ? `Configurar ${integrationsStatus.next_pending.name}` : 'Configurar agora'"></span>
-                            </button>
-                        </div>
+                                    {% endif %}
+                                </li>
+                            </template>
+                        </ul>
                     </div>
                 </template>
             </div>
@@ -319,9 +309,9 @@
                         <table class="w-full text-left">
                             <thead class="bg-slate-50 dark:bg-stone-900 text-[11px] font-bold text-slate-400 dark:text-stone-400 uppercase tracking-widest sticky top-0 z-10 border-b dark:border-stone-800">
                                 <tr>
-                                    <th class="px-6 py-4">Empresa</th>
-                                    <th class="px-6 py-4 text-center whitespace-nowrap">Data</th>
-                                    <th class="px-6 py-4 text-center whitespace-nowrap">Ação</th>
+                                    <th class="px-4 py-3 min-w-[240px]">Empresa</th>
+                                    <th class="px-4 py-3 text-center whitespace-nowrap">Data</th>
+                                    <th class="px-4 py-3 text-center whitespace-nowrap">Ação</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100 dark:divide-stone-800">
@@ -332,12 +322,12 @@
                                 </template>
                                 <template x-for="m in allMentions.slice(0, 10)" :key="m.cnpj + '_' + m.id">
                                     <tr class="hover:bg-slate-50/50 dark:hover:bg-stone-800/40 transition-colors">
-                                        <td class="px-6 py-4">
-                                            <p class="text-sm font-bold text-slate-900 dark:text-stone-100" x-text="m.empresa"></p>
+                                        <td class="px-4 py-3">
+                                            <p class="text-sm font-bold text-slate-900 dark:text-stone-100 line-clamp-2" :title="m.empresa" x-text="m.empresa"></p>
                                             <p class="text-[11px] text-slate-400 font-mono mt-0.5 whitespace-nowrap" x-text="m.cnpj"></p>
                                         </td>
-                                        <td class="px-6 py-4 text-center text-sm text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="m.data"></td>
-                                        <td class="px-6 py-4 text-center whitespace-nowrap">
+                                        <td class="px-4 py-3 text-center text-sm text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="m.data"></td>
+                                        <td class="px-4 py-3 text-center whitespace-nowrap">
                                             <button @click='openDetails(m)' class="p-2.5 hover:bg-white dark:hover:bg-stone-800 hover:shadow-sm border border-transparent hover:border-slate-200 dark:hover:border-stone-700 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-stone-100 transition-all">
                                                 <i data-lucide="eye" class="w-4 h-4"></i>
                                             </button>
@@ -380,10 +370,10 @@
                     <p class="text-sm font-medium text-neutral-600 dark:text-neutral-300">Carregando listagem completa…</p>
                 </div>
 
-                <div class="card-header flex-col sm:flex-row sm:items-center shrink-0">
+                <div class="card-header flex-col lg:flex-row lg:items-center shrink-0">
                     <h2 class="text-xl font-semibold tracking-tight shrink-0">Todas as menções</h2>
-                    <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
-                        <div class="relative flex-1 min-w-[200px] sm:w-72">
+                    <div class="flex flex-wrap xl:flex-nowrap items-center gap-3 w-full lg:w-auto min-w-0">
+                        <div class="relative flex-1 min-w-[200px] lg:w-72">
                             <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500"></i>
                             <input type="text" x-model="mentionsSearchQuery" placeholder="Buscar empresa, CNPJ, data ou trecho…" class="input pl-10 pr-4">
                         </div>
@@ -412,9 +402,9 @@
                                         :checked="selectedMentionIds.length > 0 && selectedMentionIds.length === pagedMentions.length"
                                         class="rounded border-neutral-300 w-4 h-4 cursor-pointer">
                                 </th>
-                                <th>Empresa / CNPJ</th>
+                                <th class="min-w-[240px]">Empresa / CNPJ</th>
                                 <th class="text-center whitespace-nowrap">Publicação</th>
-                                <th>Trecho identificado</th>
+                                <th class="hidden xl:table-cell">Trecho identificado</th>
                                 <th class="text-center whitespace-nowrap">Ações</th>
                             </tr>
                         </thead>
@@ -429,20 +419,22 @@
                                     <td class="text-center">
                                         <input type="checkbox" :value="m.id" x-model="selectedMentionIds" class="rounded border-neutral-300 w-4 h-4 cursor-pointer">
                                     </td>
-                                    <td>
+                                    <td class="min-w-[240px]">
                                         <div class="flex items-center gap-2">
                                             <span x-show="isMentionNew(m)" 
                                                   class="status-dot status-dot-success"
                                                   title="Menção identificada hoje"></span>
-                                            <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-100" x-text="m.empresa"></p>
+                                            <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-100 line-clamp-2" :title="m.empresa" x-text="m.empresa"></p>
                                         </div>
                                         <p class="text-[11px] text-neutral-500 font-mono mt-0.5 whitespace-nowrap" x-text="m.cnpj"></p>
+                                        <!-- Abaixo de 1280 px o trecho fica numa linha sob a empresa -->
+                                        <p class="xl:hidden text-xs text-neutral-500 leading-relaxed line-clamp-1 mt-1 break-all" x-html="formatTrechoWithHighlight(m.trecho, m.cnpj, m.empresa)"></p>
                                     </td>
                                     <td class="text-center whitespace-nowrap">
                                         <span class="badge badge-accent mb-1" x-text="m.secao"></span>
                                         <p class="text-xs font-mono text-neutral-500 whitespace-nowrap" x-text="m.data"></p>
                                     </td>
-                                    <td>
+                                    <td class="hidden xl:table-cell">
                                          <p class="text-xs text-neutral-500 leading-relaxed line-clamp-2 max-w-xl" x-html="formatTrechoWithHighlight(m.trecho, m.cnpj, m.empresa)"></p>
                                     </td>
                                     <td class="text-center whitespace-nowrap">
@@ -503,21 +495,21 @@
                     <h2 class="text-xl font-semibold tracking-tight text-slate-900 dark:text-stone-100">Empresas</h2>
                     <p class="text-sm text-slate-500 dark:text-stone-400 mt-1">Clientes monitorados pela raiz do CNPJ.</p>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                    <a href="/api/export_report" class="btn btn-secondary" title="Exportar planilha Excel">
-                        <i data-lucide="download"></i> Exportar Excel
+                <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                    <a href="/api/export_report" class="btn btn-secondary" title="Exportar planilha Excel" aria-label="Exportar planilha Excel">
+                        <i data-lucide="download"></i><span class="hidden sm:inline">Exportar Excel</span>
                     </a>
-                    <button @click="showSyncModal = true" class="btn btn-secondary">
-                        <span :class="{'animate-spin': isSyncing}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span> Sincronizar
+                    <button @click="showSyncModal = true" class="btn btn-secondary" title="Sincronizar empresas" aria-label="Sincronizar empresas">
+                        <span :class="{'animate-spin': isSyncing}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span><span class="hidden sm:inline">Sincronizar</span>
                     </button>
                     <button @click="openAddCompanyModal()" class="btn btn-primary">
-                        <i data-lucide="plus"></i> Adicionar empresa
+                        <i data-lucide="plus"></i><span>Adicionar empresa</span>
                     </button>
                 </div>
             </div>
             <div class="card p-4">
                 <div class="flex flex-wrap items-center gap-2">
-                    <div class="relative flex-1 min-w-[260px]">
+                    <div class="relative flex-1 min-w-full sm:min-w-[260px]">
                         <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
                         <input type="text" x-model="searchQuery" placeholder="Buscar por razão social ou CNPJ" class="input pl-9">
                     </div>
@@ -549,46 +541,69 @@
                     <div class="w-10 h-10 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin mb-4"></div>
                     <p class="text-sm font-bold text-slate-600">Carregando base de dados...</p>
                 </div>
-                <div class="overflow-x-auto flex-1">
+                <!-- Telas estreitas (< 768 px): cartões em vez da tabela -->
+                <div class="md:hidden flex-1 divide-y divide-slate-100 dark:divide-stone-800">
+                    <template x-if="filteredCompanies.length === 0">
+                        <p class="px-4 py-12 text-center text-slate-400 text-sm">Nenhuma empresa encontrada com os filtros selecionados.</p>
+                    </template>
+                    <template x-for="c in pagedCompanies" :key="'card-' + c.cnpj">
+                        <div class="p-4 flex items-start justify-between gap-3">
+                            <div class="min-w-0 space-y-1">
+                                <p class="text-sm font-semibold text-slate-900 dark:text-stone-100 break-words" x-text="c.nome"></p>
+                                <p class="text-xs font-mono text-slate-500 dark:text-stone-400" x-text="c.cnpj"></p>
+                                <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                                    <span class="badge" :class="c.status ? 'badge-success' : ''" x-text="c.status ? 'Monitorado' : 'Inativo'"></span>
+                                    <span class="badge" :class="(c.total_mencoes > 0) ? 'badge-accent' : ''" x-text="(c.total_mencoes || 0) + ((c.total_mencoes || 0) === 1 ? ' menção' : ' menções')"></span>
+                                    <span class="badge" x-text="c.origem"></span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button type="button" @click="openEditCompany(c)" class="btn btn-ghost btn-icon btn-sm" title="Editar empresa" aria-label="Editar empresa"><i data-lucide="pencil"></i></button>
+                                <button type="button" @click="openHistory(c)" class="btn btn-ghost btn-icon btn-sm" title="Histórico no DOU" aria-label="Histórico no DOU"><i data-lucide="history"></i></button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <div class="hidden md:block overflow-x-auto flex-1">
                     <table class="w-full text-left">
                         <thead class="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-widest border-b select-none">
                             <tr>
-                                <th @click="toggleCompanySort('nome')" class="px-6 py-4 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('nome')" class="px-4 py-3 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5">
                                         Razão social / nome
                                         <span x-show="companiesSort === 'nome_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
                                         <span x-show="companiesSort === 'nome_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('cnpj')" class="px-6 py-4 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('cnpj')" class="px-4 py-3 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5">
                                         CNPJ
                                         <span x-show="companiesSort === 'cnpj_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
                                         <span x-show="companiesSort === 'cnpj_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('origem')" class="px-6 py-4 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('origem')" class="hidden xl:table-cell px-4 py-3 cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5">
                                         Origem
                                         <span x-show="companiesSort === 'origem_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
                                         <span x-show="companiesSort === 'origem_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('mencoes')" class="px-6 py-4 text-center cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('mencoes')" class="px-4 py-3 text-center cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5 justify-center">
                                         Menções
                                         <span x-show="companiesSort === 'mencoes_desc'" class="text-ink-600 dark:text-ink-400 font-semibold">▼</span>
                                         <span x-show="companiesSort === 'mencoes_asc'" class="text-ink-600 dark:text-ink-400 font-semibold">▲</span>
                                     </span>
                                 </th>
-                                <th @click="toggleCompanySort('status')" class="px-6 py-4 text-center cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
+                                <th @click="toggleCompanySort('status')" class="px-4 py-3 text-center cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors group whitespace-nowrap">
                                     <span class="inline-flex items-center gap-1.5 justify-center">
                                         Status
                                         <span x-show="companiesSort === 'status_desc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▼</span>
                                         <span x-show="companiesSort === 'status_asc'" class="text-neutral-900 dark:text-neutral-100 font-semibold">▲</span>
                                     </span>
                                 </th>
-                                <th class="px-6 py-4 text-center whitespace-nowrap">Ações</th>
+                                <th class="px-4 py-3 text-center whitespace-nowrap">Ações</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -599,30 +614,30 @@
                             </template>
                             <template x-for="c in pagedCompanies" :key="c.cnpj">
                                 <tr class="hover:bg-slate-50/50 transition-colors">
-                                    <td class="px-6 py-4 text-sm font-bold text-slate-900" x-text="c.nome"></td>
-                                    <td class="px-6 py-4 text-xs font-mono text-slate-500 whitespace-nowrap" x-text="c.cnpj"></td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
+                                    <td class="px-4 py-3 text-sm font-bold text-slate-900 min-w-[12rem] break-words" x-text="c.nome"></td>
+                                    <td class="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap" x-text="c.cnpj"></td>
+                                    <td class="hidden xl:table-cell px-4 py-3 whitespace-nowrap">
                                         <span class="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-bold border border-slate-200 whitespace-nowrap" x-text="c.origem"></span>
                                     </td>
-                                    <td class="px-6 py-4 text-center whitespace-nowrap">
+                                    <td class="px-4 py-3 text-center whitespace-nowrap">
                                         <span :class="(c.total_mencoes > 0) ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-700/80' : 'bg-slate-100 dark:bg-stone-800 text-slate-500 dark:text-stone-400 font-medium border border-slate-200 dark:border-stone-700'"
                                               class="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-mono whitespace-nowrap"
                                               :title="(c.total_mencoes || 0) + ' menções registradas'">
                                             <span x-text="c.total_mencoes || 0"></span>
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 text-center whitespace-nowrap">
+                                    <td class="px-4 py-3 text-center whitespace-nowrap">
                                         <span x-show="c.status" class="badge badge-success">Monitorado</span>
                                         <span x-show="!c.status" class="badge">Inativo</span>
                                     </td>
-                                    <td class="px-6 py-4 text-center whitespace-nowrap">
+                                    <td class="px-4 py-3 text-center whitespace-nowrap">
                                         <div class="flex items-center justify-center gap-1.5">
                                             <!-- Botão Editar -->
                                             <button type="button" @click="openEditCompany(c)" class="btn btn-ghost btn-icon btn-sm" title="Editar empresa" aria-label="Editar empresa">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                                             </button>
                                             <!-- Botão Histórico com SVG inline -->
-                                            <button @click="openHistory(c)" class="inline-flex items-center justify-center p-2.5 bg-slate-50 text-slate-500 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl transition-all shadow-sm " title="Histórico no DOU">
+                                            <button type="button" @click="openHistory(c)" class="btn btn-ghost btn-icon btn-sm" title="Histórico no DOU" aria-label="Histórico no DOU">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                             </button>
                                         </div>
@@ -639,7 +654,7 @@
                         <span x-show="filteredCompanies.length > pagedCompanies.length" class="text-amber-600 font-bold ml-1 whitespace-nowrap">(Visualização limitada inicial a <span x-text="companiesLimit"></span>)</span>
                     </div>
                     <div class="flex flex-wrap items-center gap-2" x-show="filteredCompanies.length > pagedCompanies.length">
-                        <button type="button" @click="loadMoreCompanies()" class="px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-100 transition-colors shadow-sm whitespace-nowrap">
+                        <button type="button" @click="loadMoreCompanies()" class="btn btn-secondary whitespace-nowrap">
                             Carregar Mais (+100)
                         </button>
                         <button type="button" @click="showAllCompanies()" class="btn btn-primary">
@@ -652,23 +667,26 @@
 
         <!-- Tab: Configurações -->
         {% if user.role == 'master' %}
-        <div x-show="activeTab === 'settings'" x-cloak class=" max-w-6xl w-full flex flex-col lg:flex-row gap-8">
-            <!-- Sidebar -->
-            <div class="w-full lg:w-64 shrink-0 space-y-2">
-                <h2 class="text-xl font-semibold tracking-tight mb-6">Configurações</h2>
-                <button @click="settingsSubTab = 'users'" :class="settingsSubTab === 'users' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="users" class="w-4 h-4"></i> Usuários</button>
-                <button @click="settingsSubTab = 'google_sheets'" :class="settingsSubTab === 'google_sheets' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Google Sheets</button>
-                <button @click="settingsSubTab = 'integrations'" :class="settingsSubTab === 'integrations' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="plug-zap" class="w-4 h-4"></i> Integrações</button>
-                <button @click="settingsSubTab = 'pdf_archive'; fetchPdfArchiveStatus();" :class="settingsSubTab === 'pdf_archive' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-archive" class="w-4 h-4"></i> Arquivo PDF DOU</button>
-                <button @click="settingsSubTab = 'templates'" :class="settingsSubTab === 'templates' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="mail" class="w-4 h-4"></i> Templates de e-mail</button>
-                <button @click="settingsSubTab = 'clean'" :class="settingsSubTab === 'clean' ? 'bg-danger-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i> Limpeza do sistema</button>
-                <button @click="settingsSubTab = 'storage'" :class="settingsSubTab === 'storage' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="hard-drive" class="w-4 h-4"></i> Armazenamento</button>
-                <button @click="settingsSubTab = 'logs'; fetchSystemLogs();" :class="settingsSubTab === 'logs' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-text" class="w-4 h-4"></i> Logs do sistema</button>
-                <button @click="settingsSubTab = 'system'; fetchSystemUpdateInfo();" :class="settingsSubTab === 'system' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="w-full text-left flex items-center gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="download-cloud" class="w-4 h-4"></i> Sistema e atualizações</button>
+        <div x-show="activeTab === 'settings'" x-cloak class="max-w-6xl w-full min-w-0 flex flex-col xl:flex-row gap-6 xl:gap-8">
+            <!-- Submenu: lista lateral em telas largas; pílulas roláveis abaixo de 1280 px -->
+            <div class="w-full xl:w-64 shrink-0 min-w-0">
+                <h2 class="text-xl font-semibold tracking-tight mb-4 xl:mb-6">Configurações</h2>
+                <nav class="flex xl:flex-col gap-1 xl:gap-2 overflow-x-auto xl:overflow-visible pb-2 xl:pb-0 -mx-1 px-1" aria-label="Seções de configuração"
+                     x-init="$watch('settingsSubTab', () => $nextTick(() => { const el = $el.querySelector('[data-active=true]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }))">
+                    <button type="button" :data-active="(settingsSubTab === 'users').toString()" @click="settingsSubTab = 'users'" :class="settingsSubTab === 'users' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="users" class="w-4 h-4"></i> Usuários</button>
+                    <button type="button" :data-active="(settingsSubTab === 'google_sheets').toString()" @click="settingsSubTab = 'google_sheets'" :class="settingsSubTab === 'google_sheets' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Google Sheets</button>
+                    <button type="button" :data-active="(settingsSubTab === 'integrations').toString()" @click="settingsSubTab = 'integrations'" :class="settingsSubTab === 'integrations' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="plug-zap" class="w-4 h-4"></i> Integrações</button>
+                    <button type="button" :data-active="(settingsSubTab === 'pdf_archive').toString()" @click="settingsSubTab = 'pdf_archive'; fetchPdfArchiveStatus();" :class="settingsSubTab === 'pdf_archive' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-archive" class="w-4 h-4"></i> Arquivo PDF DOU</button>
+                    <button type="button" :data-active="(settingsSubTab === 'templates').toString()" @click="settingsSubTab = 'templates'" :class="settingsSubTab === 'templates' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="mail" class="w-4 h-4"></i> Templates de e-mail</button>
+                    <button type="button" :data-active="(settingsSubTab === 'clean').toString()" @click="settingsSubTab = 'clean'" :class="settingsSubTab === 'clean' ? 'bg-danger-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i> Limpeza do sistema</button>
+                    <button type="button" :data-active="(settingsSubTab === 'storage').toString()" @click="settingsSubTab = 'storage'" :class="settingsSubTab === 'storage' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="hard-drive" class="w-4 h-4"></i> Armazenamento</button>
+                    <button type="button" :data-active="(settingsSubTab === 'logs').toString()" @click="settingsSubTab = 'logs'; fetchSystemLogs();" :class="settingsSubTab === 'logs' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-text" class="w-4 h-4"></i> Logs do sistema</button>
+                    <button type="button" :data-active="(settingsSubTab === 'system').toString()" @click="settingsSubTab = 'system'; fetchSystemUpdateInfo();" :class="settingsSubTab === 'system' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="download-cloud" class="w-4 h-4"></i> Sistema e atualizações</button>
+                </nav>
             </div>
             
             <!-- Content Area -->
-            <div class="flex-1 space-y-8">
+            <div class="flex-1 min-w-0 space-y-8">
                 
                 <!-- Sub Tab: Users -->
                 <div x-show="settingsSubTab === 'users'" class="space-y-8">
@@ -782,7 +800,7 @@
                                     <input type="email" x-model="testEmail" :disabled="!settings.smtp?.enabled" placeholder="teste@exemplo.com" class="input disabled:cursor-not-allowed">
                                 </div>
                                 <button @click="testSmtpConnection()" class="btn btn-primary" :disabled="isTestingSmtp || !settings.smtp?.enabled">
-                                    <i data-lucide="send" :class="isTestingSmtp && 'animate-pulse'"></i>
+                                    <span class="inline-flex shrink-0" :class="isTestingSmtp && 'animate-pulse'"><i data-lucide="send"></i></span>
                                     <span x-text="isTestingSmtp ? 'Enviando…' : 'Enviar e-mail de teste'"></span>
                                 </button>
                             </div>
@@ -815,14 +833,14 @@
                                     <span :class="settings.api_keys?.gestaoclick_auto_sync ? 'text-success-700 dark:text-success-400 font-medium' : 'text-neutral-500 dark:text-neutral-400 font-medium'" class="text-xs whitespace-nowrap" x-text="settings.api_keys?.gestaoclick_auto_sync ? 'Ativa' : 'Desativada'"></span>
                                 </div>
                             </div>
-                            <div class="space-y-6">
+                            <div class="space-y-6" :class="!settings.api_keys?.gestaoclick_auto_sync && 'opacity-50'">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="space-y-1"><label class="field-label">Base URL API</label><input type="text" placeholder="https://api.gestaoclick.com/franquias" x-model="settings.api_keys.gestaoclick_base_url" class="input"></div>
-                                    <div class="space-y-1"><label class="field-label">Caminho YAML Base</label><input type="text" placeholder="Pesquisa_cnpj.yaml" x-model="settings.api_keys.yaml_path" class="input"></div>
+                                    <div class="space-y-1"><label class="field-label">Base URL API</label><input type="text" placeholder="https://api.gestaoclick.com/franquias" x-model="settings.api_keys.gestaoclick_base_url" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
+                                    <div class="space-y-1"><label class="field-label">Caminho YAML Base</label><input type="text" placeholder="Pesquisa_cnpj.yaml" x-model="settings.api_keys.yaml_path" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="space-y-1"><label class="field-label">Access token</label><input type="password" x-model="settings.api_keys.gestaoclick_access_token" placeholder="Insira o Access Token do GestãoClick" class="input"></div>
-                                    <div class="space-y-1"><label class="field-label">Secret access token</label><input type="password" x-model="settings.api_keys.gestaoclick_secret_token" placeholder="Insira o Secret Access Token" class="input"></div>
+                                    <div class="space-y-1"><label class="field-label">Access token</label><input type="password" x-model="settings.api_keys.gestaoclick_access_token" placeholder="Insira o Access Token do GestãoClick" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
+                                    <div class="space-y-1"><label class="field-label">Secret access token</label><input type="password" x-model="settings.api_keys.gestaoclick_secret_token" placeholder="Insira o Secret Access Token" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
                                 </div>
                             </div>
                         </div>
@@ -842,9 +860,10 @@
                                     <span class="status-dot status-dot-warning"></span> Pendente
                                 </span>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="space-y-1"><label class="field-label">Usuário INLABS</label><input type="text" x-model="settings.inlabs.user" placeholder="E-mail ou CPF cadastrado no INLABS" class="input"></div>
-                                <div class="space-y-1"><label class="field-label">Senha INLABS</label><input type="password" x-model="settings.inlabs.password" placeholder="Deixe em branco para manter a salva" class="input"></div>
+                            <p x-show="inlabsStatus && inlabsStatus.local_available === false" class="text-xs text-neutral-500 dark:text-neutral-400 -mt-3 mb-4">O INLABS local não está instalado nesta versão: as credenciais não são usadas e as buscas seguem a fonte escolhida abaixo.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6" :class="(inlabsStatus && inlabsStatus.local_available === false) && 'opacity-50'">
+                                <div class="space-y-1"><label class="field-label">Usuário INLABS</label><input type="text" x-model="settings.inlabs.user" :disabled="inlabsStatus && inlabsStatus.local_available === false" placeholder="E-mail ou CPF cadastrado no INLABS" class="input disabled:cursor-not-allowed"></div>
+                                <div class="space-y-1"><label class="field-label">Senha INLABS</label><input type="password" x-model="settings.inlabs.password" :disabled="inlabsStatus && inlabsStatus.local_available === false" placeholder="Deixe em branco para manter a salva" class="input disabled:cursor-not-allowed"></div>
                             </div>
                             <div class="mt-6 pt-5 border-t border-slate-200 dark:border-stone-700 space-y-2">
                                 <label class="field-label">Fonte quando o INLABS estiver fora</label>
@@ -1030,7 +1049,7 @@
                                 </div>
                                 <div class="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-stone-300">
                                     <span x-text="showManualSheets ? 'Recolher manual' : 'Expandir manual'"></span>
-                                    <i data-lucide="chevron-down" class="w-4 h-4 transition-transform duration-200" :class="showManualSheets ? 'rotate-180' : ''"></i>
+                                    <span class="inline-flex shrink-0 transition-transform duration-200" :class="showManualSheets ? 'rotate-180' : ''"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>
                                 </div>
                             </div>
 
@@ -1491,7 +1510,7 @@
                                 <tbody >
                                     <tr class="cursor-pointer" @click="previewTemplateId = (previewTemplateId === t.id ? null : t.id)">
                                         <td class="text-sm font-semibold flex items-center gap-2 truncate">
-                                            <i data-lucide="chevron-right" class="w-4 h-4 transition-transform shrink-0" :class="previewTemplateId === t.id && 'rotate-90'"></i>
+                                            <span class="inline-flex shrink-0 transition-transform" :class="previewTemplateId === t.id && 'rotate-90'"><i data-lucide="chevron-right" class="w-4 h-4"></i></span>
                                             <span x-text="t.name"></span>
                                         </td>
                                         <td class="text-sm text-slate-500 truncate" x-text="t.subject"></td>
@@ -1518,26 +1537,26 @@
                     <div class="card p-6">
                         <h3 class="font-semibold text-lg flex items-center gap-3 mb-6 text-danger-600"><i data-lucide="trash-2" class="w-5 h-5"></i> Limpeza do sistema</h3>
                         <p class="text-sm text-slate-500 mb-6">Atenção: As ações abaixo são irreversíveis. Use com cautela.</p>
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <button @click="clearSystemData('all')" class="btn btn-danger h-auto flex-col gap-2 py-6 text-center">
+                        <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+                            <button @click="clearSystemData('all')" class="btn btn-danger h-auto min-h-[7.5rem] min-w-0 whitespace-normal flex-col justify-center gap-2 px-3 py-5 text-center">
                                 <i data-lucide="alert-triangle"></i>
-                                <span class="font-semibold text-sm">Limpar dados</span>
-                                <span class="text-[11px] opacity-80 ">Reseta todo o banco</span>
+                                <span class="font-semibold text-sm leading-snug break-words">Limpar dados</span>
+                                <span class="text-[11px] opacity-80 leading-snug break-words">Reseta todo o banco</span>
                             </button>
-                            <button @click="clearSystemData('inlabs_old')" class="btn btn-secondary h-auto flex-col gap-2 py-6 text-center">
+                            <button @click="clearSystemData('inlabs_old')" class="btn btn-secondary h-auto min-h-[7.5rem] min-w-0 whitespace-normal flex-col justify-center gap-2 px-3 py-5 text-center">
                                 <i data-lucide="database"></i>
-                                <span class="font-semibold text-sm">Limpar INLABS</span>
-                                <span class="text-[11px] opacity-80 ">Apaga &gt; 120 dias</span>
+                                <span class="font-semibold text-sm leading-snug break-words">Limpar INLABS</span>
+                                <span class="text-[11px] opacity-80 leading-snug break-words">Apaga &gt; 120 dias</span>
                             </button>
-                            <button @click="clearSystemData('history')" class="btn btn-secondary h-auto flex-col gap-2 py-6 text-center">
+                            <button @click="clearSystemData('history')" class="btn btn-secondary h-auto min-h-[7.5rem] min-w-0 whitespace-normal flex-col justify-center gap-2 px-3 py-5 text-center">
                                 <i data-lucide="history"></i>
-                                <span class="font-semibold text-sm">Limpar histórico</span>
-                                <span class="text-[11px] opacity-80 ">Arquivos de cache</span>
+                                <span class="font-semibold text-sm leading-snug break-words">Limpar histórico</span>
+                                <span class="text-[11px] opacity-80 leading-snug break-words">Arquivos de cache</span>
                             </button>
-                            <button @click="clearSystemData('mentions')" class="btn btn-secondary h-auto flex-col gap-2 py-6 text-center">
+                            <button @click="clearSystemData('mentions')" class="btn btn-secondary h-auto min-h-[7.5rem] min-w-0 whitespace-normal flex-col justify-center gap-2 px-3 py-5 text-center">
                                 <i data-lucide="file-x"></i>
-                                <span class="font-semibold text-sm">Limpar menções</span>
-                                <span class="text-[11px] opacity-80 ">Apagar lidas do painel</span>
+                                <span class="font-semibold text-sm leading-snug break-words">Limpar menções</span>
+                                <span class="text-[11px] opacity-80 leading-snug break-words">Apagar lidas do painel</span>
                             </button>
                         </div>
                     </div>
@@ -1599,7 +1618,7 @@
                                     <span>Abrir pasta</span>
                                 </button>
                                 <button type="button" @click="fetchPdfStats()" class="btn btn-secondary btn-sm" :disabled="loadingPdf" title="Atualizar contagem de PDFs">
-                                    <i data-lucide="refresh-cw" :class="loadingPdf && 'animate-spin'"></i>
+                                    <span class="inline-flex shrink-0" :class="loadingPdf && 'animate-spin'"><i data-lucide="refresh-cw"></i></span>
                                     <span>Atualizar</span>
                                 </button>
                             </div>
@@ -1763,7 +1782,7 @@
                                 <p class="text-xs text-slate-500 dark:text-stone-400 mt-1">Armazenamento das capturas históricas do Diário Oficial da União.</p>
                             </div>
                             <button @click="fetchStats(true)" class="btn btn-secondary btn-sm" :disabled="loading" title="Atualizar dados do INLABS">
-                                <i data-lucide="refresh-cw" :class="loading && 'animate-spin'"></i>
+                                <span class="inline-flex shrink-0" :class="loading && 'animate-spin'"><i data-lucide="refresh-cw"></i></span>
                                 <span>Atualizar dados</span>
                             </button>
                         </div>
@@ -1857,7 +1876,7 @@
                                 <p class="text-xs text-slate-500 mt-1">Visualize o log principal com rotação (<code>registrale.log</code>) e os logs individuais por execução.</p>
                             </div>
                             <button @click="fetchSystemLogs()" :disabled="logsLoading" class="btn btn-primary shrink-0">
-                                <i data-lucide="refresh-cw" :class="logsLoading ? 'animate-spin' : ''"></i>
+                                <span class="inline-flex shrink-0" :class="logsLoading ? 'animate-spin' : ''"><i data-lucide="refresh-cw"></i></span>
                                 Atualizar
                             </button>
                         </div>
@@ -1905,13 +1924,27 @@
                         </template>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-1">
-                                <label class="field-label">Arquivo database.db (Docker)</label>
-                                <input type="file" id="importDbFileInput" accept=".db,.sqlite,.sqlite3" class="input">
+                            <div class="space-y-1 min-w-0" x-data="{ fileNames: '' }">
+                                <span class="field-label block">Arquivo database.db (Docker)</span>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                                    <input type="file" id="importDbFileInput" accept=".db,.sqlite,.sqlite3" class="sr-only"
+                                           @change="fileNames = Array.from($event.target.files || []).map(f => f.name).join(', ')">
+                                    <label for="importDbFileInput" class="btn btn-secondary shrink-0 cursor-pointer">
+                                        <i data-lucide="upload"></i><span>Escolher arquivo</span>
+                                    </label>
+                                    <span class="text-xs min-w-0 max-w-full truncate" :class="fileNames ? 'text-neutral-800 dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-400'" :title="fileNames" x-text="fileNames || 'Nenhum arquivo escolhido'">Nenhum arquivo escolhido</span>
+                                </div>
                             </div>
-                            <div class="space-y-1">
-                                <label class="field-label">Rotinas YAML (dag_confs/)</label>
-                                <input type="file" id="importRoutinesFilesInput" accept=".yaml,.yml" multiple class="input">
+                            <div class="space-y-1 min-w-0" x-data="{ fileNames: '' }">
+                                <span class="field-label block">Rotinas YAML (dag_confs/)</span>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                                    <input type="file" id="importRoutinesFilesInput" accept=".yaml,.yml" multiple class="sr-only"
+                                           @change="fileNames = Array.from($event.target.files || []).map(f => f.name).join(', ')">
+                                    <label for="importRoutinesFilesInput" class="btn btn-secondary shrink-0 cursor-pointer">
+                                        <i data-lucide="upload"></i><span>Escolher arquivos</span>
+                                    </label>
+                                    <span class="text-xs min-w-0 max-w-full truncate" :class="fileNames ? 'text-neutral-800 dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-400'" :title="fileNames" x-text="fileNames || 'Nenhum arquivo escolhido'">Nenhum arquivo escolhido</span>
+                                </div>
                             </div>
                         </div>
 
@@ -2017,7 +2050,7 @@
                                     <div class="flex flex-wrap items-center gap-4 sm:gap-6 mt-4">
                                         <div class="flex items-center gap-2">
                                             <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i>
-                                            <span class="text-xs font-mono text-slate-600 dark:text-stone-300 whitespace-nowrap" x-text="r.schedule"></span>
+                                            <span class="text-xs text-slate-600 dark:text-stone-300 whitespace-nowrap" :title="r.schedule" x-text="scheduleLabel(r.schedule)"></span>
                                         </div>
                                         <div class="flex items-center gap-2 min-w-0">
                                             <i data-lucide="layers" class="w-3.5 h-3.5 text-neutral-400 shrink-0"></i>
@@ -2074,7 +2107,7 @@
                                 <label class="field-label">Termos Monitorados</label>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="s in r.sections" :key="s">
-                                        <span class="badge badge-accent" x-text="s.replace('_', ' ')"></span>
+                                        <span class="badge badge-accent" x-text="sectionLabel(s)"></span>
                                     </template>
                                 </div>
                             </div>
@@ -2381,49 +2414,6 @@
             </div>
         </div>
 
-        <!-- Modal: Assistente de Integrações Passo a Passo (Wizard Modal) -->
-        <div x-show="wizardModalOpen" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm bg-neutral-950/60" x-transition.opacity>
-            <div @click.away="wizardModalOpen = false" class="card shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
-                <div class="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-3">
-                    <div class="p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-success-600 dark:text-success-400 shrink-0">
-                        <i data-lucide="check-circle-2" class="w-6 h-6"></i>
-                    </div>
-                    <div>
-                        <h3 class="font-semibold text-base text-slate-900 dark:text-stone-100">Etapa salva com sucesso</h3>
-                        <p class="text-xs text-neutral-500 font-medium">Assistente de configuração</p>
-                    </div>
-                </div>
-                
-                <div class="p-6 space-y-4">
-                    <template x-if="integrationsStatus && integrationsStatus.next_pending">
-                        <div>
-                            <p class="text-xs text-slate-600 dark:text-stone-300 leading-relaxed">
-                                Ainda há configurações essenciais pendentes. Deseja prosseguir para a próxima etapa agora?
-                            </p>
-                            <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 mt-4 p-4 flex items-start gap-3.5">
-                                <div class="p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-warning-700 dark:text-warning-400 shrink-0 mt-0.5">
-                                    <i :data-lucide="integrationsStatus.next_pending.icon || 'settings'" class="w-5 h-5"></i>
-                                </div>
-                                <div>
-                                    <span class="text-[11px] font-medium text-neutral-500 block">Próxima etapa</span>
-                                    <h4 class="font-semibold text-sm text-slate-900 dark:text-stone-100" x-text="integrationsStatus.next_pending.title || integrationsStatus.next_pending.name"></h4>
-                                    <p class="text-xs text-slate-500 dark:text-stone-400 mt-1 leading-relaxed" x-text="integrationsStatus.next_pending.description"></p>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                
-                <div class="px-5 py-4 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-end gap-3">
-                    <button @click="wizardModalOpen = false" class="btn btn-ghost btn-sm">Concluir depois</button>
-                    <button @click="proceedNextWizardStep()" class="btn btn-primary">
-                        <span>Configurar próximo</span>
-                        <i data-lucide="arrow-right"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
         <!-- Modal: Configuração de Rotina -->
         <div x-show="routineModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-neutral-950/60" x-transition.opacity>
             <div @click.away="routineModal = false" class="card shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -2620,8 +2610,8 @@
                                 </div>
                                 <div class="space-y-1">
                                     <label class="field-label">Órgãos específicos</label>
-                                    <input type="text" x-model="currentR.organs_raw" placeholder="Ex: Ministério da Saúde, ANVISA" class="input">
-                                    <p class="text-[11px] text-slate-400 dark:text-stone-400 mt-2 italic">Separe por vírgula. Deixe vazio para buscar em todos.</p>
+                                    <input type="text" x-model="currentR.organs_raw" placeholder="Ex: Agência Nacional de Vigilância Sanitária" class="input">
+                                    <p class="text-[11px] text-slate-400 dark:text-stone-400 mt-2 italic">Separe por vírgula. Use o nome do órgão como aparece no DOU; siglas comuns (ANVISA, INPI…) são convertidas automaticamente. Deixe vazio para buscar em todos os órgãos.</p>
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
@@ -2813,8 +2803,8 @@
                                            class="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 cursor-pointer">
                                 </th>
                                 <th class="whitespace-nowrap">Data</th>
-                                <th>Empresa / CNPJ</th>
-                                <th class="whitespace-nowrap">Seção</th>
+                                <th class="min-w-[240px]">Empresa / CNPJ</th>
+                                <th class="hidden lg:table-cell whitespace-nowrap">Seção</th>
                                 <th class="max-w-md">Trecho</th>
                             </tr>
                         </thead>
@@ -2829,12 +2819,16 @@
                                     <td class="text-center">
                                         <input type="checkbox" :value="m.id" x-model="selectedMentions" class="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 cursor-pointer">
                                     </td>
-                                    <td class="text-xs font-mono font-medium text-neutral-600 dark:text-neutral-300 whitespace-nowrap" x-text="m.data"></td>
-                                    <td>
-                                        <p class="text-xs font-semibold text-neutral-900 dark:text-neutral-100 line-clamp-1" x-text="m.empresa"></p>
+                                    <td class="whitespace-nowrap">
+                                        <p class="text-xs font-mono font-medium text-neutral-600 dark:text-neutral-300" x-text="m.data"></p>
+                                        <!-- Abaixo de 1024 px a seção fica sob a data -->
+                                        <span class="lg:hidden badge badge-accent mt-1" x-text="m.secao"></span>
+                                    </td>
+                                    <td class="min-w-[240px]">
+                                        <p class="text-xs font-semibold text-neutral-900 dark:text-neutral-100 line-clamp-2" :title="m.empresa" x-text="m.empresa"></p>
                                         <p class="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono mt-0.5 whitespace-nowrap" x-text="m.cnpj"></p>
                                     </td>
-                                    <td class="whitespace-nowrap">
+                                    <td class="hidden lg:table-cell whitespace-nowrap">
                                         <span class="badge badge-accent" x-text="m.secao"></span>
                                     </td>
                                     <td class="px-6 py-4 max-w-md">
@@ -3274,7 +3268,7 @@
                                     </li>
                                     <li><strong>Termos de Busca:</strong> Digite as palavras-chave separadas por vírgula.</li>
                                     <li><strong>Tipo de busca:</strong> Desmarque a opção <em>Busca por termo exato</em> para busca flexível (recomendado para CNPJs e termos com pontuação no DOU), ou marque para correspondência estrita com aspas.</li>
-                                    <li><strong>Órgãos específicos (Opcional):</strong> Filtre ministérios ou agências (ex: <code class="text-slate-800 dark:text-stone-200">ANVISA</code>).</li>
+                                    <li><strong>Órgãos específicos (Opcional):</strong> Filtre ministérios ou agências pelo nome como aparece no DOU (ex: <code class="text-slate-800 dark:text-stone-200">Agência Nacional de Vigilância Sanitária</code>). Siglas comuns (ANVISA, INPI…) são convertidas automaticamente. Deixe vazio para buscar em todos os órgãos.</li>
                                     <li><strong>E-mails de Alerta:</strong> Insira os e-mails para notificações automáticas.</li>
                                     <li>Clique em <strong>Salvar configurações</strong>.</li>
                                 </ol>
@@ -3874,13 +3868,27 @@
                     <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 space-y-4">
                         <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Importar de uma instalação anterior (opcional)</div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-1">
-                                <label class="field-label">Arquivo database.db</label>
-                                <input type="file" id="onboardingImportDbInput" accept=".db,.sqlite,.sqlite3" class="input">
+                            <div class="space-y-1 min-w-0" x-data="{ fileNames: '' }">
+                                <span class="field-label block">Arquivo database.db</span>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                                    <input type="file" id="onboardingImportDbInput" accept=".db,.sqlite,.sqlite3" class="sr-only"
+                                           @change="fileNames = Array.from($event.target.files || []).map(f => f.name).join(', ')">
+                                    <label for="onboardingImportDbInput" class="btn btn-secondary shrink-0 cursor-pointer">
+                                        <i data-lucide="upload"></i><span>Escolher arquivo</span>
+                                    </label>
+                                    <span class="text-xs min-w-0 max-w-full truncate" :class="fileNames ? 'text-neutral-800 dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-400'" :title="fileNames" x-text="fileNames || 'Nenhum arquivo escolhido'">Nenhum arquivo escolhido</span>
+                                </div>
                             </div>
-                            <div class="space-y-1">
-                                <label class="field-label">Rotinas YAML</label>
-                                <input type="file" id="onboardingImportRoutinesInput" accept=".yaml,.yml" multiple class="input">
+                            <div class="space-y-1 min-w-0" x-data="{ fileNames: '' }">
+                                <span class="field-label block">Rotinas YAML</span>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                                    <input type="file" id="onboardingImportRoutinesInput" accept=".yaml,.yml" multiple class="sr-only"
+                                           @change="fileNames = Array.from($event.target.files || []).map(f => f.name).join(', ')">
+                                    <label for="onboardingImportRoutinesInput" class="btn btn-secondary shrink-0 cursor-pointer">
+                                        <i data-lucide="upload"></i><span>Escolher arquivos</span>
+                                    </label>
+                                    <span class="text-xs min-w-0 max-w-full truncate" :class="fileNames ? 'text-neutral-800 dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-400'" :title="fileNames" x-text="fileNames || 'Nenhum arquivo escolhido'">Nenhum arquivo escolhido</span>
+                                </div>
                             </div>
                         </div>
                         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -4301,7 +4309,33 @@
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('dashboard', () => ({
-                sidebarOpen: true,
+                // Layout: gaveta abaixo de 768 px; sidebar recolhida (w-20) abaixo de 1024 px.
+                sidebarOpen: window.innerWidth < 768 || window.innerWidth >= 1024,
+                mobileNavOpen: false,
+                viewportWidth: window.innerWidth,
+                // Só anima a margem depois do primeiro render (evita animar de 0 até a largura do menu ao abrir).
+                layoutReady: false,
+                _layoutBand: '',
+                layoutBand() {
+                    const w = this.viewportWidth;
+                    return w < 768 ? 'mobile' : (w < 1024 ? 'medium' : 'wide');
+                },
+                isMobileLayout() {
+                    return this.viewportWidth < 768;
+                },
+                // Margem do conteúdo = largura do menu, calculada do mesmo estado já no primeiro render
+                // (não depende das classes responsivas md:ml-* geradas pelo Tailwind CDN).
+                mainOffset() {
+                    if (this.isMobileLayout()) return '0px';
+                    return this.sidebarOpen ? '16rem' : '5rem';
+                },
+                applyLayoutBand() {
+                    const band = this.layoutBand();
+                    if (band === this._layoutBand) return;
+                    this._layoutBand = band;
+                    this.mobileNavOpen = false;
+                    this.sidebarOpen = band !== 'medium';
+                },
                 activeTab: 'home',
                 settingsSubTab: 'users',
                 logFiles: [],
@@ -4497,9 +4531,8 @@
                 settings: (() => {
                     const raw = Object.assign({smtp:{}, api_keys:{}, inlabs:{}, google_sheets: {}, pdf_archive: {}}, {{ settings | tojson | safe }});
                     if (!raw.smtp) raw.smtp = {};
-                    if (raw.smtp.enabled === undefined) {
-                        raw.smtp.enabled = true;
-                    }
+                    // Mesma regra do backend (is_smtp_enabled): sem a chave, o envio está desligado.
+                    raw.smtp.enabled = raw.smtp.enabled === true;
                     if (!raw.api_keys) raw.api_keys = {};
                     raw.api_keys.gestaoclick_auto_sync = Boolean(raw.api_keys.gestaoclick_auto_sync);
                     if (!raw.google_sheets) raw.google_sheets = {};
@@ -4715,10 +4748,14 @@
                             this.activity = data;
                             if (data.next_search) this.topIndicators.next_search = data.next_search;
                             if (transitionedToIdle || finishedChanged) {
+                                // Uma busca terminou: atualiza KPIs, histórico, menções, empresas
+                                // (contador por raiz) e avisos sem esperar o botão "Atualizar".
                                 await Promise.all([
                                     this.fetchMentions(true),
                                     this.refreshKpis(true),
-                                    this.loadRoutines()
+                                    this.loadRoutines(),
+                                    this.fetchCompanies(),
+                                    this.checkIntegrationsStatus()
                                 ]);
                             }
                             this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
@@ -4773,19 +4810,27 @@
                     if (!this.inlabsStatus || (this.inlabsStatus.portal_ok && this.inlabsStatus.today_loaded && this.inlabsStatus.local_available !== false)) return '';
                     return `${this.inlabsStatus.portal_ok ? 1 : 0}:${this.inlabsStatus.today_loaded ? 1 : 0}:${this.inlabsStatus.local_available === false ? 0 : 1}`;
                 },
-                integrationsNoticeSignature() {
-                    if (!this.integrationsStatus || this.integrationsStatus.all_configured) return '';
-                    return (this.integrationsStatus.integrations || [])
-                        .filter(i => i.status === 'pending')
-                        .map(i => i.id)
-                        .sort()
-                        .join(',');
+                scheduleLabel(cron) {
+                    // Agendamento legível ("Dias úteis às 08:00"); formatos fora do padrão ficam como estão.
+                    const parts = String(cron || '').trim().split(/\s+/);
+                    if (parts.length !== 5 || !/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1]) || parts[2] !== '*' || parts[3] !== '*') return cron || 'Sem agendamento';
+                    const hour = `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`;
+                    const days = { '*': 'Todos os dias', 'MON-FRI': 'Dias úteis', '1-5': 'Dias úteis', 'SAT,SUN': 'Fins de semana' };
+                    const label = days[parts[4].toUpperCase()];
+                    return label ? `${label} às ${hour}` : `${parts[4]} às ${hour}`;
+                },
+                sectionLabel(code) {
+                    const labels = { SECAO_1: 'Seção 1', SECAO_2: 'Seção 2', SECAO_3: 'Seção 3', EDICAO_EXTRA: 'Edição extra' };
+                    return labels[code] || String(code || '').replace(/_/g, ' ');
+                },
+                healthNoticeSignature() {
+                    return (this.healthAlerts || []).map(a => a.key).sort().join(',');
                 },
                 isNoticeDismissed(notice, sig) {
                     if (!sig) return false;
                     const saved = (this.dismissedNotices && this.dismissedNotices[notice]) || '';
-                    if (notice === 'integrations') {
-                        // Só volta se surgir uma pendência nova; resolver uma não reabre o aviso.
+                    if (notice === 'health') {
+                        // Só volta se surgir um problema novo; resolver um não reabre o aviso.
                         const savedIds = saved.split(',').filter(Boolean);
                         return sig.split(',').every(id => savedIds.includes(id));
                     }
@@ -4804,7 +4849,7 @@
                     } catch (e) {}
                 },
                 integrationsStatus: { is_configured: true, all_configured: true, pending_count: 0, next_pending: null, integrations: [], main_dag: {}, smtp: {} },
-                wizardModalOpen: false,
+                healthAlerts: [],
                 mainDagStatus: { is_configured: true, missing_fields: [], main_dag: {}, smtp_configured: false, smtp: {} },
                 routines: [],
                 loadingRoutines: false,
@@ -5139,9 +5184,19 @@
                     this.openEmailModal(mentions);
                 },
 
+                normalizeAlertType(type) {
+                    // Respostas da API trazem status como "ok", "partial" ou nada: nunca exibir tipo indefinido.
+                    const t = String(type || 'success').toLowerCase();
+                    if (t === 'ok' || t === 'success') return 'success';
+                    if (t === 'error' || t === 'fail' || t === 'failed') return 'error';
+                    if (t === 'warning' || t === 'partial') return 'warning';
+                    return 'info';
+                },
                 showAlert(msg, type = 'success') {
                     if (this.alertTimeoutId) clearTimeout(this.alertTimeoutId);
-                    this.alert = { show: true, message: msg, type: type };
+                    const kind = this.normalizeAlertType(type);
+                    const fallback = kind === 'error' ? 'Não foi possível concluir a operação.' : 'Operação concluída.';
+                    this.alert = { show: true, message: (msg === undefined || msg === null || msg === '') ? fallback : String(msg), type: kind };
                     this.alertTimeoutId = setTimeout(() => { this.alert.show = false; }, 5000);
                     this.$nextTick(() => { if(window.lucide) lucide.createIcons(); });
                 },
@@ -5280,7 +5335,33 @@
                     return (syncRoutine && Array.isArray(syncRoutine.emails)) ? syncRoutine.emails : [];
                 },
 
+                async fetchHealthAlerts() {
+                    try {
+                        const r = await fetch('/api/system/health_alerts');
+                        const data = await r.json();
+                        if (data.status === 'ok') this.healthAlerts = Array.isArray(data.alerts) ? data.alerts : [];
+                    } catch (e) { }
+                },
+
+                openAlertTarget(alert) {
+                    if (!alert) return;
+                    if (alert.settings_tab === 'routines') {
+                        this.activeTab = 'routines';
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    } else {
+                        this.activeTab = 'settings';
+                        this.settingsSubTab = alert.settings_tab || 'integrations';
+                        this.$nextTick(() => {
+                            const el = alert.anchor ? document.getElementById(alert.anchor) : null;
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            else window.scrollTo({ top: 0, behavior: 'smooth' });
+                        });
+                    }
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                },
+
                 async checkIntegrationsStatus() {
+                    this.fetchHealthAlerts();
                     try {
                         const r = await fetch('/api/system/integrations_status');
                         const data = await r.json();
@@ -5308,80 +5389,6 @@
 
                 async checkMainDagStatus() {
                     return this.checkIntegrationsStatus();
-                },
-
-                async openIntegrationTarget(id) {
-                    if (id === 'main_dag') {
-                        if (!this.routines || this.routines.length === 0) {
-                            await this.loadRoutines();
-                        }
-                        const mainR = (this.routines || []).find(r => r.file === 'Pesquisa_cnpj.yaml' || r.id === 'pesquisa_cnpj_anvisa' || r.type === 'sync');
-                        if (mainR) {
-                            await this.openRoutineModal(mainR);
-                        } else {
-                            await this.openRoutineModal({
-                                id: 'pesquisa_cnpj_anvisa',
-                                file: 'Pesquisa_cnpj.yaml',
-                                name: 'MONITORAMENTO PADRÃO',
-                                schedule: '0 8 * * MON-FRI',
-                                terms: [],
-                                organs: [],
-                                sections: ['SECAO_1', 'SECAO_2', 'SECAO_3', 'EDICAO_EXTRA'],
-                                emails: [],
-                                subject: '',
-                                type: 'sync',
-                                active: true,
-                                is_exact_search: false,
-                                source: 'INLABS',
-                                terms_ignore: []
-                            });
-                        }
-                    } else if (id === 'smtp' || id === 'gestaoclick') {
-                        this.activeTab = 'settings';
-                        this.settingsSubTab = 'integrations';
-                        this.$nextTick(() => {
-                            const el = document.getElementById(id === 'smtp' ? 'smtp-settings-card' : 'gestaoclick-settings-card');
-                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        });
-                    } else if (id === 'pdf_archive') {
-                        this.activeTab = 'settings';
-                        this.settingsSubTab = 'pdf_archive';
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    } else if (id === 'google_sheets') {
-                        this.activeTab = 'settings';
-                        this.settingsSubTab = 'google_sheets';
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    } else if (id === 'inlabs') {
-                        this.activeTab = 'settings';
-                        this.settingsSubTab = 'integrations';
-                        this.$nextTick(() => {
-                            const el = document.getElementById('inlabs-credentials-card');
-                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        });
-                    }
-                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-                },
-
-                startIntegrationWizard() {
-                    if (this.integrationsStatus && this.integrationsStatus.next_pending) {
-                        this.openIntegrationTarget(this.integrationsStatus.next_pending.id);
-                    } else {
-                        this.openIntegrationTarget('main_dag');
-                    }
-                },
-
-                proceedNextWizardStep() {
-                    this.wizardModalOpen = false;
-                    if (this.integrationsStatus && this.integrationsStatus.next_pending) {
-                        this.openIntegrationTarget(this.integrationsStatus.next_pending.id);
-                    }
-                },
-
-                onIntegrationStepCompleted() {
-                    if (this.integrationsStatus && !this.integrationsStatus.all_configured && this.integrationsStatus.next_pending) {
-                        this.wizardModalOpen = true;
-                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-                    }
                 },
 
                 async openRoutineSettings(r = null) {
@@ -5758,9 +5765,6 @@
                             this.routineModal = false;
                             await this.loadRoutines();
                             await this.checkIntegrationsStatus();
-                            if (this.currentR.file === 'Pesquisa_cnpj.yaml' || this.currentR.type === 'sync') {
-                                this.onIntegrationStepCompleted();
-                            }
                         } else { this.showAlert(res.message, 'error'); }
                     } catch(e) { this.showAlert('Erro ao salvar rotina', 'error'); }
                 },
@@ -6219,7 +6223,6 @@
                                 this.settings = Object.assign(this.settings || {}, res.settings);
                             }
                             await this.checkIntegrationsStatus();
-                            this.onIntegrationStepCompleted();
                         }
                     } catch(e) { this.showAlert('Erro ao salvar configurações', 'error'); }
                 },
@@ -7914,6 +7917,11 @@
 
                 init() {
                     if(this.darkMode) document.documentElement.classList.add('dark');
+                    this.applyLayoutBand();
+                    window.addEventListener('resize', () => { this.viewportWidth = window.innerWidth; this.applyLayoutBand(); });
+                    setTimeout(() => { this.layoutReady = true; }, 500);
+                    this.$watch('activeTab', () => { this.mobileNavOpen = false; });
+                    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') this.mobileNavOpen = false; });
                     window.addEventListener('pywebviewready', () => {
                         this.hasNativePicker = Boolean(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder);
                     });

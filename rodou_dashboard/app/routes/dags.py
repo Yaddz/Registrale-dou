@@ -11,6 +11,7 @@ from .auth import login_required
 from ..models import db, Mention, Company, SyncHistory
 from ..services.dag_config_service import get_routines, get_dag_confs_path, touch_dag_generator
 from ..runtime.executor import get_executor, normalize_date_str
+from ..services.organ_aliases import expand_organ_filters
 
 # Assumindo a mesma estrutura
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -343,8 +344,11 @@ def manage_routines():
         search = search[0] if len(search) > 0 else {}
     
     search["header"] = data.get('name', search.get('header', 'Busca'))
-    search["department"] = data.get('organs', search.get('department', []))
-    search["organs"] = data.get('organs', search.get('organs', []))
+    # `organs` guarda o que o usuário digitou; `department` (lido pelo núcleo)
+    # recebe o nome oficial do órgão, com siglas como "ANVISA" expandidas.
+    raw_organs = data.get('organs', search.get('organs', search.get('department', [])))
+    search["organs"] = [str(o).strip() for o in (raw_organs or []) if o and str(o).strip()]
+    search["department"] = expand_organ_filters(raw_organs)
     
     class QuotedString(str): pass
     def quoted_scalar_representer(dumper, data):
@@ -413,8 +417,8 @@ def manage_routines():
             "active": dag.get("active", True),
             "is_exact_search": is_exact_val,
             "force_rematch": bool(search.get("force_rematch", True)),
-            "organs": search.get("department", []),
-            "department": search.get("department", []),
+            "organs": search.get("organs") or search.get("department", []),
+            "department": search.get("organs") or search.get("department", []),
             "sections": search.get("dou_sections", DEFAULT_DOU_SECTIONS),
             "terms_ignore": search.get("terms_ignore", []),
             "source": source_input
@@ -425,6 +429,26 @@ def manage_routines():
         touch_dag_generator()
     
     return jsonify({"status": "success", "message": "Rotina salva com sucesso!"})
+
+@dags_bp.route('/system/health_alerts', methods=['GET'])
+@login_required
+def api_health_alerts():
+    """Avisos da Visão geral: só problemas reais (integração desligada não conta)."""
+    from ..services.dag_config_service import get_main_dag_info
+    from ..services.health_alerts import HistoryRow, compute_health_alerts
+    from ..models import Settings
+
+    settings_record = Settings.query.filter_by(key='global_settings').first()
+    settings_data = settings_record.get_value() if settings_record else {}
+    if not isinstance(settings_data, dict):
+        settings_data = {}
+    rows = [
+        HistoryRow(data=h.data or "", evento=h.evento or "", detalhes=h.detalhes or "")
+        for h in SyncHistory.query.order_by(SyncHistory.id.desc()).limit(200).all()
+    ]
+    alerts = compute_health_alerts(settings_data, get_main_dag_info(), rows)
+    return jsonify({"status": "ok", "alerts": [a.to_dict() for a in alerts]})
+
 
 @dags_bp.route('/system/main_dag_status', methods=['GET'])
 @dags_bp.route('/system/integrations_status', methods=['GET'])
@@ -1026,14 +1050,22 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 source_tag += f" [Seções: {coverage_text}]"
 
             # 5. Envio do E-mail Formatado
-            from ..services.email_service import is_smtp_enabled
+            from ..services.email_service import is_smtp_enabled, is_smtp_ready, SMTP_NOT_READY_EVENT
             email_sent = False
             email_failed = False
             smtp_enabled = is_smtp_enabled()
+            smtp_ready = smtp_enabled and is_smtp_ready()
             if not smtp_enabled:
                 add_history_event(
                     "E-mail desativado",
                     f"Envio de e-mail desativado nas configurações. Rotina {routine_name} gravou {len(relevant_mentions)} menção(ões) para {target_date_str}{source_tag}."
+                )
+            elif not smtp_ready:
+                # Um único aviso por execução, em vez de "conexão recusada" por tentativa.
+                add_history_event(
+                    SMTP_NOT_READY_EVENT,
+                    f"Rotina {routine_name} gravou {len(relevant_mentions)} menção(ões) para {target_date_str}, mas nenhum e-mail foi enviado. "
+                    "Informe o servidor em Configurações > Integrações ou desligue o envio de e-mail."
                 )
             elif emails and relevant_mentions:
                 from ..services.email_service import render_email_subject
@@ -1065,6 +1097,8 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 motivo = []
                 if not smtp_enabled:
                     motivo.append("e-mail desativado")
+                elif not smtp_ready:
+                    motivo.append("SMTP sem servidor configurado")
                 elif not emails:
                     motivo.append("nenhum destinatário configurado")
                 if not relevant_mentions:
@@ -1213,7 +1247,7 @@ def trigger_routine(file):
                             "date": "DIA",
                             "sources": _fallback_sources(),
                         }
-                        if block.get("department"): temp_block["department"] = block["department"]
+                        if block.get("department"): temp_block["department"] = expand_organ_filters(block["department"])
                         if block.get("organs"): temp_block["organs"] = block["organs"]
                         if block.get("terms_ignore"): temp_block["terms_ignore"] = block["terms_ignore"]
                         temp_search_blocks.append(temp_block)
@@ -1809,6 +1843,7 @@ def api_trigger_monthly():
         all_emails = set()
         triggered_inlabs_dags = []
         all_triggered_runs = []
+        dispatch_failures = []
         
         # Coleta os e-mails de todas as rotinas selecionadas
         for routine_file in routines:
@@ -1824,6 +1859,7 @@ def api_trigger_monthly():
                 pass
 
         inlabs_run_ids = []
+        inlabs_failures = []
         if mode != 'api_dou_only' and inlabs_days:
             for routine_file in routines:
                 file_path = os.path.join(confs_path, routine_file)
@@ -1853,7 +1889,13 @@ def api_trigger_monthly():
                             pid = re.sub(r'\.[^.]*$', '', os.path.basename(p_file))
                             
                         for date_str in inlabs_days:
-                            ok, msg, run_info = _dispatch_routine(pid, date_str)
+                            with app_context:
+                                ok, msg, run_info = _dispatch_routine(pid, date_str)
+                            if not ok:
+                                inlabs_failures.append(f"{pid} {date_str}: {msg}")
+                                dispatch_failures.append(inlabs_failures[-1])
+                                logging.error("Busca mensal: falha ao disparar %s para %s: %s", pid, date_str, msg)
+                                continue
                             if ok:
                                 if pid not in triggered_inlabs_dags:
                                     triggered_inlabs_dags.append(pid)
@@ -1862,6 +1904,14 @@ def api_trigger_monthly():
                                     inlabs_run_ids.append(run_info["dag_run_id"])
                     except Exception as e:
                         logging.error(f"Erro ao disparar rotina INLABS {p_file}: {e}")
+
+            if inlabs_failures and not inlabs_run_ids:
+                with app_context:
+                    add_history_event(
+                        "Erro (Busca Mensal)",
+                        f"Nenhuma rotina INLABS pôde ser disparada para {str(month).zfill(2)}/{year} "
+                        f"({len(inlabs_failures)} falha(s)). Primeira: {inlabs_failures[0]}",
+                    )
 
             if inlabs_run_ids:
                 with app_context:
@@ -1912,7 +1962,7 @@ def api_trigger_monthly():
                                 "date": "DIA",
                                 "sources": ["DOU"] if mode == 'api_dou_only' else _fallback_sources(),
                             }
-                            if block.get("department"): temp_block["department"] = block["department"]
+                            if block.get("department"): temp_block["department"] = expand_organ_filters(block["department"])
                             if block.get("organs"): temp_block["organs"] = block["organs"]
                             if block.get("terms_ignore"): temp_block["terms_ignore"] = block["terms_ignore"]
                             temp_search_blocks.append(temp_block)
@@ -1943,18 +1993,39 @@ def api_trigger_monthly():
                         add_history_event(f"Busca Mensal ({monthly_src})",
                             f"Disparando busca via {monthly_src} para {len(dou_target_days)} dia(s) históricos/fora do INLABS.")
 
+                    dou_failures = []
                     for date_str in dou_target_days:
-                        ok, msg, run_info = _dispatch_routine(
-                            temp_dag_id,
-                            date_str,
-                            yaml_dict=temp_yaml,
-                        )
+                        with app_context:
+                            ok, msg, run_info = _dispatch_routine(
+                                temp_dag_id,
+                                date_str,
+                                yaml_dict=temp_yaml,
+                            )
+                        if not ok:
+                            dou_failures.append(f"{date_str}: {msg}")
+                            dispatch_failures.append(dou_failures[-1])
+                            logging.error("Busca mensal: falha ao disparar %s para %s: %s", temp_dag_id, date_str, msg)
+                            continue
                         if ok:
                             if temp_dag_id not in triggered_dou_dags:
                                 triggered_dou_dags.append(temp_dag_id)
                             if isinstance(run_info, dict) and run_info.get("dag_run_id"):
                                 all_triggered_runs.append(run_info)
                                 dou_run_ids.append(run_info["dag_run_id"])
+
+                    if dou_failures and not dou_run_ids:
+                        with app_context:
+                            add_history_event(
+                                "Erro (Busca Mensal)",
+                                f"Nenhum dia de {str(month).zfill(2)}/{year} pôde ser disparado via {monthly_src} "
+                                f"({len(dou_failures)} falha(s)). Primeira: {dou_failures[0]}",
+                            )
+                    elif dou_failures:
+                        with app_context:
+                            add_history_event(
+                                "Busca Mensal com Pendências",
+                                f"{len(dou_failures)} de {len(dou_target_days)} dia(s) não puderam ser disparados. Primeira falha: {dou_failures[0]}",
+                            )
 
                     if dou_run_ids:
                         with app_context:
@@ -1970,6 +2041,16 @@ def api_trigger_monthly():
                 logging.error(f"Erro ao criar/executar DAG temporária API-DOU: {e}")
 
         # ─── FASE 3: Consolidar menções recém-executadas e enviar e-mails ───
+        if dispatch_failures and not all_triggered_runs:
+            # Nenhum dia foi executado: não reporta "Nenhuma menção" (seria falso).
+            with app_context:
+                add_history_event(
+                    "Erro (Busca Mensal)",
+                    f"Busca mensal {str(month).zfill(2)}/{year} não executou nenhum dia "
+                    f"({len(dispatch_failures)} falha(s) de disparo). Primeira: {dispatch_failures[0]}",
+                )
+            return
+
         with app_context:
             from ..services.mention_service import clear_mentions_cache
             from ..models import db, Settings, Mention, Company
@@ -2048,11 +2129,17 @@ def api_trigger_monthly():
                 if monthly_sources_label:
                     monthly_source_tag = f" [Fonte: {monthly_sources_label}]"
 
-                from ..services.email_service import is_smtp_enabled
+                from ..services.email_service import is_smtp_enabled, is_smtp_ready, SMTP_NOT_READY_EVENT
                 if not is_smtp_enabled():
                     add_history_event(
                         "E-mail desativado",
                         f"Envio de e-mail desativado nas configurações. Busca mensal {month}/{year} gravou {len(relevant_monthly_mentions)} menção(ões){monthly_source_tag}."
+                    )
+                elif not is_smtp_ready():
+                    add_history_event(
+                        SMTP_NOT_READY_EVENT,
+                        f"Busca mensal {month}/{year} gravou {len(relevant_monthly_mentions)} menção(ões){monthly_source_tag}, mas nenhum e-mail foi enviado. "
+                        "Informe o servidor em Configurações > Integrações ou desligue o envio de e-mail."
                     )
                 elif not emails:
                     add_history_event("Busca Mensal Concluída", f"Busca finalizada ({len(relevant_monthly_mentions)} menções em {month}/{year}){monthly_source_tag}, mas nenhum destinatário de e-mail configurado.")

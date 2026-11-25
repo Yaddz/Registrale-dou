@@ -257,9 +257,11 @@ def test_smtp():
 @exports_bp.route('/send_email', methods=['POST'])
 @login_required
 def send_email():
-    from ..services.email_service import EmailSender, is_smtp_enabled
+    from ..services.email_service import EmailSender, is_smtp_enabled, is_smtp_ready
     if not is_smtp_enabled():
         return jsonify({"status": "error", "message": "E-mail desativado em Configurações → Integrações."}), 400
+    if not is_smtp_ready():
+        return jsonify({"status": "error", "message": "Informe o servidor SMTP em Configurações → Integrações."}), 400
     data = request.get_json(silent=True) or {}
     to_emails = data.get('to_emails', [])
     subject = data.get('subject', 'Notificação Registrale')

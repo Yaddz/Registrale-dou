@@ -309,6 +309,9 @@ def admin_clear_data():
             cache_meta.set_value({"last_parsed_at": 0})
             db.session.commit()
             clear_admin_caches()
+            # Sem a chave, o SMTP fica desligado (não volta a valer como ligado).
+            from ..services.email_service import ensure_smtp_enabled_flag
+            ensure_smtp_enabled_flag()
             
             if os.path.exists(LOGS_DIR):
                 for item in os.listdir(LOGS_DIR):
@@ -1061,7 +1064,7 @@ def download_app_update():
         return jsonify({"status": "error", "message": f"Erro ao baixar atualização: {exc}"}), 502
 
 
-_VALID_NOTICES = ("inlabs", "integrations")
+_VALID_NOTICES = ("inlabs", "integrations", "health")
 
 
 def get_user_dismissed_notices(username: str) -> dict:

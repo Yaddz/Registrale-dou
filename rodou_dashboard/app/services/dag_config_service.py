@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone, timedelta
 
 from ..runtime.paths import get_logs_dir, get_routines_dir
+from .organ_aliases import expand_organ_filters
 
 # Replicando a lógica do BASE_DIR usada no app antigo
 # Dependendo da estrutura, ajuste o BASE_DIR para o local correto
@@ -269,7 +270,7 @@ def get_routines():
                     "description": dag.get('description', ''),
                     "schedule": dag.get('schedule', '0 5 * * *'),
                     "terms": search.get('terms', []),
-                    "organs": search.get('department', []),
+                    "organs": search.get('organs') or search.get('department', []),
                     "department": search.get('department', []),
                     "sections": search.get('dou_sections', DEFAULT_DOU_SECTIONS),
                     "emails": report.get('emails', []),
@@ -546,11 +547,19 @@ def rebuild_yaml_from_db():
         exact_search_val = False
 
     force_rematch_val = bool(db_main_dag.get('force_rematch', search_template.get('force_rematch', True)))
-    organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or search_template.get('department', [])
+    # Lista vazia salva no SQLite significa "todos os órgãos": não pode cair no
+    # filtro antigo do YAML (template), senão o filtro nunca é removido.
+    if 'organs' in db_main_dag or 'department' in db_main_dag:
+        organs_val = db_main_dag.get('organs') or db_main_dag.get('department') or []
+    else:
+        organs_val = search_template.get('department', [])
+    organs_raw = [str(o).strip() for o in (organs_val or []) if o and str(o).strip()]
     sections_val = db_main_dag.get('sections') or db_main_dag.get('dou_sections') or search_template.get('dou_sections', DEFAULT_DOU_SECTIONS)
     terms_ignore_val = db_main_dag.get('terms_ignore', search_template.get('terms_ignore', []))
     terms_ignore_val = [t for t in (terms_ignore_val or []) if t and str(t).strip()]
-    organs_val = [o for o in (organs_val or []) if o and str(o).strip()]
+    # SQLite guarda o que o usuário digitou (ex.: "ANVISA"); o YAML recebe o
+    # nome oficial, que é o que `_match_department` compara com o hierarchyList.
+    organs_val = expand_organ_filters(organs_val)
 
     search_blocks = []
     for idx, chunk in enumerate(chunks, 1):
@@ -562,6 +571,10 @@ def rebuild_yaml_from_db():
         block['department'] = organs_val
         block['dou_sections'] = list(sections_val)
         block['department'] = list(organs_val)
+        if organs_raw:
+            block['organs'] = list(organs_raw)
+        else:
+            block.pop('organs', None)
         block['terms_ignore'] = terms_ignore_val
         block['full_text'] = False
         search_blocks.append(block)

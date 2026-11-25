@@ -263,6 +263,16 @@ class TestSmtpErrorLabel:
 
         monkeypatch.setattr(email_service, "EmailSender", FailingSender)
 
+        # SMTP ligado e com servidor (desligado é o padrão desde a 1.3.2)
+        with app.app_context():
+            rec = Settings.query.filter_by(key="global_settings").first() or Settings(key="global_settings")
+            val = rec.get_value() if rec.id else {}
+            val = val if isinstance(val, dict) else {}
+            val["smtp"] = {"enabled": True, "server": "smtp.exemplo.com", "port": "587", "user": "u@exemplo.com"}
+            rec.set_value(val)
+            db.session.add(rec)
+            db.session.commit()
+
         dags_mod.watch_dag_and_update_mentions(
             app.app_context(),
             [{"dag_id": "pesquisa_cnpj_anvisa", "dag_run_id": "local__test__1"}],

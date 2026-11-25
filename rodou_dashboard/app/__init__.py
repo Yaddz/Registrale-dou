@@ -191,6 +191,9 @@ def create_app(config=None):
             
         try:
             _init_default_data()
+            # Instalação nova: grava smtp.enabled = False (envio desligado por padrão).
+            from .services.email_service import ensure_smtp_enabled_flag
+            ensure_smtp_enabled_flag()
         except Exception as e:
             app.logger.info(f"Dados padrão já inicializados ou concorrência tratada: {e}")
             try: db.session.rollback()

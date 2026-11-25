@@ -134,6 +134,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             from .scheduler import init_scheduler, shutdown_scheduler
 
             app = create_app()
+            # Vincula o app ao executor já na inicialização: threads de fundo
+            # (ex.: busca mensal) não dependem de `flask.current_app`.
+            get_executor(app)
             pg_port = start_portable_postgres()
             if pg_port is not None:
                 logger.info("PostgreSQL portátil INLABS ativo na porta %d.", pg_port)

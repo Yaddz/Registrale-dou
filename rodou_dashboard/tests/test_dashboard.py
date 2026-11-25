@@ -869,6 +869,7 @@ class TestNewOptimizedFeatures:
         # (vai falhar na conexão de rede com localhost:2525, mas não por falta de parâmetros)
         resp = auth_client.post('/api/test_smtp', json={
             "smtp": {
+                "enabled": True,
                 "server": "localhost",
                 "port": "2525",
                 "user": "test_user",
@@ -1021,6 +1022,10 @@ class TestNewOptimizedFeatures:
         mock_sender = MagicMock()
         mock_sender.send_custom_email.return_value = True
         monkeypatch.setattr(email_service, "EmailSender", lambda *args, **kwargs: mock_sender)
+        # SMTP ligado e com servidor (desligado é o padrão desde a 1.3.2)
+        auth_client.post('/api/save_settings', json={
+            'smtp': {'enabled': True, 'server': 'smtp.teste.com', 'port': '587', 'user': 'u@teste.com'}
+        })
 
         resp = auth_client.post('/api/send_email', json={
             "to_emails": ["destinatario@teste.com", "outro@teste.com"],
@@ -1169,15 +1174,16 @@ class TestSprint10PanelAdjustments:
         from app.routes.dags import watch_dag_and_update_mentions
         from app.services.email_service import is_smtp_enabled
 
-        # Instalação limpa sem SMTP configurado: ligado por padrão (pendente), desligar tira das pendências
+        # Instalação limpa sem SMTP configurado: desligado por padrão (1.3.2), sem pendência
         st_clean = auth_client.get('/api/system/integrations_status').get_json()
-        assert st_clean['smtp_enabled'] is True
+        assert st_clean['smtp_enabled'] is False
         assert 'smtp' in [i['id'] for i in st_clean['integrations']]
-        assert 'smtp' in st_clean['missing_fields']
+        assert 'smtp' not in st_clean['missing_fields']
 
-        # Instalação legada com server+user e sem chave enabled -> ligado por padrão
+        # Sem a chave enabled, o envio fica desligado (a migração de instalações
+        # legadas com server+user é feita por ensure_smtp_enabled_flag)
         with app.app_context():
-            assert is_smtp_enabled({'server': 'smtp.teste.com', 'user': 'u@teste.com'}) is True
+            assert is_smtp_enabled({'server': 'smtp.teste.com', 'user': 'u@teste.com'}) is False
 
         # Desligado: sai das pendências, salva menções, pula envio de e-mail e registra "E-mail desativado"
         auth_client.post('/api/save_settings', json={

@@ -6,16 +6,76 @@ import os
 from ..models import Settings
 
 
+SMTP_NOT_READY_EVENT = "SMTP ligado sem servidor configurado"
+
+
+class SmtpNotConfiguredError(RuntimeError):
+    """O envio está ligado, mas não há servidor SMTP configurado."""
+
+
+def _load_smtp_config() -> dict:
+    settings_record = Settings.query.filter_by(key='global_settings').first()
+    s_val = settings_record.get_value() if settings_record else {}
+    smtp_config = s_val.get('smtp', {}) if isinstance(s_val, dict) else {}
+    return smtp_config if isinstance(smtp_config, dict) else {}
+
+
 def is_smtp_enabled(smtp_config=None) -> bool:
-    """Indica se o envio de e-mails (SMTP) está ativado nas configurações globais."""
+    """Indica se o envio de e-mails (SMTP) está ativado nas configurações globais.
+
+    Sem a chave ``enabled`` (instalação nova ou dados limpos) o envio fica
+    **desligado**: o usuário precisa ligá-lo explicitamente.
+    """
     if smtp_config is None:
-        settings_record = Settings.query.filter_by(key='global_settings').first()
-        s_val = settings_record.get_value() if settings_record else {}
-        smtp_config = s_val.get('smtp', {}) if isinstance(s_val, dict) else {}
+        smtp_config = _load_smtp_config()
     if not isinstance(smtp_config, dict):
         return False
-    if 'enabled' in smtp_config:
-        return bool(smtp_config['enabled'])
+    return bool(smtp_config.get('enabled', False))
+
+
+def is_smtp_server_configured(smtp_config=None) -> bool:
+    """Indica se há um servidor SMTP informado."""
+    if smtp_config is None:
+        smtp_config = _load_smtp_config()
+    if not isinstance(smtp_config, dict):
+        return False
+    return bool(str(smtp_config.get('server') or smtp_config.get('host') or '').strip())
+
+
+def is_smtp_ready(smtp_config=None) -> bool:
+    """SMTP ligado **e** com servidor: só assim vale a pena tentar enviar."""
+    if smtp_config is None:
+        smtp_config = _load_smtp_config()
+    return is_smtp_enabled(smtp_config) and is_smtp_server_configured(smtp_config)
+
+
+def ensure_smtp_enabled_flag() -> bool:
+    """Grava ``smtp.enabled`` quando a chave não existe. Retorna True se gravou.
+
+    Instalação nova e dados limpos ficam com o envio desligado. Uma instalação
+    antiga que já tinha servidor e usuário (e enviava pelo padrão antigo
+    "ligado") continua ligada, para não parar de enviar sem aviso.
+    """
+    from ..models import db
+
+    rec = Settings.query.filter_by(key='global_settings').first()
+    if rec is None:
+        # Sem configurações salvas o envio já vale como desligado; o registro
+        # é criado no primeiro "Salvar" (que agora envia enabled = false).
+        return False
+    val = rec.get_value()
+    if not isinstance(val, dict):
+        val = {}
+    smtp = val.get('smtp')
+    if isinstance(smtp, dict) and 'enabled' in smtp:
+        return False
+    smtp = dict(smtp) if isinstance(smtp, dict) else {}
+    smtp['enabled'] = bool(
+        str(smtp.get('server') or '').strip() and str(smtp.get('user') or '').strip()
+    )
+    val['smtp'] = smtp
+    rec.set_value(val)
+    db.session.commit()
     return True
 
 
@@ -51,7 +111,10 @@ class EmailSender:
         if not to_emails:
             raise ValueError("Nenhum destinatário de e-mail válido informado.")
 
-        host = (smtp_config.get('server') or smtp_config.get('host') or 'localhost').strip()
+        host = str(smtp_config.get('server') or smtp_config.get('host') or '').strip()
+        if not host:
+            # Antes caía em "localhost" e gerava "conexão recusada" a cada busca.
+            raise SmtpNotConfiguredError("Servidor SMTP não configurado.")
         if host.lower().startswith('stmp.'):
             host = 'smtp.' + host[5:]
         elif host.lower().startswith('smpt.'):

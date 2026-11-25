@@ -5,6 +5,37 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
+## [1.3.2] — 2026-11-25 (Avisos, SMTP, contador de menções e responsividade)
+
+### Corrigido
+- **Aviso "Integrações pendentes" permanente removido**, junto com o assistente antigo de integrações. A Visão geral só avisa sobre problema real: envio de e-mail ligado sem servidor, rotina principal sem destinatário com o SMTP ligado, Google Sheets/GestãoClick com sincronização automática ligada e sem credenciais, ou erro de integração nas últimas 24 h. Integração desligada nunca gera aviso. O botão **Resolver** leva direto à aba certa (`/api/system/health_alerts`).
+- **SMTP desligado por padrão.** Sem a chave `enabled`, o envio fica desligado (antes valia como ligado e cada busca gerava "conexão recusada"). Ligado sem servidor, nada é enviado e a execução registra um único evento "SMTP ligado sem servidor configurado". A tela segue a mesma regra. Instalações antigas com servidor e usuário configurados continuam ligadas.
+- **Contador de menções da tela Empresas** soma as menções pela raiz do CNPJ (matriz, filiais e menções só pela raiz) e é atualizado sozinho quando uma busca termina.
+- Aviso "INLABS local não instalado" deixou de aparecer: é a configuração padrão do instalador, não um problema.
+- Ícones animados presos: o "Atualizar" de Armazenamento (e de outras duas listas em Configurações) girava sem parar, o envio de e-mail de teste ficava pulsando e duas setas podiam ficar viradas. A animação passou para um elemento em volta do ícone, que o Lucide não substitui.
+- GestãoClick com sincronização automática desligada e credenciais do INLABS (INLABS local não instalado) aparecem esmaecidas e travadas, como o SMTP desligado; a "Fonte quando o INLABS estiver fora" continua editável.
+
+### Interface
+- Menu lateral vira gaveta abaixo de 768 px e começa recolhido abaixo de 1024 px.
+- Empresas em cartões em telas estreitas; tabela mais enxuta (Origem só a partir de 1280 px).
+- Tabelas de menções (aba Menções, menções recentes da Visão geral e Relatórios): coluna Empresa/CNPJ com largura mínima de 240 px e nome em até 2 linhas (nome completo ao passar o mouse); trecho truncado; coluna Ações sempre visível de 800 a 1920 px.
+- Submenu de Configurações em pílulas roláveis abaixo de 1280 px; cartões de Limpeza do sistema sem transbordo.
+- Cabeçalho compacto (botões só com ícone abaixo de 768 px); filtros de Menções quebram linha.
+- Seletores de arquivo no padrão do design system (botão "Escolher arquivo" e nome do arquivo escolhido).
+- Seções e agendamento legíveis nos cartões de rotina ("Seção 1", "Dias úteis às 08:00"); avisos (toasts) nunca com tipo indefinido.
+
+---
+
+## [1.3.1] — 2026-11-25 (Hotfix: buscas sem resultado)
+
+### Corrigido
+- **Busca mensal não executava nenhum dia.** Os disparos da thread de fundo (`routes/dags.py::api_trigger_monthly`) rodavam fora do app context e o executor falhava com `Working outside of application context`, erro que era engolido; a busca terminava como "Nenhuma menção encontrada". Agora cada disparo roda dentro do app context, o servidor vincula o app ao executor na inicialização (`get_executor(app)`) e falhas de disparo geram o evento **"Erro (Busca Mensal)"** com o motivo.
+- **Filtro de órgão por sigla descartava todas as publicações.** O núcleo compara o filtro com os elementos de `hierarchyList` do DOU (nome oficial). Siglas comuns (ANVISA, INPI, MS, MAPA, INMETRO, ANP, ANATEL, ANS, ANEEL, ANTT, IBAMA, CADE, RFB…) agora são convertidas para o nome oficial ao gravar o YAML (`services/organ_aliases.py`); o painel continua mostrando o que o usuário digitou.
+- Limpar o filtro de órgão na rotina principal não tinha efeito: `rebuild_yaml_from_db()` tratava a lista vazia salva como ausente e herdava o filtro antigo do YAML. Agora lista vazia significa "todos os órgãos" e a chave `organs` antiga sai do bloco.
+- Texto de ajuda do campo "Órgãos específicos" orienta a usar o nome do órgão como aparece no DOU.
+
+---
+
 ## [1.3.0] — 2026-11-25 (Sprints 11 a 16)
 
 ### Busca e confiabilidade (Sprint 11)

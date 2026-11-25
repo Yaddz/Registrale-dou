@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .paths import get_base_dir
 
-_DEFAULT_VERSION = "1.3.0"
+_DEFAULT_VERSION = "1.3.2"
 
 
 def get_app_version() -> str:
