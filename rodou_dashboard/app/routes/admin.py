@@ -173,14 +173,17 @@ def save_settings():
         # Mapeamento para INLABS
         if 'inlabs' in data and isinstance(data['inlabs'], dict):
             inlabs = data['inlabs']
-            inlabs_user = str(inlabs.get('user') or '').strip()
-            inlabs_pass = str(inlabs.get('password') or '').strip()
+            existing_inlabs = existing_val.get('inlabs', {}) if isinstance(existing_val.get('inlabs'), dict) else {}
+            inlabs_user = str((inlabs['user'] if 'user' in inlabs else existing_inlabs.get('user')) or '').strip()
+            inlabs_pass = str((inlabs['password'] if 'password' in inlabs else existing_inlabs.get('password')) or '').strip()
             
             # Se não enviou senha nova, preserva a senha anterior salva
-            if not inlabs_pass and existing_val.get('inlabs', {}).get('password'):
-                inlabs_pass = existing_val.get('inlabs', {}).get('password')
+            if not inlabs_pass and existing_inlabs.get('password'):
+                inlabs_pass = existing_inlabs.get('password')
+            inlabs_enabled = bool(inlabs['enabled']) if 'enabled' in inlabs else bool(existing_inlabs.get('enabled', True))
                 
             merged_val['inlabs'] = {
+                "enabled": inlabs_enabled,
                 "user": inlabs_user,
                 "password": inlabs_pass
             }
@@ -811,6 +814,7 @@ def get_first_run_status():
     from ..runtime.pdf_archiver import get_pdf_archive_config
     from ..runtime.version import get_app_version
     from ..services.access_service import is_access_onboarding_done, is_login_required
+    from ..services.onboarding_service import get_onboarding_state
 
     done_rec = Settings.query.filter_by(key='first_run_import_done').first()
     import_done = bool(done_rec and done_rec.get_value())
@@ -829,6 +833,7 @@ def get_first_run_status():
         "login_required": is_login_required(),
         "pdf_archive": get_pdf_archive_config(),
         "legacy_sources": detect_legacy_sources(),
+        "onboarding": get_onboarding_state(),
     })
 
 
@@ -1176,3 +1181,71 @@ def save_access_settings():
             session.permanent = True
             session['expires_at'] = (datetime.now(timezone(timedelta(hours=-3))) + timedelta(minutes=30)).timestamp()
     return jsonify({"status": "ok", "login_required": required, "onboarding_done": True})
+
+
+@admin_bp.route('/admin/onboarding', methods=['GET', 'POST'])
+@login_required
+def handle_onboarding_state():
+    """Lê ou atualiza o estado persistido do assistente de configuração inicial."""
+    from ..services.onboarding_service import get_onboarding_state, update_onboarding_state
+
+    if request.method == 'GET':
+        return jsonify({"status": "ok", "onboarding": get_onboarding_state()})
+
+    if (session.get('user') or {}).get('role') != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+
+    data = request.get_json(silent=True) or {}
+    action = data.get('action')
+    if not action:
+        return jsonify({"status": "error", "message": "Informe a ação do assistente."}), 400
+    try:
+        updated = update_onboarding_state(
+            action=action,
+            step=data.get('step'),
+            company_source=data.get('company_source'),
+        )
+        return jsonify({"status": "ok", "onboarding": updated})
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+
+
+@admin_bp.route('/gestaoclick/test', methods=['POST'])
+@login_required
+def test_gestaoclick_route():
+    """Valida as credenciais da API do GestãoClick sem iniciar sincronização completa."""
+    if (session.get('user') or {}).get('role') != 'master':
+        return jsonify({"status": "error", "message": "Acesso negado."}), 403
+
+    import requests
+    from ..models import Settings
+    from ..services.sync_cnpj import GESTAOCLICK_DEFAULT_BASE_URL, build_gestaoclick_headers
+
+    data = request.get_json(silent=True) or {}
+    settings_record = Settings.query.filter_by(key='global_settings').first()
+    ak = (settings_record.get_value() or {}).get('api_keys', {}) if settings_record else {}
+
+    access_token = str(data.get('gestaoclick_access_token') or ak.get('gestaoclick_access_token') or os.getenv("ACCESS_TOKEN") or '').strip()
+    secret_token = str(data.get('gestaoclick_secret_token') or ak.get('gestaoclick_secret_token') or os.getenv("SECRET_ACCESS_TOKEN") or '').strip()
+    base_url = str(data.get('gestaoclick_base_url') or ak.get('gestaoclick_base_url') or os.getenv("BASE_URL") or GESTAOCLICK_DEFAULT_BASE_URL).strip().rstrip('/')
+
+    if not access_token or not secret_token:
+        return jsonify({"status": "error", "message": "Informe o Access Token e o Secret Access Token do GestãoClick."}), 400
+
+    headers = build_gestaoclick_headers(access_token, secret_token)
+    try:
+        resp = requests.get(f"{base_url}/clientes", headers=headers, params={"limite": 1, "pagina": 1}, timeout=12)
+        if resp.status_code in (401, 403):
+            return jsonify({"status": "error", "message": "Credenciais recusadas pelo GestãoClick (HTTP 401/403)."}), 400
+        if resp.status_code >= 400:
+            return jsonify({"status": "error", "message": f"Erro da API GestãoClick (HTTP {resp.status_code})."}), 400
+        payload = resp.json() if resp.content else {}
+        meta = payload.get("meta") if isinstance(payload, dict) else {}
+        total = (meta or {}).get("total_registros")
+        return jsonify({
+            "status": "success",
+            "message": "Conexão com GestãoClick validada com sucesso!",
+            "total": total,
+        })
+    except requests.RequestException as exc:
+        return jsonify({"status": "error", "message": f"Falha ao conectar no GestãoClick: {exc}"}), 400

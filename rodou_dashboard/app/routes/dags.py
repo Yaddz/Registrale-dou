@@ -481,6 +481,7 @@ def api_integrations_status():
     # INLABS
     inlabs_data = settings_data.get('inlabs', {}) or {}
     inlabs_local = is_inlabs_local_available()
+    inlabs_enabled = bool(inlabs_data.get('enabled', True)) if inlabs_local else False
     inlabs_configured = bool(str(inlabs_data.get('user') or '').strip() and str(inlabs_data.get('password') or '').strip())
 
     def _status_for(enabled: bool, configured: bool, available: bool = True) -> str:
@@ -560,13 +561,13 @@ def api_integrations_status():
                 if inlabs_local
                 else "INLABS local não instalado nesta versão; a busca usa a contingência (PDF integral + API do DOU)."
             ),
-            "enabled": bool(inlabs_local),
+            "enabled": inlabs_enabled,
             "local_available": inlabs_local,
             "is_configured": inlabs_configured if inlabs_local else False,
-            "status": _status_for(inlabs_local, inlabs_configured, available=inlabs_local),
+            "status": _status_for(inlabs_enabled, inlabs_configured, available=inlabs_local),
             "action_type": "tab_inlabs",
             "icon": "newspaper",
-            "missing_fields": ([f for f in ["user", "password"] if not str(inlabs_data.get(f) or '').strip()] if inlabs_local else []),
+            "missing_fields": ([f for f in ["user", "password"] if not str(inlabs_data.get(f) or '').strip()] if inlabs_enabled else []),
         },
     ]
     
@@ -619,7 +620,8 @@ def api_configure_main_dag():
     else:
         emails = []
         
-    if smtp_on and not emails:
+    # Atualização parcial: só exige e-mails quando 'emails' veio no payload (Sprint 14).
+    if 'emails' in data and smtp_on and not emails:
         return jsonify({"status": "error", "message": "Pelo menos um e-mail de destino é obrigatório para a rotina principal."}), 400
         
     # Valida formato dos e-mails
@@ -628,21 +630,31 @@ def api_configure_main_dag():
         if not email_regex.match(em):
             return jsonify({"status": "error", "message": f"E-mail inválido: {em}"}), 400
             
-    subject = str(data.get('subject') or '').strip()
-    if not subject:
-        subject = "[Registrale] Relatório Diário de Publicações do DOU"
-        
-    schedule = str(data.get('schedule') or '0 8 * * MON-FRI').strip()
-    active = bool(data.get('active', True))
-    
     # 1. Salva configurações no SQLite (persistente no volume /data)
     from ..models import db, Settings
     s_rec = Settings.query.filter_by(key='main_dag_settings').first()
     existing_val = s_rec.get_value() if (s_rec and isinstance(s_rec.get_value(), dict)) else {}
+
+    # subject/schedule/active só mudam quando vêm no payload; senão mantém o valor
+    # existente (instalação nova usa o padrão).
+    subject = str(data.get('subject') or '').strip() if 'subject' in data else ''
+    if not subject:
+        subject = str(existing_val.get('subject') or '').strip() or "[Registrale] Relatório Diário de Publicações do DOU"
+
+    if 'schedule' in data:
+        schedule = str(data.get('schedule') or '').strip() or '0 8 * * MON-FRI'
+    else:
+        schedule = str(existing_val.get('schedule') or '').strip() or '0 8 * * MON-FRI'
+
+    if 'active' in data:
+        active = bool(data.get('active'))
+    else:
+        active = bool(existing_val.get('active', True))
+
     if not s_rec:
         s_rec = Settings(key='main_dag_settings')
         db.session.add(s_rec)
-    if not emails and not smtp_on and existing_val.get('emails'):
+    if not emails and ('emails' not in data or not smtp_on) and existing_val.get('emails'):
         emails = list(existing_val.get('emails') or [])
     
     updated_main_settings = dict(existing_val)

@@ -26,6 +26,14 @@ from ..runtime.paths import get_data_dir, get_routines_dir
 DATA_DIR = str(get_data_dir(create=True))
 METADATA_FILE = os.path.join(DATA_DIR, "monitored_companies.json")
 
+GESTAOCLICK_DEFAULT_BASE_URL = "https://api.gestaoclick.com/franquias"
+
+
+def build_gestaoclick_headers(access_token: str, secret_token: str) -> dict:
+    """Cabeçalhos da API do GestãoClick (usados na sincronização e no teste de conexão)."""
+    return {"access-token": access_token, "secret-access-token": secret_token, "Accept": "application/json"}
+
+
 def formatar_cnpj(cnpj_bruto: str):
     if not cnpj_bruto:
         return None
@@ -299,7 +307,7 @@ def executar_sincronizacao():
                 secret_token = secret_token or ak.get('gestaoclick_secret_token')
                 arquivo_yaml = arquivo_yaml or ak.get('yaml_path')
 
-    url_api = url_api or "https://api.gestaoclick.com/franquias"
+    url_api = url_api or GESTAOCLICK_DEFAULT_BASE_URL
     arquivo_yaml = arquivo_yaml or "Pesquisa_cnpj.yaml"
     if arquivo_yaml and arquivo_yaml.endswith("_sync.yaml"):
         arquivo_yaml = arquivo_yaml.replace("_sync.yaml", ".yaml")
@@ -308,7 +316,7 @@ def executar_sincronizacao():
         logging.error("Credenciais ausentes no .env, settings.json e banco local")
         raise ValueError("Credenciais do GestãoClick não configuradas.")
 
-    headers = {"access-token": access_token, "secret-access-token": secret_token, "Accept": "application/json"}
+    headers = build_gestaoclick_headers(access_token, secret_token)
     
     logging.info(f"Iniciando sincronização completa via API: {url_api}...")
     clientes = get_monitored_data(url_api, "clientes", headers)

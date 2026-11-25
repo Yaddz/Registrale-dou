@@ -1965,6 +1965,20 @@
                             </div>
                         </template>
                     </div>
+
+                    <!-- Reabrir Assistente de Configuração Inicial -->
+                    <div class="card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-semibold text-lg flex items-center gap-3">
+                                <i data-lucide="compass" class="w-5 h-5 text-neutral-400"></i>
+                                Configuração inicial
+                            </h3>
+                            <p class="text-xs text-neutral-500 mt-1">Reabra o assistente guiado de 9 passos para revisar rotina, empresas, e-mail e contingência sem apagar nenhum dado.</p>
+                        </div>
+                        <button type="button" @click="reopenOnboardingWizard()" class="btn btn-secondary shrink-0">
+                            <i data-lucide="rotate-ccw"></i> Refazer configuração inicial
+                        </button>
+                    </div>
                 </div>
 
             </div> <!-- Fechamento correto da div .flex-1 -->
@@ -3813,101 +3827,471 @@
     </div>
 
     {% if user.role == 'master' %}
-    <!-- Modal de Onboarding: Onde guardar os PDFs do DOU -->
-    <div x-show="showPdfOnboardingModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4 bg-neutral-950/60">
-        <div class="card shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div class="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-                <div>
-                    <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Configuração inicial</span>
-                    <h3 class="text-xl font-semibold text-slate-900 dark:text-stone-100 mt-1">Onde guardar os PDFs do DOU</h3>
-                    <p class="text-xs text-slate-500 dark:text-stone-400 mt-1">Escolha a pasta e como os PDFs integrais do Diário Oficial serão organizados no seu computador.</p>
+    <!-- Modal do Assistente de Configuração Inicial (9 passos) -->
+    <div x-show="showOnboardingModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4 bg-neutral-950/60">
+        <div class="card shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Cabeçalho + Barra de Progresso -->
+            <div class="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 space-y-3">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-medium text-ink-600 dark:text-ink-400">Configuração inicial</span>
+                            <span class="text-xs text-neutral-400">&bull;</span>
+                            <span class="text-xs font-medium text-neutral-500 tabular" x-text="`Passo ${onboardingStep} de 9`"></span>
+                        </div>
+                        <h3 class="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100 mt-1" x-text="onboardingStepMeta().title"></h3>
+                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5" x-text="onboardingStepMeta().subtitle"></p>
+                    </div>
+                    <button type="button" @click="showOnboardingModal = false" class="btn btn-ghost btn-sm btn-icon" title="Minimizar assistente (retoma no próximo acesso)">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+                <div class="w-full h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                    <div class="h-full bg-ink-600 transition-all duration-150" :style="`width: ${Math.round((onboardingStep / 9) * 100)}%`"></div>
                 </div>
             </div>
 
-            <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
-                <div class="space-y-2">
-                    <label class="field-label">Pasta de destino</label>
-                    <div class="flex gap-2">
-                        <input type="text" x-model="pdfOnboarding.folder" placeholder="Documentos\Registrale\DOU" class="input flex-1 font-mono">
-                        <button type="button" x-show="hasNativePicker" @click="pickPdfFolder(pdfOnboarding)" class="btn btn-secondary btn-sm whitespace-nowrap">Procurar…</button>
+            <!-- Corpo do Passo Atual -->
+            <div class="p-6 space-y-5 overflow-y-auto flex-1">
+                <!-- Passo 1: Boas-vindas e importação -->
+                <div x-show="onboardingStep === 1" class="space-y-5">
+                    <div class="callout callout-info p-4 text-xs space-y-1">
+                        <div class="font-semibold text-neutral-800 dark:text-neutral-100">Bem-vindo ao Registrale-DOU</div>
+                        <p class="text-neutral-600 dark:text-neutral-300">Este assistente configura o essencial para a sua busca automática das 8h. Você pode pular qualquer etapa e ajustar tudo depois em Configurações.</p>
+                    </div>
+
+                    <template x-if="firstRunStatus && firstRunStatus.legacy_sources && (firstRunStatus.legacy_sources.legacy_db_path || firstRunStatus.legacy_sources.legacy_routines_dir)">
+                        <div class="callout callout-success p-4 text-xs space-y-2">
+                            <div class="font-semibold">Dados anteriores detectados automaticamente:</div>
+                            <div x-show="firstRunStatus.legacy_sources.legacy_db_path">Banco: <code class="font-mono" x-text="firstRunStatus.legacy_sources.legacy_db_path"></code></div>
+                            <div x-show="firstRunStatus.legacy_sources.legacy_routines_dir">Rotinas: <code class="font-mono" x-text="firstRunStatus.legacy_sources.legacy_routines_dir"></code> (<span x-text="(firstRunStatus.legacy_sources.legacy_routine_files || []).length"></span> arquivos)</div>
+                            <button type="button" @click="runDetectedLegacyImport()" :disabled="importLoading" class="btn btn-secondary btn-sm mt-1">
+                                <span x-text="importLoading ? 'Importando…' : 'Importar dados detectados'"></span>
+                            </button>
+                        </div>
+                    </template>
+
+                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-4 space-y-4">
+                        <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Importar de uma instalação anterior (opcional)</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-1">
+                                <label class="field-label">Arquivo database.db</label>
+                                <input type="file" id="onboardingImportDbInput" accept=".db,.sqlite,.sqlite3" class="input">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="field-label">Rotinas YAML</label>
+                                <input type="file" id="onboardingImportRoutinesInput" accept=".yaml,.yml" multiple class="input">
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <label class="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300 cursor-pointer">
+                                <input type="checkbox" x-model="importOverwrite" class="rounded border-neutral-300">
+                                Sobrescrever registros existentes
+                            </label>
+                            <button type="button" @click="runOnboardingUploadImport()" :disabled="importLoading" class="btn btn-secondary btn-sm">
+                                <span x-text="importLoading ? 'Importando…' : 'Importar arquivos selecionados'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <template x-if="importResult">
+                        <div class="callout callout-success p-3 text-xs space-y-1">
+                            <div class="font-semibold" x-text="importResult.message"></div>
+                            <div x-show="importResult.backup_path" class="font-mono text-[11px]">Backup: <span x-text="importResult.backup_path"></span></div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Passo 2: Pasta e organização dos PDFs -->
+                <div x-show="onboardingStep === 2" class="space-y-5">
+                    <div class="space-y-2">
+                        <label class="field-label">Pasta de destino</label>
+                        <div class="flex gap-2">
+                            <input type="text" x-model="pdfOnboarding.folder" placeholder="Documentos\Registrale\DOU" class="input flex-1 font-mono">
+                            <button type="button" x-show="hasNativePicker" @click="pickPdfFolder(pdfOnboarding)" class="btn btn-secondary btn-sm whitespace-nowrap">Procurar…</button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="field-label">Organização das pastas</label>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <template x-for="opt in [{id:'ano_mes', label:'Por ano e mês', desc:'AAAA/MM/'}, {id:'ano', label:'Só por ano', desc:'AAAA/'}, {id:'nenhum', label:'Tudo na mesma pasta', desc:'Sem subpastas'}]" :key="opt.id">
+                                <label class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors bg-white dark:bg-neutral-900" :class="pdfOnboarding.layout === opt.id ? 'border-neutral-900 dark:border-neutral-200' : 'border-neutral-200 dark:border-neutral-800'">
+                                    <input type="radio" name="onboarding_pdf_layout" :value="opt.id" x-model="pdfOnboarding.layout" class="mt-0.5">
+                                    <div>
+                                        <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-100" x-text="opt.label"></div>
+                                        <div class="text-[11px] font-mono text-neutral-500 dark:text-neutral-400" x-text="opt.desc"></div>
+                                    </div>
+                                </label>
+                            </template>
+                        </div>
+                        <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-3 text-xs">
+                            <span class="font-semibold text-neutral-500">Prévia do arquivo:</span>
+                            <code class="font-mono text-neutral-800 dark:text-neutral-200 break-all" x-text="pdfPreviewPath(pdfOnboarding.folder, pdfOnboarding.layout)"></code>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="field-label">Seções a arquivar</label>
+                        <div class="flex flex-wrap gap-2.5">
+                            <template x-for="sec in [{id:'1', label:'Seção 1'}, {id:'2', label:'Seção 2'}, {id:'3', label:'Seção 3'}, {id:'extra', label:'Edições Extras'}]" :key="sec.id">
+                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 cursor-pointer text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                                    <input type="checkbox" :checked="(pdfOnboarding.sections || []).includes(sec.id)" @change="toggleOnboardingSection(sec.id)" class="rounded border-neutral-300">
+                                    <span x-text="sec.label"></span>
+                                </label>
+                            </template>
+                        </div>
                     </div>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="field-label">Organização das pastas</label>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <template x-for="opt in [{id:'ano_mes', label:'Por ano e mês', desc:'AAAA/MM/'}, {id:'ano', label:'Só por ano', desc:'AAAA/'}, {id:'nenhum', label:'Tudo na mesma pasta', desc:'Sem subpastas'}]" :key="opt.id">
-                            <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all" :class="pdfOnboarding.layout === opt.id ? 'border-slate-900 dark:border-stone-200 bg-slate-100 dark:bg-stone-800' : 'border-slate-200 dark:border-stone-700 bg-slate-50 dark:bg-stone-800/40'">
-                                <input type="radio" name="onboarding_pdf_layout" :value="opt.id" x-model="pdfOnboarding.layout" class="mt-0.5 text-slate-900">
+                <!-- Passo 3: Como abrir o painel / login -->
+                <div x-show="onboardingStep === 3" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <template x-for="opt in [{id:'login', label:'Pedir usuário e senha', desc:'Indicado quando outras pessoas usam este computador. A sessão expira após 30 minutos sem renovação.'}, {id:'direct', label:'Abrir direto, sem login', desc:'Entra como administrador sem senha. Vale só neste computador; acessos por outro endereço continuam pedindo login.'}]" :key="opt.id">
+                            <label class="flex items-start gap-2.5 p-4 rounded-lg border cursor-pointer transition-colors bg-white dark:bg-neutral-900" :class="accessOnboardingChoice === opt.id ? 'border-neutral-900 dark:border-neutral-200' : 'border-neutral-200 dark:border-neutral-800'">
+                                <input type="radio" name="onboarding_access" :value="opt.id" x-model="accessOnboardingChoice" class="mt-0.5">
                                 <div>
-                                    <div class="text-xs font-semibold text-slate-800 dark:text-stone-100" x-text="opt.label"></div>
-                                    <div class="text-[11px] font-mono text-slate-500 dark:text-stone-400" x-text="opt.desc"></div>
+                                    <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-100" x-text="opt.label"></div>
+                                    <div class="text-xs text-neutral-500 dark:text-neutral-400 mt-1" x-text="opt.desc"></div>
                                 </div>
                             </label>
                         </template>
                     </div>
-                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-3 text-xs">
-                        <span class="font-semibold text-slate-500">Prévia do arquivo:</span>
-                        <code class="font-mono text-slate-800 dark:text-stone-200 break-all" x-text="pdfPreviewPath(pdfOnboarding.folder, pdfOnboarding.layout)"></code>
+                </div>
+
+                <!-- Passo 4: Rotina inicial -->
+                <div x-show="onboardingStep === 4" class="space-y-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="field-label">Horário da busca automática</label>
+                            <select x-model="onboardingRoutine.schedulePreset" @change="if (onboardingRoutine.schedulePreset !== 'custom') onboardingRoutine.schedule = onboardingRoutine.schedulePreset" class="input">
+                                <option value="0 8 * * MON-FRI">8h — Segunda a sexta (padrão)</option>
+                                <option value="0 8 * * *">8h — Todos os dias</option>
+                                <option value="0 12 * * MON-FRI">12h — Segunda a sexta</option>
+                                <option value="0 18 * * MON-FRI">18h — Segunda a sexta</option>
+                                <option value="custom">Personalizado (cron)</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1" x-show="onboardingRoutine.schedulePreset === 'custom'">
+                            <label class="field-label">Expressão cron</label>
+                            <input type="text" x-model="onboardingRoutine.schedule" placeholder="0 8 * * MON-FRI" class="input font-mono">
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="field-label">Seções do DOU</label>
+                        <div class="flex flex-wrap gap-2.5">
+                            <template x-for="sec in [{id:'SECAO_1', label:'Seção 1'}, {id:'SECAO_2', label:'Seção 2'}, {id:'SECAO_3', label:'Seção 3'}, {id:'EDICAO_EXTRA', label:'Edições Extras'}]" :key="sec.id">
+                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 cursor-pointer text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                                    <input type="checkbox" :checked="(onboardingRoutine.sections || []).includes(sec.id)" @change="toggleOnboardingRoutineSection(sec.id)" class="rounded border-neutral-300">
+                                    <span x-text="sec.label"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="field-label">Órgãos / departamentos (opcional)</label>
+                        <input type="text" x-model="onboardingRoutine.organs_raw" placeholder="Deixe vazio para pesquisar em todos os órgãos (padrão)" class="input">
+                        <p class="field-hint">Separados por vírgula. Vazio = todos os órgãos (recomendado pela baseline).</p>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                        <div>
+                            <span class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Busca exata de termos</span>
+                            <p class="text-xs text-neutral-500">Desligado (padrão) encontra matriz, filiais e variações pela raiz do CNPJ.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <label class="dash-switch">
+                                <input type="checkbox" x-model="onboardingRoutine.is_exact_search" class="sr-only dash-switch-input">
+                                <div class="dash-switch-track dash-switch-sm"><div class="dash-switch-thumb"></div></div>
+                            </label>
+                            <span class="text-xs font-medium text-neutral-600 dark:text-neutral-300" x-text="onboardingRoutine.is_exact_search ? 'Ligada' : 'Desligada'"></span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="field-label">Seções a Arquivar</label>
-                    <div class="flex flex-wrap gap-2.5">
-                        <template x-for="sec in [{id:'1', label:'Seção 1'}, {id:'2', label:'Seção 2'}, {id:'3', label:'Seção 3'}, {id:'extra', label:'Edições Extras'}]" :key="sec.id">
-                            <label class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-stone-700 bg-slate-50 dark:bg-stone-800 cursor-pointer text-xs font-semibold text-slate-700 dark:text-stone-200">
-                                <input type="checkbox" :checked="(pdfOnboarding.sections || []).includes(sec.id)" @change="toggleOnboardingSection(sec.id)" class="rounded border-slate-300 text-slate-900">
-                                <span x-text="sec.label"></span>
+                <!-- Passo 5: Empresas monitoradas -->
+                <div x-show="onboardingStep === 5" class="space-y-5">
+                    <div class="space-y-2">
+                        <label class="field-label">Origem das empresas monitoradas</label>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <template x-for="src in [{id:'google_sheets', label:'Google Sheets', desc:'Sincroniza de uma planilha privada'}, {id:'gestaoclick', label:'API GestãoClick', desc:'Importa clientes via token da API'}, {id:'manual', label:'Cadastro manual', desc:'Adicione CNPJs diretamente aqui'}]" :key="src.id">
+                                <label class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors bg-white dark:bg-neutral-900" :class="onboardingCompanySource === src.id ? 'border-neutral-900 dark:border-neutral-200' : 'border-neutral-200 dark:border-neutral-800'">
+                                    <input type="radio" name="onboarding_company_source" :value="src.id" x-model="onboardingCompanySource" @change="saveOnboardingSource(src.id)" class="mt-0.5">
+                                    <div>
+                                        <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-100" x-text="src.label"></div>
+                                        <div class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5" x-text="src.desc"></div>
+                                    </div>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Fonte: Google Sheets -->
+                    <div x-show="onboardingCompanySource === 'google_sheets'" class="space-y-4 rounded-lg border border-neutral-200 dark:border-neutral-800 p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="md:col-span-2 space-y-1">
+                                <label class="field-label">URL ou ID da planilha</label>
+                                <input type="text" x-model="onboardingSheets.spreadsheet_url" placeholder="https://docs.google.com/spreadsheets/d/..." class="input">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="field-label">Aba (opcional)</label>
+                                <input type="text" x-model="onboardingSheets.sheet_name" placeholder="Primeira aba" class="input">
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex items-center justify-between">
+                                <label class="field-label !mb-0">Credenciais da conta de serviço (JSON)</label>
+                                <span x-show="onboardingSheets.has_saved_credentials && !onboardingSheets.credentials_json" class="badge badge-success">Credencial salva</span>
+                            </div>
+                            <textarea x-model="onboardingSheets.credentials_json" rows="3" placeholder="Cole o conteúdo do arquivo .json da conta de serviço" class="input h-auto py-2 font-mono"></textarea>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="space-y-1">
+                                <label class="field-label">Coluna Razão social</label>
+                                <input type="text" x-model="onboardingSheets.mapping_empresa" placeholder="Razão Social" class="input">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="field-label">Coluna CNPJ</label>
+                                <input type="text" x-model="onboardingSheets.mapping_cnpj" placeholder="CNPJ" class="input">
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+                            <div class="flex items-center gap-2 text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                                <label class="dash-switch">
+                                    <input type="checkbox" x-model="onboardingSheets.auto_sync" class="sr-only dash-switch-input">
+                                    <div class="dash-switch-track dash-switch-sm"><div class="dash-switch-thumb"></div></div>
+                                </label>
+                                Sincronização automática
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="button" @click="testOnboardingSheets()" :disabled="onboardingBusy" class="btn btn-secondary btn-sm">Testar conexão</button>
+                                <button type="button" @click="syncOnboardingSheets()" :disabled="onboardingBusy" class="btn btn-secondary btn-sm">Sincronizar agora</button>
+                            </div>
+                        </div>
+                        <div x-show="onboardingSheetsMsg" class="callout callout-info p-3 text-xs" x-text="onboardingSheetsMsg"></div>
+                    </div>
+
+                    <!-- Fonte: GestãoClick (atalho ou link para Passo 6) -->
+                    <div x-show="onboardingCompanySource === 'gestaoclick'" class="callout callout-info p-4 text-xs space-y-2">
+                        <div class="font-semibold">API do GestãoClick selecionada</div>
+                        <p class="text-neutral-600 dark:text-neutral-300">No próximo passo você informará o Access Token e o Secret Token do GestãoClick para testar e sincronizar suas empresas.</p>
+                    </div>
+
+                    <!-- Fonte: Cadastro manual -->
+                    <div x-show="onboardingCompanySource === 'manual'" class="space-y-4 rounded-lg border border-neutral-200 dark:border-neutral-800 p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                            <div class="space-y-1">
+                                <label class="field-label">Nome / Razão social</label>
+                                <input type="text" x-model="onboardingManual.nome" placeholder="Empresa Exemplo Ltda" class="input">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="field-label">CNPJ</label>
+                                <input type="text" x-model="onboardingManual.cnpj" placeholder="00.000.000/0001-00" class="input font-mono">
+                            </div>
+                            <button type="button" @click="addOnboardingManualCompany()" :disabled="onboardingBusy" class="btn btn-secondary">
+                                <i data-lucide="plus"></i> Adicionar empresa
+                            </button>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="field-label">Ou cole vários CNPJs (um por linha, opcionalmente CNPJ;Nome)</label>
+                            <textarea x-model="onboardingManual.bulk" rows="3" placeholder="00000000000100;Empresa A&#10;11.111.111/0001-11;Empresa B" class="input h-auto py-2 font-mono"></textarea>
+                            <div class="flex items-center justify-between pt-1">
+                                <span class="text-xs text-neutral-500 tabular" x-text="`Empresas ativas cadastradas: ${(companies || []).filter(c => c.status).length}`"></span>
+                                <button type="button" @click="addOnboardingBulkCompanies()" :disabled="onboardingBusy || !onboardingManual.bulk.trim()" class="btn btn-secondary btn-sm">Importar lista</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-3 flex items-center justify-between text-xs">
+                        <span class="text-neutral-600 dark:text-neutral-300">Total de empresas monitoradas no banco:</span>
+                        <span class="font-semibold tabular text-neutral-900 dark:text-neutral-100" x-text="(companies || []).filter(c => c.status).length"></span>
+                    </div>
+                </div>
+
+                <!-- Passo 6: API do GestãoClick -->
+                <div x-show="onboardingStep === 6" class="space-y-4">
+                    <div class="flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                        <div>
+                            <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Sincronização automática do GestãoClick</div>
+                            <p class="text-xs text-neutral-500">Atualiza a lista de clientes periodicamente pela API.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <label class="dash-switch">
+                                <input type="checkbox" x-model="onboardingGc.auto_sync" class="sr-only dash-switch-input">
+                                <div class="dash-switch-track dash-switch-sm"><div class="dash-switch-thumb"></div></div>
                             </label>
+                            <span class="text-xs font-medium" x-text="onboardingGc.auto_sync ? 'Ativa' : 'Desativada'"></span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="field-label">Base URL da API</label>
+                        <input type="text" x-model="onboardingGc.base_url" placeholder="https://api.gestaoclick.com/franquias" class="input font-mono">
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <div class="flex items-center justify-between">
+                                <label class="field-label !mb-0">Access token</label>
+                                <span x-show="onboardingGc.has_saved_tokens && !onboardingGc.access_token" class="badge badge-success">Salvo</span>
+                            </div>
+                            <input type="password" x-model="onboardingGc.access_token" placeholder="Access Token do GestãoClick" class="input">
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex items-center justify-between">
+                                <label class="field-label !mb-0">Secret access token</label>
+                                <span x-show="onboardingGc.has_saved_tokens && !onboardingGc.secret_token" class="badge badge-success">Salvo</span>
+                            </div>
+                            <input type="password" x-model="onboardingGc.secret_token" placeholder="Secret Access Token" class="input">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" @click="testOnboardingGc()" :disabled="onboardingBusy" class="btn btn-secondary btn-sm">Testar conexão</button>
+                        <button type="button" @click="syncOnboardingGc()" :disabled="onboardingBusy" class="btn btn-secondary btn-sm">Sincronizar agora</button>
+                    </div>
+                    <div x-show="onboardingGcMsg" class="callout callout-info p-3 text-xs" x-text="onboardingGcMsg"></div>
+                </div>
+
+                <!-- Passo 7: E-mail (SMTP e destinatários) -->
+                <div x-show="onboardingStep === 7" class="space-y-4">
+                    <div class="flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                        <div>
+                            <div class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Enviar alertas por e-mail (SMTP)</div>
+                            <p class="text-xs text-neutral-500">Quando desligado, as menções continuam sendo gravadas normalmente no painel.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <label class="dash-switch">
+                                <input type="checkbox" x-model="onboardingSmtp.enabled" class="sr-only dash-switch-input">
+                                <div class="dash-switch-track dash-switch-sm"><div class="dash-switch-thumb"></div></div>
+                            </label>
+                            <span class="text-xs font-medium" x-text="onboardingSmtp.enabled ? 'Ligado' : 'Desligado'"></span>
+                        </div>
+                    </div>
+
+                    <div x-show="onboardingSmtp.enabled" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-1"><label class="field-label">Servidor SMTP</label><input type="text" x-model="onboardingSmtp.server" placeholder="smtp.gmail.com" class="input"></div>
+                            <div class="space-y-1"><label class="field-label">Porta</label><input type="text" x-model="onboardingSmtp.port" placeholder="587" class="input font-mono"></div>
+                            <div class="space-y-1"><label class="field-label">Usuário</label><input type="text" x-model="onboardingSmtp.user" placeholder="seu-email@gmail.com" class="input"></div>
+                            <div class="space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <label class="field-label !mb-0">Senha</label>
+                                    <span x-show="onboardingSmtp.has_saved_password && !onboardingSmtp.password" class="badge badge-success">Salva</span>
+                                </div>
+                                <input type="password" x-model="onboardingSmtp.password" placeholder="Senha ou senha de app" class="input">
+                            </div>
+                            <div class="space-y-1 md:col-span-2"><label class="field-label">E-mail de envio (From)</label><input type="email" x-model="onboardingSmtp.from_email" placeholder="notificacoes@seudominio.com.br" class="input"></div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-1">
+                                <label class="field-label">Destinatários da rotina</label>
+                                <input type="text" x-model="onboardingSmtp.emails_raw" placeholder="analista@empresa.com, equipe@empresa.com" class="input">
+                                <p class="field-hint">Separados por vírgula.</p>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="field-label">Assunto padrão</label>
+                                <input type="text" x-model="onboardingSmtp.subject" placeholder="[Registrale] Relatório Diário de Publicações do DOU" class="input">
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row items-end gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                            <div class="flex-1 w-full space-y-1">
+                                <label class="field-label">Destinatário para teste</label>
+                                <input type="email" x-model="onboardingSmtp.test_email" placeholder="teste@exemplo.com" class="input">
+                            </div>
+                            <button type="button" @click="testOnboardingSmtp()" :disabled="onboardingBusy" class="btn btn-secondary btn-sm whitespace-nowrap">Enviar e-mail de teste</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Passo 8: INLABS e contingência -->
+                <div x-show="onboardingStep === 8" class="space-y-4">
+                    <template x-if="!inlabsStatus || inlabsStatus.local_available === false">
+                        <div class="callout callout-info p-4 text-xs space-y-1.5">
+                            <div class="font-semibold">Usando a contingência (PDF integral + API do DOU)</div>
+                            <p class="text-neutral-600 dark:text-neutral-300">O INLABS local (PostgreSQL portátil) não está disponível nesta versão. As buscas funcionam automaticamente baixando o PDF integral oficial em <code class="font-mono">pesquisa.in.gov.br</code> (sem login) e confirmando as menções na API do DOU.</p>
+                        </div>
+                    </template>
+
+                    <template x-if="inlabsStatus && inlabsStatus.local_available === true">
+                        <div class="space-y-4">
+                            <label class="flex items-center justify-between gap-3 cursor-pointer p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                                <div>
+                                    <span class="text-xs font-semibold text-neutral-800 dark:text-neutral-200">Usar só a contingência (PDF/API)</span>
+                                    <p class="text-xs text-neutral-500">Dispensa credenciais do portal INLABS.</p>
+                                </div>
+                                <input type="checkbox" x-model="onboardingInlabs.contingency_only" class="rounded border-neutral-300">
+                            </label>
+                            <div x-show="!onboardingInlabs.contingency_only" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="space-y-1"><label class="field-label">Usuário INLABS</label><input type="text" x-model="onboardingInlabs.user" placeholder="E-mail ou CPF" class="input"></div>
+                                <div class="space-y-1"><label class="field-label">Senha INLABS</label><input type="password" x-model="onboardingInlabs.password" placeholder="Senha do portal" class="input"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="space-y-1">
+                        <label class="field-label">Modo de contingência</label>
+                        <select x-model="onboardingInlabs.fallback" class="input">
+                            <option value="pdf">PDF integral + API do DOU (Recomendado)</option>
+                            <option value="api">API do DOU (direto)</option>
+                            <option value="off">Desligado</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Passo 9: Resumo -->
+                <div x-show="onboardingStep === 9" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+                            <div class="text-neutral-500">Próximo horário de busca</div>
+                            <div class="font-semibold font-mono text-neutral-900 dark:text-neutral-100 mt-1" x-text="(activity && activity.next_search) ? activity.next_search : (topIndicators && topIndicators.next_search ? topIndicators.next_search : 'Não agendado')"></div>
+                        </div>
+                        <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+                            <div class="text-neutral-500">Empresas monitoradas</div>
+                            <div class="font-semibold tabular text-neutral-900 dark:text-neutral-100 mt-1" x-text="`${(companies || []).filter(c => c.status).length} empresa(s) ativa(s)`"></div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-200 dark:divide-neutral-800">
+                        <template x-for="item in (integrationsStatus && integrationsStatus.integrations) ? integrationsStatus.integrations : []" :key="item.id">
+                            <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+                                <span class="font-medium text-neutral-800 dark:text-neutral-200" x-text="item.name"></span>
+                                <span class="badge" :class="item.status === 'configured' ? 'badge-success' : (item.status === 'pending' ? 'badge-warning' : '')">
+                                    <span x-show="item.status === 'configured'" class="status-dot status-dot-success"></span>
+                                    <span x-show="item.status === 'pending'" class="status-dot status-dot-warning"></span>
+                                    <span x-text="item.status === 'configured' ? 'Ativo' : (item.status === 'pending' ? 'Pendente' : (item.status === 'unavailable' ? 'Não instalado' : 'Desativado'))"></span>
+                                </span>
+                            </div>
                         </template>
                     </div>
                 </div>
 
-                <div x-show="pdfOnboardingError" class="callout callout-danger p-3 text-xs font-semibold" x-text="pdfOnboardingError"></div>
+                <div x-show="onboardingError" class="callout callout-danger p-3 text-xs font-semibold" x-text="onboardingError"></div>
             </div>
 
-            <div class="px-5 py-4 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-                <span class="text-[11px] text-slate-500 dark:text-stone-400">Você poderá alterar isso depois em Configurações &rarr; Arquivo PDF DOU.</span>
-                <button type="button" @click="submitPdfOnboarding()" :disabled="pdfOnboardingSaving" class="btn btn-primary">
-                    <span x-text="pdfOnboardingSaving ? 'Salvando…' : 'Salvar e continuar'"></span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal de Onboarding: Acesso ao painel -->
-    <div x-show="showAccessOnboardingModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4 bg-neutral-950/60">
-        <div class="card shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div class="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-                <div>
-                    <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Configuração inicial</span>
-                    <h3 class="text-xl font-semibold text-slate-900 dark:text-stone-100 mt-1">Como abrir o painel</h3>
-                    <p class="text-xs text-slate-500 dark:text-stone-400 mt-1">Escolha se o Registrale pede usuário e senha toda vez que for aberto neste computador.</p>
-                </div>
-            </div>
-
-            <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <template x-for="opt in [{id:'login', label:'Pedir usuário e senha', desc:'Indicado quando outras pessoas usam este computador. A sessão expira após 30 minutos sem renovação.'}, {id:'direct', label:'Abrir direto, sem login', desc:'Entra como administrador sem senha. Vale só neste computador; acessos por outro endereço continuam pedindo login.'}]" :key="opt.id">
-                        <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all" :class="accessOnboardingChoice === opt.id ? 'border-slate-900 dark:border-stone-200 bg-slate-100 dark:bg-stone-800' : 'border-slate-200 dark:border-stone-700 bg-slate-50 dark:bg-stone-800/40'">
-                            <input type="radio" name="onboarding_access" :value="opt.id" x-model="accessOnboardingChoice" class="mt-0.5 text-slate-900">
-                            <div>
-                                <div class="text-xs font-semibold text-slate-800 dark:text-stone-100" x-text="opt.label"></div>
-                                <div class="text-[11px] text-slate-500 dark:text-stone-400 mt-0.5" x-text="opt.desc"></div>
-                            </div>
-                        </label>
-                    </template>
+            <!-- Rodapé com ações -->
+            <div class="px-5 py-4 border-t border-neutral-200 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <button type="button" x-show="onboardingStep > 1" @click="goOnboardingStep(onboardingStep - 1)" :disabled="onboardingBusy" class="btn btn-ghost btn-sm">
+                        <i data-lucide="arrow-left"></i> Voltar
+                    </button>
+                    <button type="button" x-show="onboardingStep < 9" @click="skipOnboardingStep()" :disabled="onboardingBusy" class="btn btn-secondary btn-sm">
+                        <span x-text="onboardingStep === 4 ? 'Manter padrão' : (onboardingReopened ? 'Manter como está' : 'Pular por enquanto')"></span>
+                    </button>
                 </div>
 
-                <div x-show="accessError" class="callout callout-danger p-3 text-xs font-semibold" x-text="accessError"></div>
-            </div>
-
-            <div class="px-5 py-4 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-                <span class="text-[11px] text-slate-500 dark:text-stone-400">Você poderá alterar isso depois em Configurações &rarr; Usuários.</span>
-                <button type="button" @click="submitAccessOnboarding()" :disabled="accessSaving" class="btn btn-primary">
-                    <span x-text="accessSaving ? 'Salvando…' : 'Salvar e continuar'"></span>
-                </button>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button type="button" x-show="onboardingStep === 9" @click="runOnboardingSearchToday()" :disabled="onboardingBusy" class="btn btn-secondary">
+                        <i data-lucide="play"></i>
+                        <span x-text="onboardingBusy ? 'Iniciando…' : 'Buscar agora'"></span>
+                    </button>
+                    <button type="button" @click="submitCurrentOnboardingStep()" :disabled="onboardingBusy" class="btn btn-primary">
+                        <span x-text="onboardingBusy ? 'Salvando…' : (onboardingStep === 9 ? 'Concluir' : 'Salvar e continuar')"></span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -4136,13 +4520,59 @@
                     return raw;
                 })(),
                 hasNativePicker: Boolean(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder),
-                showPdfOnboardingModal: false,
-                pdfOnboardingSaving: false,
-                pdfOnboardingError: '',
+                showOnboardingModal: false,
+                onboardingStep: 1,
+                onboardingBusy: false,
+                onboardingError: '',
+                onboardingCompanySource: '',
+                onboardingReopened: false,
+                onboardingRoutine: {
+                    schedulePreset: '0 8 * * MON-FRI',
+                    schedule: '0 8 * * MON-FRI',
+                    sections: ['SECAO_1', 'SECAO_2', 'SECAO_3', 'EDICAO_EXTRA'],
+                    organs_raw: '',
+                    is_exact_search: false,
+                },
+                onboardingSheets: {
+                    spreadsheet_url: '',
+                    sheet_name: '',
+                    credentials_json: '',
+                    has_saved_credentials: false,
+                    mapping_empresa: 'Razão Social',
+                    mapping_cnpj: 'CNPJ',
+                    auto_sync: true,
+                },
+                onboardingSheetsMsg: '',
+                onboardingManual: { nome: '', cnpj: '', bulk: '' },
+                onboardingGc: {
+                    base_url: 'https://api.gestaoclick.com/franquias',
+                    access_token: '',
+                    secret_token: '',
+                    has_saved_tokens: false,
+                    auto_sync: false,
+                },
+                onboardingGcMsg: '',
+                onboardingSmtp: {
+                    enabled: false,
+                    server: '',
+                    port: '587',
+                    user: '',
+                    password: '',
+                    has_saved_password: false,
+                    from_email: '',
+                    emails_raw: '',
+                    subject: '[Registrale] Relatório Diário de Publicações do DOU',
+                    test_email: '',
+                },
+                onboardingInlabs: {
+                    contingency_only: true,
+                    user: '',
+                    password: '',
+                    fallback: 'pdf',
+                },
                 pdfOnboarding: { enabled: true, folder: '', layout: 'ano_mes', sections: ['1', '2', '3', 'extra'] },
                 pdfReorganizeLoading: false,
                 loginRequired: {{ 'true' if login_required else 'false' }},
-                showAccessOnboardingModal: false,
                 accessOnboardingChoice: 'login',
                 accessSaving: false,
                 accessError: '',
@@ -5864,35 +6294,692 @@
                     }
                 },
 
+                onboardingStepMeta() {
+                    const metas = {
+                        1: { title: 'Boas-vindas e importação', subtitle: 'Importe dados de uma instalação anterior, se houver, ou comece do zero.' },
+                        2: { title: 'Onde guardar os PDFs do DOU', subtitle: 'Escolha a pasta e como os PDFs integrais serão organizados no seu computador.' },
+                        3: { title: 'Como abrir o painel', subtitle: 'Defina se o Registrale pede usuário e senha ao abrir neste computador.' },
+                        4: { title: 'Rotina inicial de busca', subtitle: 'Confirme horário, seções e critérios da pesquisa diária.' },
+                        5: { title: 'Empresas monitoradas', subtitle: 'Escolha como cadastrar os clientes que serão monitorados pelo CNPJ.' },
+                        6: { title: 'API do GestãoClick', subtitle: 'Configure os tokens e a sincronização automática com o GestãoClick.' },
+                        7: { title: 'Alertas por e-mail (SMTP)', subtitle: 'Ligue o envio de e-mails ou mantenha desligado para ver as menções só no painel.' },
+                        8: { title: 'INLABS e contingência', subtitle: 'Configure a fonte de dados do DOU e a contingência automática.' },
+                        9: { title: 'Resumo da configuração', subtitle: 'Confira o que ficou ativo ou desativado e faça a primeira busca.' },
+                    };
+                    return metas[this.onboardingStep] || metas[1];
+                },
+
+                syncOnboardingFormsFromState(data) {
+                    const cfg = (data && data.pdf_archive) || {};
+                    this.pdfOnboarding = {
+                        enabled: cfg.enabled !== undefined ? cfg.enabled : true,
+                        folder: cfg.folder || (this.settings.pdf_archive && this.settings.pdf_archive.folder) || '',
+                        layout: cfg.layout || 'ano_mes',
+                        sections: Array.isArray(cfg.sections) ? [...cfg.sections] : ['1', '2', '3', 'extra'],
+                    };
+                    this.accessOnboardingChoice = this.loginRequired ? 'login' : 'direct';
+
+                    const s = this.settings || {};
+                    const gs = s.google_sheets || {};
+                    this.onboardingSheets = {
+                        spreadsheet_url: gs.spreadsheet_url || '',
+                        sheet_name: gs.sheet_name || '',
+                        credentials_json: '',
+                        has_saved_credentials: Boolean(gs.credentials_json),
+                        mapping_empresa: (gs.mapping && gs.mapping.empresa) || 'Razão Social',
+                        mapping_cnpj: (gs.mapping && gs.mapping.cnpj) || 'CNPJ',
+                        auto_sync: gs.auto_sync !== undefined ? Boolean(gs.auto_sync) : true,
+                    };
+
+                    const ak = s.api_keys || {};
+                    this.onboardingGc = {
+                        base_url: ak.gestaoclick_base_url || 'https://api.gestaoclick.com/franquias',
+                        access_token: '',
+                        secret_token: '',
+                        has_saved_tokens: Boolean(ak.gestaoclick_access_token && ak.gestaoclick_secret_token),
+                        auto_sync: Boolean(ak.gestaoclick_auto_sync),
+                    };
+
+                    const smtp = s.smtp || {};
+                    this.onboardingSmtp = {
+                        enabled: Boolean(smtp.enabled),
+                        server: smtp.server || '',
+                        port: smtp.port || '587',
+                        user: smtp.user || '',
+                        password: '',
+                        has_saved_password: Boolean(smtp.password),
+                        from_email: smtp.from_email || '',
+                        emails_raw: (this.mainDagEmails || []).join(', '),
+                        subject: (this.mainDagStatus && this.mainDagStatus.main_dag && this.mainDagStatus.main_dag.subject) || '[Registrale] Relatório Diário de Publicações do DOU',
+                        test_email: this.testEmail || '',
+                    };
+
+                    const inl = s.inlabs || {};
+                    this.onboardingInlabs = {
+                        contingency_only: !(this.inlabsStatus && this.inlabsStatus.local_available) || inl.enabled === false,
+                        user: inl.user || '',
+                        password: '',
+                        fallback: s.inlabs_fallback || 'pdf',
+                    };
+
+                    const mainR = (this.routines || []).find(r => r.file === 'Pesquisa_cnpj.yaml' || r.type === 'sync');
+                    if (mainR) {
+                        const sched = mainR.schedule || '0 8 * * MON-FRI';
+                        const presets = ['0 8 * * MON-FRI', '0 8 * * *', '0 12 * * MON-FRI', '0 18 * * MON-FRI'];
+                        this.onboardingRoutine = {
+                            schedulePreset: presets.includes(sched) ? sched : 'custom',
+                            schedule: sched,
+                            sections: Array.isArray(mainR.sections) && mainR.sections.length ? [...mainR.sections] : ['SECAO_1', 'SECAO_2', 'SECAO_3', 'EDICAO_EXTRA'],
+                            organs_raw: Array.isArray(mainR.organs) ? mainR.organs.join(', ') : '',
+                            is_exact_search: Boolean(mainR.is_exact_search),
+                        };
+                    }
+                },
+
                 async checkPdfOnboarding() {
                     try {
                         const r = await fetch('/api/admin/first_run_status');
                         const data = await r.json();
                         if (data.status === 'success') {
                             this.firstRunStatus = data;
-                            if (data.needs_pdf_onboarding) {
-                                const cfg = data.pdf_archive || {};
-                                this.pdfOnboarding = {
-                                    enabled: cfg.enabled !== undefined ? cfg.enabled : true,
-                                    folder: cfg.folder || (this.settings.pdf_archive && this.settings.pdf_archive.folder) || '',
-                                    layout: cfg.layout || 'ano_mes',
-                                    sections: Array.isArray(cfg.sections) ? [...cfg.sections] : ['1', '2', '3', 'extra'],
-                                };
-                                this.showPdfOnboardingModal = true;
-                            } else if (data.needs_access_onboarding) {
-                                this.openAccessOnboarding();
+                            const ob = data.onboarding || {};
+                            if (ob.company_source) this.onboardingCompanySource = ob.company_source;
+                            this.onboardingReopened = Boolean(ob.reopened);
+                            if (ob.should_open) {
+                                await this.checkIntegrationsStatus();
+                                const inlItem = (this.integrationsStatus && this.integrationsStatus.integrations || []).find(i => i.id === 'inlabs');
+                                if (inlItem && (!this.inlabsStatus || this.inlabsStatus.local_available === undefined)) {
+                                    this.inlabsStatus = Object.assign({}, this.inlabsStatus || {}, { local_available: inlItem.local_available });
+                                }
+                                this.syncOnboardingFormsFromState(data);
+                                this.onboardingStep = Number(ob.current_step) || 1;
+                                this.onboardingError = '';
+                                this.showOnboardingModal = true;
+                                if (this.onboardingStep === 9) {
+                                    await Promise.all([this.pollActivity(), this.fetchCompanies()]);
+                                }
+                                this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                            } else {
+                                this.syncOnboardingFormsFromState(data);
                             }
                         }
                     } catch (e) {}
                 },
 
-                openAccessOnboarding() {
-                    this.accessOnboardingChoice = this.loginRequired ? 'login' : 'direct';
-                    this.accessError = '';
-                    this.showAccessOnboardingModal = true;
+                async reopenOnboardingWizard() {
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/admin/onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'reopen', step: 1 }),
+                        });
+                        const data = await r.json();
+                        if (r.ok && data.onboarding) {
+                            this.onboardingStep = data.onboarding.current_step || 1;
+                            this.onboardingReopened = Boolean(data.onboarding.reopened);
+                            this.syncOnboardingFormsFromState(this.firstRunStatus);
+                            this.showOnboardingModal = true;
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                        }
+                    } catch (e) {
+                        this.showAlert('Erro ao reabrir assistente: ' + e.message, 'error');
+                    }
                 },
 
-                async saveAccessSettings(requireLogin) {
+                async saveOnboardingSource(src) {
+                    try {
+                        await fetch('/api/admin/onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'set_source', company_source: src }),
+                        });
+                    } catch (e) {}
+                },
+
+                async goOnboardingStep(step) {
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/admin/onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'goto', step }),
+                        });
+                        const data = await r.json();
+                        if (r.ok && data.onboarding) {
+                            this.onboardingStep = data.onboarding.current_step;
+                            if (this.onboardingStep === 9) {
+                                await Promise.all([this.checkIntegrationsStatus(), this.pollActivity(), this.fetchCompanies()]);
+                            }
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                        }
+                    } catch (e) {
+                        this.onboardingError = 'Erro ao mudar de passo: ' + e.message;
+                    }
+                },
+
+                async skipOnboardingStep() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/admin/onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'skip', step: this.onboardingStep }),
+                        });
+                        const data = await r.json();
+                        if (!r.ok || !data.onboarding) {
+                            this.onboardingError = (data && data.message) || 'Erro ao pular passo.';
+                            return;
+                        }
+                        if (!data.onboarding.deactivated) {
+                            // Passo 4 ou reabertura com integração já ligada: só avançou.
+                        } else if (this.onboardingStep === 2 && this.settings.pdf_archive) {
+                            this.settings.pdf_archive.enabled = false;
+                        } else if (this.onboardingStep === 6 && this.settings.api_keys) {
+                            this.settings.api_keys.gestaoclick_auto_sync = false;
+                        } else if (this.onboardingStep === 7 && this.settings.smtp) {
+                            this.settings.smtp.enabled = false;
+                        }
+                        this.onboardingStep = data.onboarding.current_step;
+                        if (this.onboardingStep === 9) {
+                            await Promise.all([this.checkIntegrationsStatus(), this.pollActivity(), this.fetchCompanies()]);
+                        }
+                        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                toggleOnboardingRoutineSection(secId) {
+                    const list = Array.isArray(this.onboardingRoutine.sections) ? [...this.onboardingRoutine.sections] : [];
+                    const idx = list.indexOf(secId);
+                    if (idx >= 0) list.splice(idx, 1);
+                    else list.push(secId);
+                    this.onboardingRoutine.sections = list;
+                },
+
+                async runOnboardingUploadImport() {
+                    const dbInput = document.getElementById('onboardingImportDbInput');
+                    const rInput = document.getElementById('onboardingImportRoutinesInput');
+                    const fd = new FormData();
+                    fd.append('overwrite', this.importOverwrite ? 'true' : 'false');
+                    if (dbInput && dbInput.files && dbInput.files[0]) fd.append('db_file', dbInput.files[0]);
+                    if (rInput && rInput.files && rInput.files.length > 0) {
+                        for (const f of rInput.files) fd.append('routine_files', f);
+                    }
+                    this.importLoading = true;
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/admin/first_run_import', { method: 'POST', body: fd });
+                        const data = await r.json();
+                        if (!r.ok || data.status !== 'success') {
+                            this.onboardingError = data.message || 'Erro ao importar arquivos.';
+                            return;
+                        }
+                        this.importResult = data;
+                        await Promise.all([this.fetchCompanies(), this.loadRoutines(), this.fetchSettings()]);
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.importLoading = false;
+                    }
+                },
+
+                async testOnboardingSheets() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    this.onboardingSheetsMsg = '';
+                    try {
+                        const payload = {
+                            spreadsheet_url: this.onboardingSheets.spreadsheet_url,
+                            sheet_name: this.onboardingSheets.sheet_name,
+                        };
+                        if (this.onboardingSheets.credentials_json.trim()) {
+                            payload.credentials_json = this.onboardingSheets.credentials_json.trim();
+                        }
+                        const r = await fetch('/api/google_sheets/test', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload),
+                        });
+                        const data = await r.json();
+                        if (!r.ok || data.status === 'error') {
+                            this.onboardingError = data.message || 'Falha ao testar Google Sheets.';
+                            return;
+                        }
+                        this.onboardingSheetsMsg = `Conexão validada: "${data.title || 'Planilha'}" (aba ${data.selected_sheet || 'padrão'}).`;
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async _saveOnboardingSheetsSettings() {
+                    const gsPayload = {
+                        spreadsheet_url: this.onboardingSheets.spreadsheet_url,
+                        sheet_name: this.onboardingSheets.sheet_name,
+                        auto_sync: Boolean(this.onboardingSheets.auto_sync),
+                        mapping: {
+                            empresa: this.onboardingSheets.mapping_empresa || 'Razão Social',
+                            cnpj: this.onboardingSheets.mapping_cnpj || 'CNPJ',
+                        },
+                    };
+                    if (this.onboardingSheets.credentials_json.trim()) {
+                        gsPayload.credentials_json = this.onboardingSheets.credentials_json.trim();
+                    }
+                    const r = await fetch('/api/save_settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ google_sheets: gsPayload }),
+                    });
+                    const data = await r.json();
+                    if (!r.ok || data.status !== 'success') {
+                        throw new Error(data.message || 'Erro ao salvar configurações do Google Sheets.');
+                    }
+                    if (gsPayload.credentials_json) {
+                        this.onboardingSheets.has_saved_credentials = true;
+                        this.onboardingSheets.credentials_json = '';
+                    }
+                },
+
+                async syncOnboardingSheets() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    this.onboardingSheetsMsg = '';
+                    try {
+                        await this._saveOnboardingSheetsSettings();
+                        const r = await fetch('/api/google_sheets/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({}),
+                        });
+                        const data = await r.json();
+                        if (!r.ok || data.status === 'error') {
+                            this.onboardingError = data.message || 'Erro ao sincronizar planilha.';
+                            return;
+                        }
+                        await this.fetchCompanies();
+                        const total = (this.companies || []).filter(c => c.status).length;
+                        this.onboardingSheetsMsg = `Sincronização concluída! ${total} empresa(s) monitorada(s) no banco.`;
+                    } catch (e) {
+                        this.onboardingError = e.message || 'Erro ao sincronizar.';
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async addOnboardingManualCompany() {
+                    if (!this.onboardingManual.cnpj.trim()) {
+                        this.onboardingError = 'Informe o CNPJ da empresa.';
+                        return;
+                    }
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/companies', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                nome: this.onboardingManual.nome.trim() || 'Empresa Monitorada',
+                                cnpj: this.onboardingManual.cnpj.trim(),
+                                status: true,
+                                origem: 'Manual',
+                            }),
+                        });
+                        const data = await r.json();
+                        if (!r.ok || data.status !== 'success') {
+                            this.onboardingError = data.message || 'Erro ao cadastrar empresa.';
+                            return;
+                        }
+                        this.onboardingManual.nome = '';
+                        this.onboardingManual.cnpj = '';
+                        await this.fetchCompanies();
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async addOnboardingBulkCompanies() {
+                    const lines = (this.onboardingManual.bulk || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                    if (!lines.length) return;
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    let added = 0;
+                    const errors = [];
+                    for (const line of lines) {
+                        const parts = line.split(/[;\t,]/);
+                        const cnpj = (parts[0] || '').trim();
+                        const nome = (parts[1] || 'Empresa Monitorada').trim();
+                        if (!cnpj) continue;
+                        try {
+                            const r = await fetch('/api/companies', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ nome, cnpj, status: true, origem: 'Manual' }),
+                            });
+                            const data = await r.json();
+                            if (r.ok && data.status === 'success') added++;
+                            else errors.push(`${cnpj}: ${data.message || 'erro'}`);
+                        } catch (e) {
+                            errors.push(`${cnpj}: ${e.message}`);
+                        }
+                    }
+                    await this.fetchCompanies();
+                    this.onboardingManual.bulk = '';
+                    if (errors.length && added === 0) {
+                        this.onboardingError = errors.slice(0, 3).join(' | ');
+                    } else if (errors.length) {
+                        this.showAlert(`${added} adicionada(s), ${errors.length} ignorada(s).`, 'warning');
+                    } else {
+                        this.showAlert(`${added} empresa(s) adicionada(s)!`, 'success');
+                    }
+                    this.onboardingBusy = false;
+                },
+
+                async _saveOnboardingGcSettings() {
+                    const ak = {
+                        gestaoclick_base_url: this.onboardingGc.base_url.trim() || 'https://api.gestaoclick.com/franquias',
+                        gestaoclick_auto_sync: Boolean(this.onboardingGc.auto_sync),
+                    };
+                    if (this.onboardingGc.access_token.trim()) {
+                        ak.gestaoclick_access_token = this.onboardingGc.access_token.trim();
+                    }
+                    if (this.onboardingGc.secret_token.trim()) {
+                        ak.gestaoclick_secret_token = this.onboardingGc.secret_token.trim();
+                    }
+                    const r = await fetch('/api/save_settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ api_keys: ak }),
+                    });
+                    const data = await r.json();
+                    if (!r.ok || data.status !== 'success') {
+                        throw new Error(data.message || 'Erro ao salvar configurações do GestãoClick.');
+                    }
+                    if (ak.gestaoclick_access_token && ak.gestaoclick_secret_token) {
+                        this.onboardingGc.has_saved_tokens = true;
+                        this.onboardingGc.access_token = '';
+                        this.onboardingGc.secret_token = '';
+                    }
+                },
+
+                async testOnboardingGc() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    this.onboardingGcMsg = '';
+                    try {
+                        const r = await fetch('/api/gestaoclick/test', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                gestaoclick_base_url: this.onboardingGc.base_url,
+                                gestaoclick_access_token: this.onboardingGc.access_token,
+                                gestaoclick_secret_token: this.onboardingGc.secret_token,
+                            }),
+                        });
+                        const data = await r.json();
+                        if (!r.ok || data.status !== 'success') {
+                            this.onboardingError = data.message || 'Falha ao testar GestãoClick.';
+                            return;
+                        }
+                        this.onboardingGcMsg = data.total !== undefined && data.total !== null
+                            ? `${data.message} (${data.total} registros encontrados)`
+                            : data.message;
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async syncOnboardingGc() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    this.onboardingGcMsg = '';
+                    try {
+                        await this._saveOnboardingGcSettings();
+                        const r = await fetch('/api/sync', { method: 'POST' });
+                        const data = await r.json();
+                        if (!r.ok || data.status !== 'success') {
+                            this.onboardingError = data.message || 'Falha ao iniciar sincronização.';
+                            return;
+                        }
+                        // Aguarda sincronização em segundo plano concluir (até 30s)
+                        for (let i = 0; i < 30; i++) {
+                            await new Promise(res => setTimeout(res, 1000));
+                            const ar = await fetch('/api/activity');
+                            const act = await ar.json();
+                            if (act.state !== 'syncing') break;
+                        }
+                        await this.fetchCompanies();
+                        const total = (this.companies || []).filter(c => c.status).length;
+                        this.onboardingGcMsg = `Sincronização concluída! ${total} empresa(s) monitorada(s) no banco.`;
+                    } catch (e) {
+                        this.onboardingError = e.message || 'Erro ao sincronizar.';
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async testOnboardingSmtp() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/test_smtp', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                smtp: {
+                                    enabled: Boolean(this.onboardingSmtp.enabled),
+                                    server: this.onboardingSmtp.server,
+                                    port: this.onboardingSmtp.port,
+                                    user: this.onboardingSmtp.user,
+                                    password: this.onboardingSmtp.password,
+                                    from_email: this.onboardingSmtp.from_email,
+                                },
+                                test_email: this.onboardingSmtp.test_email,
+                            }),
+                        });
+                        const data = await r.json();
+                        if (!r.ok || data.status !== 'success') {
+                            this.onboardingError = data.message || 'Falha no envio de teste.';
+                            return;
+                        }
+                        this.showAlert(data.message || 'E-mail de teste enviado!', 'success');
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async submitCurrentOnboardingStep() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    try {
+                        const step = this.onboardingStep;
+                        if (step === 2) {
+                            const r = await fetch('/api/admin/pdf_onboarding', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(this.pdfOnboarding),
+                            });
+                            const data = await r.json();
+                            if (!r.ok || data.status !== 'success') {
+                                this.onboardingError = data.message || 'Erro ao salvar pasta dos PDFs.';
+                                return;
+                            }
+                            if (data.pdf_archive && this.settings.pdf_archive) {
+                                this.settings.pdf_archive = Object.assign({}, this.settings.pdf_archive, data.pdf_archive);
+                            }
+                        } else if (step === 3) {
+                            const ok = await this.saveAccessSettings(this.accessOnboardingChoice === 'login', false);
+                            if (!ok) {
+                                this.onboardingError = this.accessError || 'Erro ao salvar acesso ao painel.';
+                                return;
+                            }
+                        } else if (step === 4) {
+                            const organs = (this.onboardingRoutine.organs_raw || '').split(',').map(s => s.trim()).filter(Boolean);
+                            const r = await fetch('/api/system/configure_main_dag', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    schedule: this.onboardingRoutine.schedule || '0 8 * * MON-FRI',
+                                    sections: this.onboardingRoutine.sections,
+                                    organs,
+                                    is_exact_search: Boolean(this.onboardingRoutine.is_exact_search),
+                                    active: true,
+                                }),
+                            });
+                            const data = await r.json();
+                            if (!r.ok || data.status !== 'success') {
+                                this.onboardingError = data.message || 'Erro ao salvar rotina inicial.';
+                                return;
+                            }
+                        } else if (step === 5) {
+                            if (this.onboardingCompanySource === 'google_sheets' && (this.onboardingSheets.spreadsheet_url || this.onboardingSheets.credentials_json)) {
+                                await this._saveOnboardingSheetsSettings();
+                            }
+                        } else if (step === 6) {
+                            if (this.onboardingGc.access_token || this.onboardingGc.secret_token || this.onboardingGc.auto_sync) {
+                                await this._saveOnboardingGcSettings();
+                            }
+                        } else if (step === 7) {
+                            const smtpPayload = {
+                                enabled: Boolean(this.onboardingSmtp.enabled),
+                                server: this.onboardingSmtp.server,
+                                port: this.onboardingSmtp.port || '587',
+                                user: this.onboardingSmtp.user,
+                                from_email: this.onboardingSmtp.from_email,
+                            };
+                            if (this.onboardingSmtp.password) {
+                                smtpPayload.password = this.onboardingSmtp.password;
+                            }
+                            const rs = await fetch('/api/save_settings', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ smtp: smtpPayload }),
+                            });
+                            const ds = await rs.json();
+                            if (!rs.ok || ds.status !== 'success') {
+                                this.onboardingError = ds.message || 'Erro ao salvar SMTP.';
+                                return;
+                            }
+                            if (smtpPayload.password) {
+                                this.onboardingSmtp.has_saved_password = true;
+                                this.onboardingSmtp.password = '';
+                            }
+                            if (this.onboardingSmtp.enabled) {
+                                const rm = await fetch('/api/system/configure_main_dag', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        emails: this.onboardingSmtp.emails_raw,
+                                        subject: this.onboardingSmtp.subject,
+                                    }),
+                                });
+                                const dm = await rm.json();
+                                if (!rm.ok || dm.status !== 'success') {
+                                    this.onboardingError = dm.message || 'Erro ao salvar destinatários da rotina.';
+                                    return;
+                                }
+                            }
+                        } else if (step === 8) {
+                            const inlabsPayload = {
+                                enabled: !this.onboardingInlabs.contingency_only,
+                                user: this.onboardingInlabs.user,
+                            };
+                            if (this.onboardingInlabs.password) {
+                                inlabsPayload.password = this.onboardingInlabs.password;
+                            }
+                            const r = await fetch('/api/save_settings', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    inlabs_fallback: this.onboardingInlabs.fallback || 'pdf',
+                                    inlabs: inlabsPayload,
+                                }),
+                            });
+                            const data = await r.json();
+                            if (!r.ok || data.status !== 'success') {
+                                this.onboardingError = data.message || 'Erro ao salvar configuração do INLABS.';
+                                return;
+                            }
+                            this.onboardingInlabs.password = '';
+                        } else if (step === 9) {
+                            await fetch('/api/admin/onboarding', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'complete' }),
+                            });
+                            this.showOnboardingModal = false;
+                            await Promise.all([this.fetchCompanies(), this.loadRoutines(), this.checkIntegrationsStatus(), this.pollActivity(), this.refreshKpis()]);
+                            this.showAlert('Configuração inicial concluída!', 'success');
+                            return;
+                        }
+
+                        const adv = await fetch('/api/admin/onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'advance', step, company_source: this.onboardingCompanySource }),
+                        });
+                        const advData = await adv.json();
+                        if (adv.ok && advData.onboarding) {
+                            this.onboardingStep = advData.onboarding.current_step;
+                            if (this.onboardingStep === 9) {
+                                await Promise.all([this.checkIntegrationsStatus(), this.pollActivity(), this.fetchCompanies()]);
+                            }
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                        }
+                    } catch (e) {
+                        this.onboardingError = e.message || 'Erro ao salvar passo.';
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async runOnboardingSearchToday() {
+                    this.onboardingBusy = true;
+                    this.onboardingError = '';
+                    try {
+                        const r = await fetch('/api/routines/trigger/Pesquisa_cnpj.yaml', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ data: 'atual' }),
+                        });
+                        const res = await r.json();
+                        if (!r.ok) {
+                            if (res && res.code === 'no_companies') {
+                                this.showAlert(res.message || 'Nenhuma empresa monitorada. Cadastre ao menos uma empresa primeiro.', 'warning');
+                                await this.goOnboardingStep(5);
+                                this.onboardingError = res.message || 'Nenhuma empresa monitorada. Cadastre ou sincronize ao menos uma empresa.';
+                                return;
+                            }
+                            this.onboardingError = (res && res.message) || 'Erro ao disparar busca.';
+                            return;
+                        }
+                        await fetch('/api/admin/onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'complete' }),
+                        });
+                        this.showOnboardingModal = false;
+                        this.startSearchPolling('Pesquisa_cnpj.yaml');
+                        this.showAlert('Busca de hoje iniciada!', 'success');
+                    } catch (e) {
+                        this.onboardingError = 'Erro de rede: ' + e.message;
+                    } finally {
+                        this.onboardingBusy = false;
+                    }
+                },
+
+                async saveAccessSettings(requireLogin, reloadOnChange = true) {
                     this.accessSaving = true;
                     this.accessError = '';
                     try {
@@ -5908,7 +6995,7 @@
                         }
                         const changed = this.loginRequired !== data.login_required;
                         this.loginRequired = data.login_required;
-                        if (changed) {
+                        if (changed && reloadOnChange) {
                             // Mostra/esconde Sair e o tempo de sessão conforme a nova opção.
                             window.location.reload();
                         }
@@ -5918,14 +7005,6 @@
                         return false;
                     } finally {
                         this.accessSaving = false;
-                    }
-                },
-
-                async submitAccessOnboarding() {
-                    const ok = await this.saveAccessSettings(this.accessOnboardingChoice === 'login');
-                    if (ok) {
-                        this.showAccessOnboardingModal = false;
-                        this.showAlert('Acesso ao painel configurado!', 'success');
                     }
                 },
 
@@ -5939,35 +7018,6 @@
                     if (!ok) {
                         ev.target.checked = !want;
                         this.showAlert(this.accessError, 'error');
-                    }
-                },
-
-                async submitPdfOnboarding() {
-                    this.pdfOnboardingSaving = true;
-                    this.pdfOnboardingError = '';
-                    try {
-                        const r = await fetch('/api/admin/pdf_onboarding', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.pdfOnboarding),
-                        });
-                        const data = await r.json();
-                        if (!r.ok || data.status !== 'success') {
-                            this.pdfOnboardingError = data.message || 'Erro ao salvar configuração dos PDFs.';
-                            return;
-                        }
-                        if (data.pdf_archive && this.settings && this.settings.pdf_archive) {
-                            this.settings.pdf_archive = Object.assign({}, this.settings.pdf_archive, data.pdf_archive);
-                        }
-                        this.showPdfOnboardingModal = false;
-                        this.showAlert('Pasta e organização dos PDFs configuradas!', 'success');
-                        if (this.firstRunStatus && this.firstRunStatus.needs_access_onboarding) {
-                            this.openAccessOnboarding();
-                        }
-                    } catch (e) {
-                        this.pdfOnboardingError = 'Erro de rede: ' + e.message;
-                    } finally {
-                        this.pdfOnboardingSaving = false;
                     }
                 },
 

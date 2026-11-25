@@ -111,11 +111,23 @@ No topo superior direito, clique no botão de alternância de tema (**ícone de 
 
 ---
 
-### 1.5. Assistente de Configuração de Integrações (Setup Wizard)
+### 1.5. Assistente de Primeiro Uso (9 passos) e Diagnóstico de Integrações
 
-O Ro-DOU Dashboard conta com um **Assistente Inteligente de Configuração (Setup Wizard)** que realiza um diagnóstico contínuo de todas as integrações essenciais do sistema.
+Ao abrir o Registrale-DOU pela primeira vez, o **Assistente de Configuração Inicial** guia você por **9 passos** para deixar a busca das 8h pronta (ou conscientemente desativada). O progresso fica salvo no servidor: se você fechar o painel no meio, ele retoma exatamente do passo onde parou.
 
-Se houver qualquer integração pendente, um **banner informativo com badges interativos** é exibido no topo da aba Visão Geral:
+1. **Boas-vindas e importação:** importe um `database.db` ou rotinas `.yaml` de uma instalação anterior (com backup automático), ou comece do zero.
+2. **Pasta e organização dos PDFs:** escolha onde salvar os PDFs integrais do DOU e o layout de pastas (`Por ano e mês`, `Só por ano` ou `Tudo na mesma pasta`).
+3. **Como abrir o painel:** defina se o acesso exige usuário e senha ou se abre direto neste computador (`127.0.0.1`).
+4. **Rotina inicial:** revise o horário (padrão 8h em dias úteis), seções (1, 2, 3 e Edições Extras), órgãos (todos por padrão) e busca exata (desligada por padrão, para cobrir matriz e filiais pela raiz do CNPJ).
+5. **Empresas monitoradas:** escolha a origem dos clientes (**Google Sheets**, **API GestãoClick** ou **Cadastro manual**), teste a conexão e sincronize na hora para ver quantos CNPJs entraram.
+6. **API do GestãoClick:** informe Base URL, Access Token e Secret Token, teste a conexão e defina se a sincronização automática fica ativa.
+7. **Alertas por e-mail (SMTP):** ligue ou desligue o envio de e-mails; quando ligado, configure servidor, porta, usuário, senha, destinatários e faça um envio de teste. Desligado, as menções continuam sendo gravadas normalmente no painel.
+8. **INLABS e contingência:** quando o INLABS local não estiver instalado na máquina, o painel explica que a busca usa automaticamente a contingência (**PDF integral + API do DOU**) e permite ajustar a opção de contingência.
+9. **Resumo:** exibe o que ficou ativo, desativado ou pendente, o próximo horário de busca e o botão **Buscar agora** para testar na hora.
+
+Nos passos 2 e 5 a 8, o botão **Pular por enquanto** deixa a integração correspondente **desativada** (não pendente) e avança. No passo 4 o botão vira **Manter padrão**: a rotina semeada (8h, dias úteis, Seções 1/2/3 e Extra, todos os órgãos) continua ativa. Ao reabrir o assistente, o botão vira **Manter como está** e não desliga uma integração que já estava ligada. Para reabrir o assistente depois sem apagar nenhum dado, acesse **Configurações → Sistema e atualizações → Refazer configuração inicial**.
+
+Além do assistente inicial, o painel mantém um diagnóstico contínuo na aba **Visão Geral**:
 
 * **Badges de Diagnóstico:**
   * 🟢 **Verde (Configurado):** A integração está completa e validada.
