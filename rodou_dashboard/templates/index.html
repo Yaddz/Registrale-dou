@@ -201,10 +201,10 @@
                     <span class="hidden md:inline">Atualizar</span>
                 </button>
                 <button @click="showSyncModal = true" 
-                        :disabled="isSyncing"
+                        :disabled="isSyncing || activity.sync_active"
                         class="btn btn-secondary" title="Sincronizar bases" aria-label="Sincronizar bases">
-                    <span :class="{'animate-spin': isSyncing}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span>
-                    <span class="hidden md:inline" x-text="isSyncing ? 'Sincronizando…' : 'Sincronizar bases'"></span>
+                    <span :class="{'animate-spin': isSyncing || activity.sync_active}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span>
+                    <span class="hidden md:inline" x-text="(isSyncing || activity.sync_active) ? 'Sincronizando…' : 'Sincronizar bases'"></span>
                 </button>
                 {% if login_required %}
                 <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-stone-400 whitespace-nowrap shrink-0" title="Tempo restante da sessão">
@@ -499,8 +499,8 @@
                     <a href="/api/export_report" class="btn btn-secondary" title="Exportar planilha Excel" aria-label="Exportar planilha Excel">
                         <i data-lucide="download"></i><span class="hidden sm:inline">Exportar Excel</span>
                     </a>
-                    <button @click="showSyncModal = true" class="btn btn-secondary" title="Sincronizar empresas" aria-label="Sincronizar empresas">
-                        <span :class="{'animate-spin': isSyncing}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span><span class="hidden sm:inline">Sincronizar</span>
+                    <button @click="showSyncModal = true" :disabled="isSyncing || activity.sync_active" class="btn btn-secondary" title="Sincronizar empresas" aria-label="Sincronizar empresas">
+                        <span :class="{'animate-spin': isSyncing || activity.sync_active}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span><span class="hidden sm:inline" x-text="(isSyncing || activity.sync_active) ? 'Sincronizando…' : 'Sincronizar'"></span>
                     </button>
                     <button @click="openAddCompanyModal()" class="btn btn-primary">
                         <i data-lucide="plus"></i><span>Adicionar empresa</span>
@@ -835,7 +835,7 @@
                             </div>
                             <div class="space-y-6" :class="!settings.api_keys?.gestaoclick_auto_sync && 'opacity-50'">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="space-y-1"><label class="field-label">Base URL API</label><input type="text" placeholder="https://api.gestaoclick.com/franquias" x-model="settings.api_keys.gestaoclick_base_url" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
+                                    <div class="space-y-1"><label class="field-label">Base URL API</label><input type="text" placeholder="https://api.gestaoclick.com" x-model="settings.api_keys.gestaoclick_base_url" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
                                     <div class="space-y-1"><label class="field-label">Caminho YAML Base</label><input type="text" placeholder="Pesquisa_cnpj.yaml" x-model="settings.api_keys.yaml_path" :disabled="!settings.api_keys?.gestaoclick_auto_sync" class="input disabled:cursor-not-allowed"></div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2165,9 +2165,9 @@
                 </div>
                 <div class="px-5 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3">
                     <button @click="showSyncModal = false" class="btn btn-secondary" :disabled="isSyncing">Cancelar</button>
-                    <button @click="executeSelectedSyncs()" class="btn btn-primary" :disabled="isSyncing">
-                        <span :class="{'animate-spin': isSyncing}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span>
-                        <span x-text="isSyncing ? 'Sincronizando…' : 'Iniciar sincronização'"></span>
+                    <button @click="executeSelectedSyncs()" class="btn btn-primary" :disabled="isSyncing || activity.sync_active">
+                        <span :class="{'animate-spin': isSyncing || activity.sync_active}" class="inline-flex shrink-0"><i data-lucide="refresh-cw"></i></span>
+                        <span x-text="(isSyncing || activity.sync_active) ? 'Sincronizando…' : 'Iniciar sincronização'"></span>
                     </button>
                 </div>
             </div>
@@ -3450,7 +3450,7 @@
 
                     <div class="space-y-1">
                         <label class="field-label">Base URL da API</label>
-                        <input type="text" x-model="onboardingGc.base_url" placeholder="https://api.gestaoclick.com/franquias" class="input font-mono">
+                        <input type="text" x-model="onboardingGc.base_url" placeholder="https://api.gestaoclick.com" class="input font-mono">
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="space-y-1">
@@ -3892,7 +3892,7 @@
                 onboardingSheetsMsg: '',
                 onboardingManual: { nome: '', cnpj: '', bulk: '' },
                 onboardingGc: {
-                    base_url: 'https://api.gestaoclick.com/franquias',
+                    base_url: 'https://api.gestaoclick.com',
                     access_token: '',
                     secret_token: '',
                     has_saved_tokens: false,
@@ -3937,7 +3937,7 @@
                 alertTimeoutId: null,
                 unseenMentionsCount: 0,
                 lastSeenMentionsTotal: {{ init_data.kpis.mencoes_total if init_data else 0 }},
-                activity: { busy: false, state: 'idle', label: 'Ocioso', next_search: null, retry_at: null, active_jobs: [], last_job: null },
+                activity: { busy: false, state: 'idle', label: 'Ocioso', sync_active: false, sync_started_at: null, sync_elapsed_s: null, next_search: null, retry_at: null, active_jobs: [], last_job: null },
                 activityTimer: null,
                 _wasBusy: false,
                 _lastFinishedJobId: null,
@@ -4587,6 +4587,10 @@
                                 const res1 = await r1.json();
                                 if (r1.ok && res1.status === 'success') {
                                     msgs.push(`GestãoClick: ${res1.message || 'Sincronização iniciada com sucesso'}`);
+                                    this.fetchActivity();
+                                } else if (r1.status === 409) {
+                                    hasError = true;
+                                    msgs.push(`GestãoClick: ${res1.message || 'Já existe uma sincronização do GestãoClick em andamento.'}`);
                                 } else {
                                     hasError = true;
                                     msgs.push(`GestãoClick: ${res1.message || 'Credenciais não configuradas'}`);
@@ -5650,7 +5654,7 @@
 
                     const ak = s.api_keys || {};
                     this.onboardingGc = {
-                        base_url: ak.gestaoclick_base_url || 'https://api.gestaoclick.com/franquias',
+                        base_url: ak.gestaoclick_base_url || 'https://api.gestaoclick.com',
                         access_token: '',
                         secret_token: '',
                         has_saved_tokens: Boolean(ak.gestaoclick_access_token && ak.gestaoclick_secret_token),
@@ -6001,7 +6005,7 @@
 
                 async _saveOnboardingGcSettings() {
                     const ak = {
-                        gestaoclick_base_url: this.onboardingGc.base_url.trim() || 'https://api.gestaoclick.com/franquias',
+                        gestaoclick_base_url: this.onboardingGc.base_url.trim() || 'https://api.gestaoclick.com',
                         gestaoclick_auto_sync: Boolean(this.onboardingGc.auto_sync),
                     };
                     if (this.onboardingGc.access_token.trim()) {

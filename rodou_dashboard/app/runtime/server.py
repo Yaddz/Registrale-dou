@@ -123,6 +123,28 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def reconcile_interrupted_syncs(app) -> bool:
+    """Se o último evento de sincronização ficou em 'Sincronização Iniciada', registra interrupção."""
+    from ..models import SyncHistory
+
+    with app.app_context():
+        last_sync = (
+            SyncHistory.query.filter(
+                (SyncHistory.evento.like("%Sincronização%"))
+                | (SyncHistory.evento.like("%Sync%"))
+            )
+            .order_by(SyncHistory.id.desc())
+            .first()
+        )
+        if last_sync and (last_sync.evento or "").strip() == "Sincronização Iniciada":
+            SyncHistory.log_event(
+                "Erro Sync",
+                "Sincronização interrompida (o programa foi fechado durante a sincronização)",
+            )
+            return True
+        return False
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     """Inicia o servidor local do Registrale-DOU."""
     if hasattr(sys.stdout, "reconfigure"):
@@ -148,6 +170,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             from .scheduler import init_scheduler, shutdown_scheduler
 
             app = create_app()
+            reconcile_interrupted_syncs(app)
             # Vincula o app ao executor já na inicialização: threads de fundo
             # (ex.: busca mensal) não dependem de `flask.current_app`.
             get_executor(app)

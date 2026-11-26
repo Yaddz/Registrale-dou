@@ -927,7 +927,7 @@ class TestNewOptimizedFeatures:
             val['api_keys'] = {
                 'gestaoclick_access_token': 'fake_token_123',
                 'gestaoclick_secret_token': 'fake_secret_456',
-                'gestaoclick_base_url': 'https://api.gestaoclick.com/franquias'
+                'gestaoclick_base_url': 'https://api.gestaoclick.com'
             }
             s.set_value(val)
             db.session.commit()

@@ -240,20 +240,33 @@ def _run_scheduled_gestaoclick_sync() -> None:
     app = _get_app()
     from ..models import SyncHistory
     from ..services.dag_config_service import COMPANY_SYNC_LOCK
-    from ..services.sync_cnpj import executar_sincronizacao
+    from ..services.sync_cnpj import executar_sincronizacao, format_sync_summary
+    from ..services.sync_state import finish_sync, try_start_sync
+
+    if not try_start_sync():
+        logger.info("Sincronização agendada do GestãoClick ignorada: já existe uma sincronização em andamento.")
+        return
 
     logger.info("Executando sincronização agendada do GestãoClick...")
-    with app.app_context():
-        try:
-            with COMPANY_SYNC_LOCK:
-                executar_sincronizacao()
-            from ..routes.admin import clear_admin_caches
+    try:
+        with app.app_context():
+            try:
+                with COMPANY_SYNC_LOCK:
+                    stats = executar_sincronizacao()
+                from ..routes.admin import clear_admin_caches
 
-            clear_admin_caches()
-            SyncHistory.log_event("Sincronização OK", "Sincronização automática do GestãoClick concluída.")
-        except Exception as exc:
-            logger.error("Erro na sincronização agendada do GestãoClick: %s", exc)
-            SyncHistory.log_event("Erro Sync GestãoClick", str(exc))
+                clear_admin_caches()
+                detalhes = (
+                    format_sync_summary(stats)
+                    if isinstance(stats, dict)
+                    else "Sincronização automática do GestãoClick concluída."
+                )
+                SyncHistory.log_event("Sincronização OK", detalhes)
+            except Exception as exc:
+                logger.error("Erro na sincronização agendada do GestãoClick: %s", exc)
+                SyncHistory.log_event("Erro Sync GestãoClick", str(exc))
+    finally:
+        finish_sync()
 
 
 def _run_scheduled_inlabs_load() -> None:

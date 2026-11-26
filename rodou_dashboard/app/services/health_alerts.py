@@ -145,15 +145,39 @@ def history_alerts(rows: Iterable[HistoryRow], now: datetime) -> list[HealthAler
     return alerts
 
 
+SYNC_STALLED_MINUTES = 20
+
+
+def sync_stalled_alerts(now: datetime) -> list[HealthAlert]:
+    """Alerta se uma sincronização (GestãoClick ou planilha) estiver sem resposta há > 20 min."""
+    from .sync_state import get_sync_state
+
+    state = get_sync_state(now=now)
+    elapsed_s = state.get("elapsed_s")
+    if not state.get("any_running") or elapsed_s is None or elapsed_s <= SYNC_STALLED_MINUTES * 60:
+        return []
+    mins = max(SYNC_STALLED_MINUTES, elapsed_s // 60)
+    started_at = _text(state.get("started_at"))
+    return [HealthAlert(
+        id="gestaoclick_sync_stalled",
+        key=f"gestaoclick_sync_stalled@{started_at}",
+        title="Sincronização do GestãoClick sem resposta",
+        message=f"A sincronização do GestãoClick está sem resposta há {mins} min. Use Reiniciar no ícone da bandeja.",
+        settings_tab="integrations",
+        anchor="gestaoclick-settings-card",
+    )]
+
+
 def compute_health_alerts(
     settings: Mapping[str, Any],
     main_dag: Mapping[str, Any],
     history: Sequence[HistoryRow],
     now: Optional[datetime] = None,
 ) -> list[HealthAlert]:
-    """Junta os avisos de configuração e os erros recentes do histórico."""
+    """Junta os avisos de configuração, sincronização travada e erros recentes do histórico."""
     current = now or datetime.now(BRASILIA_TZ)
     alerts = config_alerts(settings, main_dag)
+    alerts.extend(sync_stalled_alerts(current))
     config_ids = {a.id for a in alerts}
     smtp_on = bool((settings.get("smtp") or {}).get("enabled", False))
     for alert in history_alerts(history, current):

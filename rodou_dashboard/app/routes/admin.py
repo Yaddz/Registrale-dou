@@ -371,12 +371,17 @@ def manual_sync_route():
                 "status": "error",
                 "message": "Credenciais do GestãoClick não configuradas. Acesse a aba Configurações > Integrações para cadastrar seu Access Token e Secret Token."
             }), 400
-        
+
+        from ..services.sync_state import finish_sync, try_start_sync
+
+        if not try_start_sync():
+            return jsonify({
+                "status": "error",
+                "message": "Já existe uma sincronização do GestãoClick em andamento."
+            }), 409
+
         def run_sync_in_background(app_context):
-            global _sync_running
-            from ..services.sync_cnpj import executar_sincronizacao
-            with _sync_state_lock:
-                _sync_running = True
+            from ..services.sync_cnpj import executar_sincronizacao, format_sync_summary
             try:
                 import logging
                 logging.info("Iniciando sincronização de CNPJs em segundo plano...")
@@ -385,15 +390,20 @@ def manual_sync_route():
                     # executar_sincronizacao precisa de app context: é ele que grava as
                     # empresas no SQLite e lê as credenciais salvas no dashboard.
                     with app_context:
-                        executar_sincronizacao()
+                        stats = executar_sincronizacao()
                         clear_admin_caches()
                         
+                detalhes = (
+                    format_sync_summary(stats)
+                    if isinstance(stats, dict)
+                    else "Sincronização realizada com sucesso."
+                )
                 from datetime import datetime, timezone, timedelta
                 with app_context:
                     new_event = SyncHistory(
                         data=datetime.now(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M:%S'),
                         evento="Sincronização OK",
-                        detalhes="Sincronização realizada com sucesso."
+                        detalhes=detalhes,
                     )
                     db.session.add(new_event)
                     db.session.commit()
@@ -411,12 +421,15 @@ def manual_sync_route():
                     db.session.add(new_event)
                     db.session.commit()
             finally:
-                with _sync_state_lock:
-                    _sync_running = False
+                finish_sync()
 
         from flask import current_app
         app_context = current_app.app_context()
-        threading.Thread(target=run_sync_in_background, args=(app_context,), daemon=True).start()
+        try:
+            threading.Thread(target=run_sync_in_background, args=(app_context,), daemon=True).start()
+        except Exception:
+            finish_sync()
+            raise
         
         from datetime import datetime, timezone, timedelta
         new_event = SyncHistory(
@@ -437,8 +450,6 @@ import threading
 
 _inlabs_portal_lock = threading.Lock()
 _inlabs_portal_cache = {'time': 0.0, 'ok': True, 'msg': ''}
-_sync_state_lock = threading.Lock()
-_sync_running = False
 
 
 def clear_admin_caches() -> None:
@@ -477,9 +488,10 @@ def get_activity():
     from ..services.dag_config_service import get_next_search_time
     from ..runtime.pdf_archiver import get_pdf_archive_status
     from ..runtime.scheduler import get_scheduler
+    from ..services.sync_state import get_sync_state
 
-    with _sync_state_lock:
-        sync_active = bool(_sync_running)
+    sync_state = get_sync_state()
+    sync_active = bool(sync_state["running"])
 
     active_runs = (
         JobRun.query.filter(JobRun.status.in_(["queued", "running"]))
@@ -543,6 +555,9 @@ def get_activity():
         "busy": busy,
         "state": state,
         "label": label,
+        "sync_active": sync_active,
+        "sync_started_at": sync_state["started_at"],
+        "sync_elapsed_s": sync_state["elapsed_s"],
         "next_search": get_next_search_time(),
         "retry_at": retry_at,
         "active_jobs": [
@@ -1233,7 +1248,11 @@ def test_gestaoclick_route():
 
     import requests
     from ..models import Settings
-    from ..services.sync_cnpj import GESTAOCLICK_DEFAULT_BASE_URL, build_gestaoclick_headers
+    from ..services.sync_cnpj import (
+        GESTAOCLICK_DEFAULT_BASE_URL,
+        build_gestaoclick_headers,
+        normalize_gestaoclick_base_url,
+    )
 
     data = request.get_json(silent=True) or {}
     settings_record = Settings.query.filter_by(key='global_settings').first()
@@ -1241,7 +1260,9 @@ def test_gestaoclick_route():
 
     access_token = str(data.get('gestaoclick_access_token') or ak.get('gestaoclick_access_token') or os.getenv("ACCESS_TOKEN") or '').strip()
     secret_token = str(data.get('gestaoclick_secret_token') or ak.get('gestaoclick_secret_token') or os.getenv("SECRET_ACCESS_TOKEN") or '').strip()
-    base_url = str(data.get('gestaoclick_base_url') or ak.get('gestaoclick_base_url') or os.getenv("BASE_URL") or GESTAOCLICK_DEFAULT_BASE_URL).strip().rstrip('/')
+    base_url = normalize_gestaoclick_base_url(
+        data.get('gestaoclick_base_url') or ak.get('gestaoclick_base_url') or os.getenv("BASE_URL") or GESTAOCLICK_DEFAULT_BASE_URL
+    )
 
     if not access_token or not secret_token:
         return jsonify({"status": "error", "message": "Informe o Access Token e o Secret Access Token do GestãoClick."}), 400

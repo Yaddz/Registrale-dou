@@ -380,7 +380,7 @@ Todas as rotas da API do painel do **Registrale-DOU** requerem que o usuário es
       "auto_sync": true
     },
     "api_keys": {
-      "gestaoclick_base_url": "https://api.gestaoclick.com/franquias"
+      "gestaoclick_base_url": "https://api.gestaoclick.com"
     },
     "inlabs": {
       "user": "usuario_inlabs"

@@ -9,13 +9,13 @@ O painel do **Registrale-DOU** atua como uma ponte de dados entre o ERP corporat
 A integração com o GestãoClick é responsável por manter a base de clientes do monitoramento sempre sincronizada com o ERP comercial da Registrale.
 
 ### Como Funciona o Fluxo de Sincronização:
-1. O backend consome o endpoint paginado `/clientes` da API do GestãoClick (`https://api.gestaoclick.com/franquias/clientes`).
+1. O backend consome o endpoint paginado `/clientes` da API do GestãoClick (`https://api.gestaoclick.com/clientes`).
 2. Autentica via cabeçalhos HTTP:
    * `access-token`: Chave de acesso configurada.
    * `secret-access-token`: Chave secreta de autenticação.
-3. Percorre todas as páginas de clientes e filtra apenas registros que possuem CNPJ válido preenchido.
-4. Normaliza e formata os números de CNPJ (padrão `XX.XXX.XXX/XXXX-XX`).
-5. Persiste as empresas na tabela `Company` do SQLite com `origem = 'gestaoclick'` e `status = True`.
+3. Percorre todas as páginas de clientes e filtra apenas registros que possuem CNPJ válido preenchido (404 ou 401/403 na página 1 e retorno vazio geram erro explícito).
+4. Normaliza e formata os números de CNPJ (padrão `XX.XXX.XXX/XXXX-XX`) e deduplica registros repetidos por `cnpj_norm` (prevalece o último registro ativo, ou o último se nenhum estiver ativo).
+5. Persiste as empresas na tabela `Company` do SQLite com `origem = 'GestãoClick'`. **Regra de precedência:** `Manual` nunca é alterado; `Google Sheets` tem prioridade sobre `GestãoClick` (a planilha atualiza registros do GestãoClick e assume a origem `Google Sheets`, enquanto o GestãoClick só atualiza registros de origem `GestãoClick`).
 6. Divide automaticamente os CNPJs ativos em **blocos escaláveis de até 1.500 empresas** e regrava o arquivo consolidado `Pesquisa_cnpj.yaml`.
 
 ---

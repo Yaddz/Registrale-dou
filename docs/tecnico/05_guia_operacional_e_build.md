@@ -17,7 +17,7 @@ REGISTRALE_DATA_DIR=
 REGISTRALE_INLABS_FALLBACK=pdf
 
 # --- API GestãoClick (opcional; também configurável pelo painel) ---
-BASE_URL=https://api.gestaoclick.com/franquias
+BASE_URL=https://api.gestaoclick.com
 ACCESS_TOKEN=seu_access_token
 SECRET_ACCESS_TOKEN=seu_secret_access_token
 ```

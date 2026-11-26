@@ -6,7 +6,14 @@ import os
 # Add rodou_dashboard to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.services.sync_cnpj import get_monitored_data, formatar_cnpj
+from app.services.sync_cnpj import (
+    GESTAOCLICK_DEFAULT_BASE_URL,
+    GestaoClickError,
+    executar_sincronizacao,
+    formatar_cnpj,
+    get_monitored_data,
+    normalize_gestaoclick_base_url,
+)
 
 class TestSyncCnpj(unittest.TestCase):
 
@@ -50,7 +57,7 @@ class TestSyncCnpj(unittest.TestCase):
         mock_get.side_effect = [page1_resp, page2_resp, page3_resp]
 
         headers = {"access-token": "abc", "secret-access-token": "xyz"}
-        results = get_monitored_data("https://api.gestaoclick.com/franquias", "clientes", headers)
+        results = get_monitored_data("https://api.gestaoclick.com", "clientes", headers)
 
         self.assertEqual(len(results), 4)
         self.assertEqual(results[0]["nome"], "Empresa 1")
@@ -82,7 +89,7 @@ class TestSyncCnpj(unittest.TestCase):
         mock_get.side_effect = [page1_resp, page2_resp]
 
         headers = {"access-token": "abc", "secret-access-token": "xyz"}
-        results = get_monitored_data("https://api.gestaoclick.com/franquias", "clientes", headers)
+        results = get_monitored_data("https://api.gestaoclick.com", "clientes", headers)
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["cnpj"], "12.345.678/0001-95")
@@ -93,7 +100,7 @@ class TestSyncCnpj(unittest.TestCase):
         page1_resp.status_code = 200
         page1_resp.json.return_value = {
             "data": [{"razao_social": "Empresa X", "cnpj": "12345678000195", "ativo": "1"}],
-            "meta": {"proxima_pagina": "https://api.gestaoclick.com/franquias/clientes?pagina=2"}
+            "meta": {"proxima_pagina": "https://api.gestaoclick.com/clientes?pagina=2"}
         }
 
         page2_resp = MagicMock()
@@ -113,7 +120,7 @@ class TestSyncCnpj(unittest.TestCase):
         mock_get.side_effect = [page1_resp, page2_resp, page3_resp]
 
         headers = {"access-token": "abc", "secret-access-token": "xyz"}
-        results = get_monitored_data("https://api.gestaoclick.com/franquias", "clientes", headers)
+        results = get_monitored_data("https://api.gestaoclick.com", "clientes", headers)
 
         self.assertEqual(len(results), 2)
         self.assertEqual(results[0]["nome"], "Empresa X")
@@ -134,9 +141,55 @@ class TestSyncCnpj(unittest.TestCase):
         mock_get.side_effect = [page1_resp, page2_resp]
 
         headers = {"access-token": "abc", "secret-access-token": "xyz"}
-        results = get_monitored_data("https://api.gestaoclick.com/franquias", "clientes", headers)
+        results = get_monitored_data("https://api.gestaoclick.com", "clientes", headers)
 
         self.assertEqual(len(results), 1)
+
+    @patch('app.services.sync_cnpj.time.sleep', return_value=None)
+    @patch('requests.Session.get')
+    def test_get_monitored_data_404_page1_raises(self, mock_get, mock_sleep):
+        page1_resp = MagicMock()
+        page1_resp.status_code = 404
+        mock_get.return_value = page1_resp
+
+        headers = {"access-token": "abc", "secret-access-token": "xyz"}
+        with self.assertRaises(GestaoClickError) as ctx:
+            get_monitored_data("https://api.gestaoclick.com/clientes", "clientes", headers)
+        self.assertIn("404", str(ctx.exception))
+        self.assertIn(GESTAOCLICK_DEFAULT_BASE_URL, str(ctx.exception))
+
+    @patch('app.services.sync_cnpj.time.sleep', return_value=None)
+    @patch('requests.Session.get')
+    def test_get_monitored_data_401_and_403_page1_raises(self, mock_get, mock_sleep):
+        headers = {"access-token": "abc", "secret-access-token": "xyz"}
+        for code in (401, 403):
+            resp = MagicMock()
+            resp.status_code = code
+            mock_get.return_value = resp
+            with self.assertRaises(GestaoClickError) as ctx:
+                get_monitored_data("https://api.gestaoclick.com", "clientes", headers)
+            self.assertIn(f"HTTP {code}", str(ctx.exception))
+
+    def test_normalize_gestaoclick_base_url_strips_clientes(self):
+        self.assertEqual(
+            normalize_gestaoclick_base_url("https://api.gestaoclick.com/clientes/"),
+            "https://api.gestaoclick.com",
+        )
+        self.assertEqual(
+            normalize_gestaoclick_base_url(""),
+            GESTAOCLICK_DEFAULT_BASE_URL,
+        )
+
+    @patch('app.services.sync_cnpj.get_monitored_data', return_value=[])
+    @patch.dict(os.environ, {
+        "BASE_URL": "https://api.gestaoclick.com",
+        "ACCESS_TOKEN": "tok",
+        "SECRET_ACCESS_TOKEN": "sec",
+    })
+    def test_executar_sincronizacao_empty_list_raises(self, mock_get_data):
+        with self.assertRaises(GestaoClickError) as ctx:
+            executar_sincronizacao()
+        self.assertIn("não retornou nenhum cliente", str(ctx.exception))
 
 if __name__ == '__main__':
     unittest.main()

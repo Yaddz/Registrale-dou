@@ -338,9 +338,14 @@ def get_sheet_cnpjs_list(credentials_json=None, spreadsheet_url=None, sheet_name
 
 def executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
     from .dag_config_service import COMPANY_SYNC_LOCK
+    from .sync_state import finish_sheets_sync, start_sheets_sync
 
-    with COMPANY_SYNC_LOCK:
-        return _executar_sincronizacao_sheets(app=app, config_override=config_override)
+    start_sheets_sync()
+    try:
+        with COMPANY_SYNC_LOCK:
+            return _executar_sincronizacao_sheets(app=app, config_override=config_override)
+    finally:
+        finish_sheets_sync()
 
 
 def _executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
@@ -416,6 +421,8 @@ def _executar_sincronizacao_sheets(app=None, config_override=None) -> dict:
                 company.cnpj = cnpj_raw or company.cnpj
                 company.cnpj_norm = cnpj_norm_val
                 company.status = True
+                if company.origem == 'GestãoClick':
+                    company.origem = 'Google Sheets'
                 updated_count += 1
             else:
                 company.status = True

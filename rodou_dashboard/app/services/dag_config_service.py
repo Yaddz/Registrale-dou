@@ -654,7 +654,8 @@ def sync_json_to_db():
             db.session.add(existing)
             count_new += 1
         else:
-            if existing.origem == 'Manual': continue
+            if existing.origem != 'GestãoClick':
+                continue
             existing.nome = emp.get('razao_social', emp.get('nome', existing.nome))
             existing.status = emp.get('status', existing.status)
             count_updated += 1

@@ -31,7 +31,25 @@ def _metadata_file() -> str:
     """Backup JSON da última sincronização, no diretório de dados atual (resolve REGISTRALE_DATA_DIR em tempo de execução)."""
     return os.path.join(str(get_data_dir(create=True)), "monitored_companies.json")
 
-GESTAOCLICK_DEFAULT_BASE_URL = "https://api.gestaoclick.com/franquias"
+GESTAOCLICK_DEFAULT_BASE_URL = "https://api.gestaoclick.com"
+
+
+class GestaoClickError(ValueError):
+    """Erro explícito de comunicação, autenticação ou configuração na API do GestãoClick."""
+
+
+def normalize_gestaoclick_base_url(url_base: str | None) -> str:
+    """Normaliza a URL base sem alterar o valor salvo; remove sufixo '/clientes' indevido."""
+    url = str(url_base or "").strip().rstrip("/")
+    if not url:
+        return GESTAOCLICK_DEFAULT_BASE_URL
+    if url.lower().endswith("/clientes"):
+        logging.warning(
+            "URL base do GestãoClick (%s) termina com '/clientes'; removendo sufixo ao montar a requisição.",
+            url,
+        )
+        url = url[: -len("/clientes")].rstrip("/") or GESTAOCLICK_DEFAULT_BASE_URL
+    return url
 
 
 def build_gestaoclick_headers(access_token: str, secret_token: str) -> dict:
@@ -50,7 +68,8 @@ def formatar_cnpj(cnpj_bruto: str):
 def get_monitored_data(url_base: str, endpoint: str, headers: dict) -> List[Dict]:
     clientes_completos = []
     pagina_atual = 1
-    url_completa = f"{url_base.rstrip('/')}/{endpoint.lstrip('/')}"
+    url_base_norm = normalize_gestaoclick_base_url(url_base)
+    url_completa = f"{url_base_norm.rstrip('/')}/{endpoint.lstrip('/')}"
     
     # Configuração de sessão persistente com retry exponencial automático
     session = requests.Session()
@@ -76,8 +95,18 @@ def get_monitored_data(url_base: str, endpoint: str, headers: dict) -> List[Dict
             )
             
             if resposta.status_code == 404:
+                if pagina_atual == 1:
+                    raise GestaoClickError(
+                        f"A API do GestãoClick respondeu 404 em {url_completa}. "
+                        f"Confira a URL base em Configurações → Integrações (padrão: {GESTAOCLICK_DEFAULT_BASE_URL})."
+                    )
                 logging.info(f"Fim dos registros atingido na página {pagina_atual} (Status 404).")
                 break
+
+            if pagina_atual == 1 and resposta.status_code in (401, 403):
+                raise GestaoClickError(
+                    f"Credenciais do GestãoClick recusadas (HTTP {resposta.status_code})."
+                )
                 
             resposta.raise_for_status()
             
@@ -144,6 +173,8 @@ def get_monitored_data(url_base: str, endpoint: str, headers: dict) -> List[Dict
             # Pequeno intervalo para respeitar o Rate Limit da API
             time.sleep(0.3)
 
+        except GestaoClickError:
+            raise
         except requests.exceptions.RequestException as erro:
             logging.error(f"Erro persistente de rede/API na página {pagina_atual}: {erro}")
             if not clientes_completos:
@@ -161,24 +192,74 @@ def _norm(cnpj: str) -> str:
     return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
 
 
-def salvar_clientes_no_banco(clientes: List[Dict]) -> tuple[int, int]:
-    """Grava os clientes do GestãoClick na tabela companies (origem 'Manual' é preservada).
+def _deduplicar_clientes(clientes: List[Dict]) -> tuple[List[Dict], int]:
+    """Deduplica clientes por cnpj_norm: vence o último ativo; se nenhum for ativo, o último."""
+    por_norm: Dict[str, Dict] = {}
+    repetidos = 0
+    for item in clientes:
+        cnpj = item.get('cnpj')
+        if not cnpj:
+            continue
+        cnpj_norm = _norm(cnpj)
+        if not cnpj_norm:
+            continue
+        status = bool(item.get('status', True))
+        existente = por_norm.get(cnpj_norm)
+        if existente is None:
+            por_norm[cnpj_norm] = item
+            continue
+        repetidos += 1
+        if status or not bool(existente.get('status', True)):
+            por_norm[cnpj_norm] = item
 
-    Requer app context. Retorna (novas, atualizadas).
+    if repetidos > 0:
+        logging.info(
+            "API do GestãoClick retornou %d registro(s) repetido(s) de CNPJ (%d únicos).",
+            repetidos,
+            len(por_norm),
+        )
+    return list(por_norm.values()), repetidos
+
+
+def format_sync_summary(stats: Dict[str, int]) -> str:
+    """Formata o resumo detalhado da sincronização do GestãoClick para o histórico."""
+    unicos = stats.get("unicos", 0)
+    repetidos = stats.get("repetidos", 0)
+    novas = stats.get("novas", 0)
+    atualizadas = stats.get("atualizadas", 0)
+    sem_mudanca = stats.get("sem_mudanca", 0)
+    ignoradas = stats.get("ignoradas", 0)
+    rep_part = f" ({repetidos} repetidos na API)" if repetidos else ""
+    return (
+        f"{unicos} clientes{rep_part}: "
+        f"{novas} novas, {atualizadas} atualizadas, {sem_mudanca} sem mudança, {ignoradas} preservadas."
+    )
+
+
+def salvar_clientes_no_banco(clientes: List[Dict]) -> Dict[str, int]:
+    """Grava os clientes do GestãoClick na tabela companies.
+
+    Empresas com origem diferente de 'GestãoClick' ('Manual' ou 'Google Sheets') são preservadas.
+    Requer app context. Retorna dicionário com contagens detalhadas.
     """
+    deduped, repetidos = _deduplicar_clientes(clientes)
     comp_by_norm = {c.cnpj_norm: c for c in Company.query.all() if c.cnpj_norm}
-    novas, atualizadas = 0, 0
+    novas = 0
+    atualizadas = 0
+    sem_mudanca = 0
+    ignoradas = 0
     try:
-        for item in clientes:
+        for item in deduped:
             cnpj = item.get('cnpj')
             if not cnpj:
                 continue
             cnpj_norm = _norm(cnpj)
-            status = item.get('status', True)
+            nome = item.get('nome', 'N/A')
+            status = bool(item.get('status', True))
             existing = comp_by_norm.get(cnpj_norm)
             if existing is None:
                 new_comp = Company(
-                    nome=item.get('nome', 'N/A'),
+                    nome=nome,
                     cnpj=cnpj,
                     cnpj_norm=cnpj_norm,
                     origem='GestãoClick',
@@ -188,22 +269,34 @@ def salvar_clientes_no_banco(clientes: List[Dict]) -> tuple[int, int]:
                 comp_by_norm[cnpj_norm] = new_comp
                 novas += 1
                 continue
-            if existing.origem == 'Manual':
+            if existing.origem != 'GestãoClick':
+                ignoradas += 1
                 continue
-            existing.nome = item.get('nome', existing.nome)
-            existing.status = status
-            atualizadas += 1
+            if existing.nome != nome or bool(existing.status) != status:
+                existing.nome = nome
+                existing.status = status
+                atualizadas += 1
+            else:
+                sem_mudanca += 1
         db.session.commit()
     except Exception:
         db.session.rollback()
         raise
-    return novas, atualizadas
+    return {
+        "total_api": len(clientes),
+        "unicos": len(deduped),
+        "repetidos": repetidos,
+        "novas": novas,
+        "atualizadas": atualizadas,
+        "sem_mudanca": sem_mudanca,
+        "ignoradas": ignoradas,
+    }
 
 
-def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
+def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]) -> Dict[str, int] | None:
     if not caminho_arquivo:
         logging.error("Caminho do arquivo YAML não fornecido.")
-        return
+        return None
 
     metadata_file = _metadata_file()
     with open(metadata_file, 'w', encoding='utf-8') as f:
@@ -211,16 +304,17 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
     logging.info(f"Metadados salvos em {metadata_file}")
 
     cnpjs_ativos: List[str] | None = None
+    stats: Dict[str, int] | None = None
     if has_app_context():
         # Persistência no SQLite (fonte de verdade). Erros aqui sobem para o chamador
         # registrar "Erro Sync" no histórico em vez de um falso "Sincronização OK".
-        novas, atualizadas = salvar_clientes_no_banco(clientes)
-        logging.info(f"Sync GestãoClick->DB: {novas} novas, {atualizadas} atualizadas")
+        stats = salvar_clientes_no_banco(clientes)
+        logging.info(f"Sync GestãoClick->DB: {format_sync_summary(stats)}")
         try:
             # Reconstrói o YAML preservando as preferências persistidas no SQLite
             rebuild_yaml_from_db()
             logging.info("YAML Pesquisa_cnpj.yaml reconstruído com sucesso a partir do banco de dados.")
-            return
+            return stats
         except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e_reb:
             logging.warning(f"Fallback para montagem padrão do YAML após erro no rebuild_yaml_from_db: {e_reb}")
         cnpjs_ativos = sorted(set(c.cnpj for c in Company.query.filter_by(status=True).all() if c.cnpj))
@@ -316,7 +410,7 @@ def executar_sincronizacao():
                 secret_token = secret_token or ak.get('gestaoclick_secret_token')
                 arquivo_yaml = arquivo_yaml or ak.get('yaml_path')
 
-    url_api = url_api or GESTAOCLICK_DEFAULT_BASE_URL
+    url_api = normalize_gestaoclick_base_url(url_api)
     arquivo_yaml = arquivo_yaml or "Pesquisa_cnpj.yaml"
     if arquivo_yaml and arquivo_yaml.endswith("_sync.yaml"):
         arquivo_yaml = arquivo_yaml.replace("_sync.yaml", ".yaml")
@@ -332,6 +426,6 @@ def executar_sincronizacao():
 
     if not clientes:
         logging.warning("Nenhum dado retornado da API")
-        return
+        raise GestaoClickError("A API do GestãoClick não retornou nenhum cliente.")
     
-    atualizar_configuracoes(arquivo_yaml, clientes)
+    return atualizar_configuracoes(arquivo_yaml, clientes)

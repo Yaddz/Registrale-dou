@@ -28,6 +28,10 @@ Você pode usar uma, duas ou as três fontes ao mesmo tempo. Cada empresa guarda
 
 Para trazer as novidades da planilha ou do ERP na hora, use **Sincronizar bases** (no topo da tela) ou **Sincronizar** (na aba Empresas) e escolha a origem. Com a sincronização automática ligada, isso acontece sozinho.
 
+**Se o mesmo CNPJ estiver em mais de uma origem:**
+- **Manual** sempre vence: nem a planilha nem o GestãoClick alteram uma empresa cadastrada à mão.
+- **Google Sheets** vence sobre o **GestãoClick**: se a planilha tiver um CNPJ que veio do GestãoClick, a planilha atualiza o nome e o status e a origem passa para **Google Sheets**; o GestãoClick não altera empresas que já estão na planilha.
+
 ### Cadastrar uma empresa à mão
 
 1. Abra a aba **Empresas** e clique em **Adicionar empresa**.
