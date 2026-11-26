@@ -202,3 +202,155 @@ def test_email_attach_highlight_default_off_and_attachment(app_ctx, tmp_path: Pa
     assert len(sent_msgs) == 1
     assert "application/pdf" in sent_msgs[0]
     assert "destaque.pdf" in sent_msgs[0]
+
+
+# --- T1: anexo gerado antes do e-mail ------------------------------------------------
+
+def _set_smtp(app, attach: bool, pdf_dir: Path) -> None:
+    rec = Settings.query.filter_by(key="global_settings").first()
+    val = rec.get_value()
+    val["smtp"] = {
+        "enabled": True,
+        "server": "smtp.teste.local",
+        "port": "587",
+        "user": "u@teste.local",
+        "email_attach_highlight": attach,
+    }
+    rec.set_value(val)
+    db.session.commit()
+
+
+def _fake_watch_mentions() -> list[dict]:
+    return [{
+        "id": "m-anexo-1",
+        "empresa": "SURGITEC",
+        "cnpj": "24.684.423/0001-50",
+        "cnpj_norm": "24684423000150",
+        "secao": "DOU - Seção 1",
+        "data": "23/11/2026",
+        "detected_at": "2026-11-23 10:00:00",
+        "trecho": "RESOLUCAO-RE: CNPJ 24.684.423/0002-30",
+        "link": "https://www.in.gov.br/web/dou/-/anexo",
+    }]
+
+
+def _run_watch(app) -> None:
+    from rodou_dashboard.app.routes.dags import watch_dag_and_update_mentions
+
+    watch_dag_and_update_mentions(
+        app.app_context(),
+        [{"dag_id": "Pesquisa_cnpj.yaml", "dag_run_id": None}],
+        "Pesquisa_cnpj.yaml",
+        ["destino@teste.local"],
+        "Assunto teste",
+        "2026-11-23",
+    )
+
+
+def test_watch_attach_on_generates_highlight_before_email(app_ctx, monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    app, pdf_dir = app_ctx
+    _make_3page_pdf(pdf_dir / "2026" / "11" / "DOU_2026-11-23_Secao1.pdf")
+    _set_smtp(app, attach=True, pdf_dir=pdf_dir)
+
+    background: list[list[str]] = []
+    monkeypatch.setattr(
+        "rodou_dashboard.app.runtime.pdf_highlight.schedule_highlight_generation",
+        lambda _app, ids: background.append(list(ids)),
+    )
+    with patch("rodou_dashboard.app.routes.dags.fetch_mentions_from_dag_run", return_value=_fake_watch_mentions()), \
+         patch("rodou_dashboard.app.services.email_service.EmailSender.send_custom_email", return_value=True) as mock_send:
+        _run_watch(app)
+
+    assert mock_send.call_count == 1
+    attachments = mock_send.call_args.kwargs.get("attachments")
+    assert attachments and len(attachments) == 1
+    assert Path(attachments[0]).is_file()
+    assert Path(attachments[0]).name == "24684423_m-anexo-1.pdf"
+    # A menção do e-mail foi gerada de forma síncrona, não enviada para o fundo.
+    assert all("m-anexo-1" not in ids for ids in background)
+    # Nenhum arquivo temporário sobrou.
+    assert not list((pdf_dir / "destaques").rglob("*.tmp"))
+
+
+def test_watch_attach_off_keeps_background_only(app_ctx, monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    app, pdf_dir = app_ctx
+    _make_3page_pdf(pdf_dir / "2026" / "11" / "DOU_2026-11-23_Secao1.pdf")
+    _set_smtp(app, attach=False, pdf_dir=pdf_dir)
+
+    background: list[list[str]] = []
+    sync_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "rodou_dashboard.app.runtime.pdf_highlight.schedule_highlight_generation",
+        lambda _app, ids: background.append(list(ids)),
+    )
+    monkeypatch.setattr(
+        "rodou_dashboard.app.runtime.pdf_highlight.generate_highlights_with_deadline",
+        lambda _app, ids, _t=60.0: sync_calls.append(list(ids)) or True,
+    )
+    with patch("rodou_dashboard.app.routes.dags.fetch_mentions_from_dag_run", return_value=_fake_watch_mentions()), \
+         patch("rodou_dashboard.app.services.email_service.EmailSender.send_custom_email", return_value=True) as mock_send:
+        _run_watch(app)
+
+    assert mock_send.call_count == 1
+    assert "attachments" not in mock_send.call_args.kwargs
+    assert sync_calls == []
+    assert background == [["m-anexo-1"]]
+
+
+def test_deadline_helper_returns_false_when_slow(app_ctx, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+    from rodou_dashboard.app.runtime import pdf_highlight
+
+    app, _pdf_dir = app_ctx
+    release = threading.Event()
+    monkeypatch.setattr(pdf_highlight, "generate_highlights_for_ids", lambda _a, _ids: release.wait(5))
+    try:
+        assert pdf_highlight.generate_highlights_with_deadline(app, ["x"], timeout_seconds=0.05) is False
+    finally:
+        release.set()
+    monkeypatch.setattr(pdf_highlight, "generate_highlights_for_ids", lambda _a, _ids: 0)
+    assert pdf_highlight.generate_highlights_with_deadline(app, ["x"], timeout_seconds=2) is True
+
+
+# --- T2: página certa quando a empresa aparece em mais de uma matéria ---------------
+
+def _make_two_acts_pdf(dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    c = canvas.Canvas(str(dest))
+    c.drawString(72, 720, "PORTARIA No 10 - Concede registro de produto a empresa")
+    c.drawString(72, 700, "SURGITEC LTDA, CNPJ 24.684.423/0001-50, para equipamento cirurgico.")
+    c.showPage()
+    c.drawString(72, 720, "Pagina 2 - Diario Oficial sem ocorrencia relevante.")
+    c.showPage()
+    c.drawString(72, 720, "RESOLUCAO-RE No 99 - Cancela autorizacao de funcionamento da")
+    c.drawString(72, 700, "SURGITEC LTDA, CNPJ 24.684.423/0002-30, por solicitacao da interessada.")
+    c.save()
+
+
+def test_highlight_picks_page_matching_mention_excerpt(app_ctx) -> None:
+    _app, pdf_dir = app_ctx
+    _make_two_acts_pdf(pdf_dir / "2026" / "11" / "DOU_2026-11-23_Secao1.pdf")
+
+    def _page_of(mention_id: str, abstract: str | None) -> str:
+        out = generate_highlight_pdf_for_mention(
+            mention_id=mention_id,
+            cnpj="24.684.423/0001-50",
+            date_str="23/11/2026",
+            section_str="DOU - Seção 1",
+            pdf_folder=pdf_dir,
+            abstract=abstract,
+        )
+        assert out is not None
+        return PdfReader(out).pages[0].extract_text() or ""
+
+    p_portaria = _page_of("m-portaria", "...Concede registro de produto a empresa SURGITEC LTDA, CNPJ 24.684.423/0001-50, para equipamento...")
+    p_resolucao = _page_of("m-resolucao", "...Cancela autorizacao de funcionamento da SURGITEC LTDA, CNPJ 24.684.423/0002-30, por solicitacao da interessada...")
+    p_sem_trecho = _page_of("m-sem", "texto que nao aparece em pagina nenhuma do arquivo")
+
+    assert "PORTARIA" in p_portaria
+    assert "RESOLUCAO-RE" in p_resolucao
+    assert "PORTARIA" in p_sem_trecho  # sem trecho que bata, mantém a primeira página

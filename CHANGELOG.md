@@ -23,6 +23,8 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - Submenu de Configurações (abaixo de 1280 px) passa a exibir degradê nas bordas e setas (`chevron-left`/`chevron-right`) quando há pílulas fora da área visível, rolando automaticamente para manter a seção ativa visível.
 
 ### Corrigido
+- **Anexo da página destacada no e-mail nunca era anexado.** A geração rodava em segundo plano e o e-mail saía antes de o arquivo existir. Com `email_attach_highlight` ligado e e-mail a enviar, as páginas das menções do e-mail são geradas antes do envio (até 60 s no total; o que não ficar pronto vai sem anexo e o log diz quantas ficaram de fora). As demais continuam em segundo plano; com a opção desligada nada muda. Arquivo temporário com nome único evita colisão entre as duas gerações.
+- **Página destacada errada quando a empresa aparece em mais de uma matéria do dia.** Entre as páginas com a raiz do CNPJ, passa a valer a que contém um trecho (≈ 50 caracteres) do resumo gravado da menção; sem trecho que bata, continua a primeira.
 - **Histórico de buscas quando o envio de e-mail falha:** buscas diárias e mensais passam a registrar `Busca Concluída` (ou `Busca Concluída com Pendências`) / `Busca Mensal Concluída` antes do evento `Erro Envio E-mail`, preservando todas as menções gravadas no banco.
 - **Siglas de órgão em rotinas personalizadas antigas:** o executor local expande siglas de `department` em memória ao carregar qualquer rotina (`runner.load_specs`), sem exigir que a rotina seja salva novamente.
 - Isolamento de `tests/local/`: fixture `autouse` em `tests/local/conftest.py` redireciona `REGISTRALE_DATA_DIR` e `REGISTRALE_LOGS_DIR` para `tmp_path`.

@@ -14,7 +14,9 @@ from pathlib import Path
 import re
 import sys
 import threading
-from typing import Any, List, Optional, Tuple
+import time
+from typing import Any, Iterable, List, Optional, Tuple
+from uuid import uuid4
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Highlight
@@ -42,6 +44,54 @@ def _normalize_date_iso_safe(raw_date: Optional[str]) -> str:
         except ValueError:
             continue
     return "sem-data"
+
+
+_SNIPPET_LEN = 50
+_SNIPPET_MIN = 20
+
+
+def _compact_for_match(text: str) -> str:
+    """Caixa baixa e sem espaços: o texto do PDF quebra linhas onde a API não quebra."""
+    return re.sub(r"\s+", "", str(text or "")).casefold()
+
+
+def _snippet_candidates(hints: Iterable[Optional[str]]) -> List[str]:
+    """Trechos de ~50 caracteres do título/resumo da menção para achar a página certa.
+
+    O ``trecho`` gravado é centralizado no CNPJ e pode começar/terminar com
+    ``...``; usamos o começo e o fim (sem as reticências), já compactados.
+    """
+    out: List[str] = []
+    for hint in hints:
+        raw = re.sub(r"\s+", " ", str(hint or "")).strip().strip(".").strip()
+        if not raw:
+            continue
+        for piece in (raw[:_SNIPPET_LEN], raw[-_SNIPPET_LEN:]):
+            compact = _compact_for_match(piece)
+            if len(compact) >= _SNIPPET_MIN and compact not in out:
+                out.append(compact)
+    return out
+
+
+def _pick_target_page(pages_text: List[str], root: str, hints: Iterable[Optional[str]]) -> Optional[int]:
+    """Índice da página com a raiz do CNPJ; entre várias, a que contém o trecho da menção."""
+    _ensure_src_utils()
+    from utils.cnpj import find_company_mentions
+    from .pdf_search import normalize_page_text
+
+    candidates: List[Tuple[int, str]] = []
+    for idx, page_text in enumerate(pages_text):
+        flat_page = normalize_page_text(page_text or "")
+        if find_company_mentions(flat_page, root):
+            candidates.append((idx, _compact_for_match(page_text)))
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        for snippet in _snippet_candidates(hints):
+            for idx, compact_page in candidates:
+                if snippet in compact_page:
+                    return idx
+    return candidates[0][0]
 
 
 def _collect_highlight_rects(page: Any, pattern: re.Pattern[str]) -> List[Tuple[float, float, float, float]]:
@@ -89,16 +139,21 @@ def generate_highlight_pdf_for_mention(
     section_str: Optional[str],
     source_pdf_path: Optional[str] = None,
     pdf_folder: Optional[Path] = None,
+    title: Optional[str] = None,
+    abstract: Optional[str] = None,
 ) -> Optional[str]:
     """Gera `<pasta_pdfs>/destaques/<AAAA-MM-DD>/<raiz>_<id>.pdf` e retorna o caminho.
+
+    Quando a raiz aparece em mais de uma página, ``title``/``abstract`` (o
+    trecho gravado da menção) escolhem a página da matéria certa.
 
     Retorna ``None`` se não houver PDF integral arquivado ou se o CNPJ não for
     localizado nas páginas do arquivo.
     """
     _ensure_src_utils()
-    from utils.cnpj import cnpj_root, company_regex, find_company_mentions
+    from utils.cnpj import cnpj_root, company_regex
     from .pdf_archiver import get_pdf_archive_config, resolve_pdf_for_mention
-    from .pdf_search import extract_pages_text, normalize_page_text
+    from .pdf_search import extract_pages_text
 
     root = cnpj_root(cnpj or "")
     if not root:
@@ -123,13 +178,7 @@ def generate_highlight_pdf_for_mention(
         logger.warning("Não foi possível ler páginas de %s: %s", resolved_source, exc)
         return None
 
-    target_page_idx: Optional[int] = None
-    for idx, page_text in enumerate(pages_text):
-        flat_page = normalize_page_text(page_text or "")
-        if find_company_mentions(flat_page, root):
-            target_page_idx = idx
-            break
-
+    target_page_idx = _pick_target_page(pages_text, root, (title, abstract))
     if target_page_idx is None:
         return None
 
@@ -158,7 +207,8 @@ def generate_highlight_pdf_for_mention(
     out_dir = base_folder / "destaques" / iso_date
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{root}_{_sanitize_filename_part(mention_id)}.pdf"
-    tmp_path = out_path.with_suffix(".pdf.tmp")
+    # Nome temporário único: a geração síncrona (anexo do e-mail) e a de fundo podem coincidir.
+    tmp_path = out_dir / f"{out_path.name}.{uuid4().hex}.tmp"
     with open(tmp_path, "wb") as fh:
         writer.write(fh)
     os.replace(tmp_path, out_path)
@@ -186,6 +236,7 @@ def generate_highlights_for_ids(app: Any, mention_ids: List[str]) -> int:
                     date_str=mention.data,
                     section_str=mention.secao,
                     source_pdf_path=mention.pdf_path,
+                    abstract=mention.trecho,
                 )
                 if out_path:
                     mention.highlight_pdf_path = out_path
@@ -207,3 +258,26 @@ def schedule_highlight_generation(app: Any, mention_ids: List[str]) -> None:
         args=(app, ids),
         daemon=True,
     ).start()
+
+
+def generate_highlights_with_deadline(app: Any, mention_ids: List[str], timeout_seconds: float = 60.0) -> bool:
+    """Gera as páginas destacadas esperando no máximo ``timeout_seconds``.
+
+    Usado antes do e-mail quando o anexo está ligado. Se o prazo estourar, a
+    geração continua em segundo plano (a thread não é interrompida) e o que não
+    ficou pronto vai sem anexo. Retorna ``True`` se terminou dentro do prazo.
+    """
+    ids = [str(mid) for mid in (mention_ids or []) if mid]
+    if not ids or app is None:
+        return True
+    worker = threading.Thread(target=generate_highlights_for_ids, args=(app, ids), daemon=True)
+    started = time.monotonic()
+    worker.start()
+    worker.join(timeout=max(0.0, float(timeout_seconds)))
+    finished = not worker.is_alive()
+    if not finished:
+        logger.warning(
+            "Páginas destacadas: prazo de %.0f s esgotado após %.1f s; o restante segue em segundo plano.",
+            timeout_seconds, time.monotonic() - started,
+        )
+    return finished

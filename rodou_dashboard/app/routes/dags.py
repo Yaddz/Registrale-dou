@@ -935,7 +935,41 @@ def _dispatch_routine(dag_id, logical_date=None, yaml_dict=None):
         return False, str(exc), {"dag_id": dag_id, "dag_run_id": None}
 
 
-def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None, notify_only_new=False):
+HIGHLIGHT_EMAIL_TIMEOUT_SECONDS = 60.0
+
+
+def _prepare_highlight_pdfs(highlight_ids, relevant_mentions, will_email, routine_name=""):
+    """Dispara as páginas destacadas e diz se o e-mail deve anexá-las.
+
+    Com ``email_attach_highlight`` ligado e e-mail a enviar, as menções do
+    e-mail são geradas antes (até 60 s no total) e o resto vai para segundo
+    plano. Caso contrário tudo vai para segundo plano, sem atrasar o e-mail.
+    """
+    from ..runtime.pdf_highlight import generate_highlights_with_deadline, schedule_highlight_generation
+    from ..services.email_service import is_email_attach_highlight_enabled
+
+    ids = [str(i) for i in (highlight_ids or []) if i]
+    attach = bool(will_email) and is_email_attach_highlight_enabled()
+    try:
+        app_obj = current_app._get_current_object()
+    except RuntimeError:
+        return attach
+    sync_ids = []
+    if attach:
+        rel = {str(m.get('id')) for m in (relevant_mentions or []) if m.get('id')}
+        sync_ids = [i for i in ids if i in rel]
+    background_ids = [i for i in ids if i not in set(sync_ids)]
+    try:
+        if sync_ids:
+            generate_highlights_with_deadline(app_obj, sync_ids, HIGHLIGHT_EMAIL_TIMEOUT_SECONDS)
+        if background_ids:
+            schedule_highlight_generation(app_obj, background_ids)
+    except Exception as exc:
+        logging.warning(f"[Watcher {routine_name}] Falha ao disparar páginas destacadas: {exc}")
+    return attach
+
+
+def watch_dag_and_update_mentions(app_context,runs_to_watch, routine_name, routine_emails=None, routine_subject=None, logical_date=None, target_terms=None, trigger_time_str=None, notify_only_new=False):
     import time
     import logging
     from datetime import datetime, timezone, timedelta
@@ -1010,19 +1044,16 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                             existing.pdf_path = pdf_path
                 db.session.commit()
                 clear_mentions_cache()
-                if m_ids:
-                    from flask import current_app
-                    from ..runtime.pdf_highlight import schedule_highlight_generation
-                    try:
-                        schedule_highlight_generation(current_app._get_current_object(), list(m_ids))
-                    except Exception:
-                        pass
+                # Páginas destacadas: disparadas mais abaixo, depois de saber se o
+                # e-mail vai precisar delas como anexo (geração síncrona com prazo).
+                highlight_ids = list(m_ids)
                 relevant_mentions = direct_mentions
                 if notify_only_new:
                     # Nova tentativa do dia: só avisa o que ainda não tinha sido gravado/enviado.
                     relevant_mentions = [m for m in direct_mentions if m.get('id') in new_mention_ids]
             else:
                 clear_mentions_cache()
+                highlight_ids = []
                 relevant_mentions = []
 
             # Filtragem opcional de termos para rotinas com termos específicos
@@ -1062,6 +1093,12 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
             email_failed = False
             smtp_enabled = is_smtp_enabled()
             smtp_ready = smtp_enabled and is_smtp_ready()
+            attach_highlight = _prepare_highlight_pdfs(
+                highlight_ids,
+                relevant_mentions,
+                will_email=bool(smtp_ready and emails and relevant_mentions),
+                routine_name=routine_name,
+            )
             if not smtp_enabled:
                 add_history_event(
                     "E-mail desativado",
@@ -1088,16 +1125,23 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 )
                 email_error_msg = None
                 try:
-                    from ..services.email_service import is_email_attach_highlight_enabled
                     attachments = []
-                    if is_email_attach_highlight_enabled():
+                    if attach_highlight:
                         rel_ids = [m.get('id') for m in relevant_mentions if m.get('id')]
                         if rel_ids:
+                            # A geração rodou em outra thread/sessão: relê do banco.
+                            db.session.expire_all()
                             attachments = [
                                 row.highlight_pdf_path
                                 for row in Mention.query.filter(Mention.id.in_(rel_ids)).all()
                                 if row.highlight_pdf_path and os.path.isfile(row.highlight_pdf_path)
                             ]
+                            missing = len(rel_ids) - len(attachments)
+                            if missing:
+                                logging.info(
+                                    f"[Watcher {routine_name}] {missing} de {len(rel_ids)} menção(ões) "
+                                    "vão sem a página destacada anexada (sem PDF arquivado, CNPJ não localizado ou prazo de 60 s esgotado)."
+                                )
                     sender = EmailSender(None)
                     if attachments:
                         sender.send_custom_email(
