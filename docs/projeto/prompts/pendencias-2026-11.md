@@ -32,7 +32,7 @@ razão social, segredos em `GET /api/settings` e geração/aplicação do instal
 
 | Etapa | Pendências | Tamanho | Pode começar quando |
 |---|---|---|---|
-| 0 | Commitar o trabalho atual (pend. 7) | P | Agora, com autorização |
+| 0 | Commitar o trabalho atual (pend. 7) | — | **Concluída em 25/11** (commits `7354fab` e `61b0e85`); pule |
 | 1 | Sincronização do GestãoClick (pend. 1 a 6) | M | Etapa 0 feita (ou recusada) |
 | 2 | Histórico de buscas e filtro de órgão (pend. 10 e 11) | P | Etapa 1 revisada |
 | 3 | Isolamento de testes e interface (pend. 12, 13 e 14) | P | Etapa 1 revisada (paralela à 2, sem tocar nos mesmos arquivos) |
