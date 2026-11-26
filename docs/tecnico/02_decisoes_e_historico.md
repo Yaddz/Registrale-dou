@@ -20,6 +20,7 @@ Registro do que foi decidido na migração do Registrale-DOU para aplicativo Win
 | Diretórios | Programa em `%LOCALAPPDATA%\Programs\Registrale`; dados em `%LOCALAPPDATA%\Registrale`; PDFs em `Documentos\Registrale\DOU` (configurável) | Atualizar ou reinstalar não apaga dados |
 | Atualização | Verificação nas Releases do GitHub + instalador validado por SHA-256 | Simples e auditável |
 | Lista de clientes | `dag_confs/Pesquisa_cnpj.yaml` é gerado pelo painel, fica fora do git e é removido do pacote pelo `build.ps1` | Não distribuir CNPJs de clientes no instalador |
+| Releases e numeração | Em 26/11/2026 as releases e tags `v1.0.0` a `v1.3.2` foram apagadas do GitHub e a numeração recomeçou na `v1.0.0` (commit `7e2c4f0`, instalador gerado pelo CI). O histórico do git continua com a lista antiga de CNPJs (sem reescrita, por decisão do usuário). Uma instalação 1.3.2 precisa instalar a 1.0.0 por cima uma vez, porque o atualizador só oferece números maiores | O instalador da antiga `v1.0.0` continha a lista de CNPJs de clientes |
 | Padrões da rotina principal | Seções 1, 2, 3 e Extra; `department: []`; `is_exact_search: false`; `field: TUDO`; 8h em dias úteis | Mesma cobertura da baseline; filtro de órgão escondeu menções reais da Seção 3 (hotfix 1.3.1) |
 | Filtro de órgão | Siglas convertidas para o nome oficial do DOU ao gravar o YAML (`services/organ_aliases.py`); o SQLite guarda o que o usuário digitou | O núcleo compara com o nome em `hierarchyList` |
 | SMTP | Desligado por padrão; sem servidor, nada é enviado e um único evento é registrado | Evita "conexão recusada" a cada busca em instalações sem e-mail |
@@ -70,7 +71,6 @@ Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/
 
 - **Nova tentativa automática no uso real:** a cadeia completa foi validada por simulação de ponta a ponta em 26/11/2026 (seção 3). Falta observar no PC do analista um dia real com seção publicada tarde (horário real do DOU e agendador rodando horas seguidas).
 - **Perfil `user` (consulta) não é só leitura no servidor** (achado no checklist de 26/11/2026): `DELETE /api/mentions` e `POST /api/sync` só exigem login, e a interface mostra a lixeira das menções e o "Sincronizar bases" para esse perfil. Decidir se `user` deve ser somente leitura e, se sim, exigir `master` nessas rotas e esconder os botões.
-- **Histórico do git:** uma lista antiga de CNPJs (`dag_confs/Pesquisa_cnpj.yaml`) continua no histórico e no instalador da release `v1.0.0`. Opções: manter, substituir o asset da release ou reescrever o histórico (`git filter-repo` + force-push coordenado).
 
 ## 5. Backlog
 
