@@ -63,10 +63,12 @@ def get_sync_state(now: Optional[datetime] = None) -> dict[str, Any]:
         sh_running = bool(_sheets_sync_running)
         sh_started = _sheets_sync_started_at
 
-    started = gc_started if gc_running else (sh_started if sh_running else None)
-    elapsed_s: Optional[int] = None
-    if started is not None:
-        elapsed_s = max(0, int((current - started).total_seconds()))
+    def _elapsed(start: Optional[datetime]) -> Optional[int]:
+        return max(0, int((current - start).total_seconds())) if start is not None else None
+
+    gc_started = gc_started if gc_running else None
+    sh_started = sh_started if sh_running else None
+    started = gc_started if gc_running else sh_started
 
     return {
         "running": gc_running,
@@ -74,7 +76,12 @@ def get_sync_state(now: Optional[datetime] = None) -> dict[str, Any]:
         "any_running": gc_running or sh_running,
         "started_at": started.isoformat() if started is not None else None,
         "started_at_dt": started,
-        "elapsed_s": elapsed_s,
+        "elapsed_s": _elapsed(started),
+        # Cada origem separada, para o aviso de travamento dizer qual está parada.
+        "gestaoclick_started_at": gc_started.isoformat() if gc_started is not None else None,
+        "gestaoclick_elapsed_s": _elapsed(gc_started),
+        "sheets_started_at": sh_started.isoformat() if sh_started is not None else None,
+        "sheets_elapsed_s": _elapsed(sh_started),
     }
 
 

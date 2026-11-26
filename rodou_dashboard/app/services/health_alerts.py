@@ -153,19 +153,27 @@ def sync_stalled_alerts(now: datetime) -> list[HealthAlert]:
     from .sync_state import get_sync_state
 
     state = get_sync_state(now=now)
-    elapsed_s = state.get("elapsed_s")
-    if not state.get("any_running") or elapsed_s is None or elapsed_s <= SYNC_STALLED_MINUTES * 60:
-        return []
-    mins = max(SYNC_STALLED_MINUTES, elapsed_s // 60)
-    started_at = _text(state.get("started_at"))
-    return [HealthAlert(
-        id="gestaoclick_sync_stalled",
-        key=f"gestaoclick_sync_stalled@{started_at}",
-        title="Sincronização do GestãoClick sem resposta",
-        message=f"A sincronização do GestãoClick está sem resposta há {mins} min. Use Reiniciar no ícone da bandeja.",
-        settings_tab="integrations",
-        anchor="gestaoclick-settings-card",
-    )]
+    sources = (
+        # (prefixo do estado, id do aviso, nome exibido, aba, âncora)
+        ("gestaoclick", "gestaoclick_sync_stalled", "GestãoClick", "integrations", "gestaoclick-settings-card"),
+        ("sheets", "sheets_sync_stalled", "Google Sheets", "google_sheets", ""),
+    )
+    alerts: list[HealthAlert] = []
+    for prefix, alert_id, label, tab, anchor in sources:
+        elapsed_s = state.get(f"{prefix}_elapsed_s")
+        if elapsed_s is None or elapsed_s <= SYNC_STALLED_MINUTES * 60:
+            continue
+        mins = max(SYNC_STALLED_MINUTES, elapsed_s // 60)
+        started_at = _text(state.get(f"{prefix}_started_at"))
+        alerts.append(HealthAlert(
+            id=alert_id,
+            key=f"{alert_id}@{started_at}",
+            title=f"Sincronização do {label} sem resposta",
+            message=f"A sincronização do {label} está sem resposta há {mins} min. Use Reiniciar no ícone da bandeja.",
+            settings_tab=tab,
+            anchor=anchor,
+        ))
+    return alerts
 
 
 def compute_health_alerts(

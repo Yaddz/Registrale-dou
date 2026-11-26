@@ -310,3 +310,37 @@ def test_activity_e_health_alert_sync_travada_e_interrompida(app_ctx):
     assert "Sincronização interrompida (o programa foi fechado durante a sincronização)" in ultimo.detalhes
     # Segunda chamada não duplica
     assert reconcile_interrupted_syncs(app_ctx) is False
+
+
+def test_health_alert_sync_travada_identifica_planilha_e_gestaoclick(app_ctx):
+    from rodou_dashboard.app.services.health_alerts import BRASILIA_TZ, sync_stalled_alerts
+
+    t0 = datetime(2026, 11, 25, 14, 0, 0, tzinfo=BRASILIA_TZ)
+    sync_state.reset_sync_state()
+    try:
+        # Só a planilha parada -> aviso fala em Google Sheets e leva à aba da planilha
+        sync_state.start_sheets_sync(now=t0)
+        alerts = sync_stalled_alerts(t0 + timedelta(minutes=25))
+        assert [a.id for a in alerts] == ["sheets_sync_stalled"]
+        sheets = alerts[0]
+        assert "Google Sheets" in sheets.title and "GestãoClick" not in sheets.title
+        assert "Google Sheets" in sheets.message and "25 min" in sheets.message
+        assert sheets.key == f"sheets_sync_stalled@{t0.isoformat()}"
+        assert sheets.settings_tab == "google_sheets"
+
+        # As duas paradas -> um aviso para cada, com o tempo de cada uma
+        t1 = t0 + timedelta(minutes=5)
+        assert sync_state.try_start_sync(now=t1) is True
+        alerts = sync_stalled_alerts(t0 + timedelta(minutes=26))
+        by_id = {a.id: a for a in alerts}
+        assert set(by_id) == {"gestaoclick_sync_stalled", "sheets_sync_stalled"}
+        assert "GestãoClick" in by_id["gestaoclick_sync_stalled"].title
+        assert "21 min" in by_id["gestaoclick_sync_stalled"].message
+        assert "26 min" in by_id["sheets_sync_stalled"].message
+
+        # Só o GestãoClick parado -> nenhum aviso de planilha
+        sync_state.finish_sheets_sync()
+        alerts = sync_stalled_alerts(t0 + timedelta(minutes=30))
+        assert [a.id for a in alerts] == ["gestaoclick_sync_stalled"]
+    finally:
+        sync_state.reset_sync_state()
