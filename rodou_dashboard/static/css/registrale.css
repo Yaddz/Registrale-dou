@@ -142,6 +142,9 @@ table, .tabular { font-variant-numeric: tabular-nums; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* Peso máximo 600 (design system): <b>, <strong> e <th> vinham com 700 do navegador/preflight */
+html :is(b, strong, th) { font-weight: 600; }
+
 /* O realce amarelo dos e-mails não aparece no painel */
 .highlight, mark {
     background-color: transparent !important;

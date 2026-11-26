@@ -59,6 +59,7 @@ uv run pytest tests/local/test_parity_nov2026.py -m live -v   # ~20 min, rede re
 | Execução real fora do pytest (Windows) | Aprovado | `launcher.pyw` + busca de 23/11 pelo PDF: 4 menções |
 | INLABS real (3 dias baixados) | **Pendência aceita** | Portal em "Manutenção Programada"; coberto só por testes offline |
 | 5 dias úteis de agendamento e de PDFs no PC do analista | **Pendência aceita** | Acompanhar no uso real; um dia sem e-mail ou sem PDF reabre o item |
+| Checklist de interface (seção 7 de `06_design_system.md`) com login ligado — 26/11/2026 | Aprovado após correções | Cópia dos dados (porta 5056, e-mail/sincronizações/rotina principal desligados), usuários de teste `master` e `user`, 800/1024/1280/1920 px, claro e escuro: 15 telas por combinação no master (7 abas + 9 subabas de Configurações) e 6 no `user` (Configurações some do menu), além da tela de login nos dois temas. Verificação automática por tela: sem rolagem horizontal da página, sem elemento fora da largura, nenhum ícone Lucide sem renderizar, nenhum texto < 11 px, nenhum peso > 600. Corrigido no caminho: setas das pílulas de Configurações nunca apareciam ao abrir a aba pelo menu (o cálculo rodava com a seção oculta; agora um `ResizeObserver` recalcula) e o degradê delas era invisível (classe Tailwind não gerada; trocado por `linear-gradient` com `var(--bg)`); `<b>`, `<strong>` e `<th>` saíam com peso 700 (regra base `font-weight: 600`); lixeira sem ícone na linha de usuário recém-criado. Achado não corrigido: com o perfil `user` (consulta) o servidor ainda aceita excluir menções (`DELETE /api/mentions`) e disparar sincronização (`POST /api/sync`), e os botões aparecem — ver seção 4 |
 
 Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/11/2026.
 
@@ -67,6 +68,7 @@ Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/
 ## 4. Pendências conhecidas
 
 - **Nova tentativa automática ao vivo:** o status "Concluída com pendências" e o reagendamento foram validados por testes, não numa busca real à tarde.
+- **Perfil `user` (consulta) não é só leitura no servidor** (achado no checklist de 26/11/2026): `DELETE /api/mentions` e `POST /api/sync` só exigem login, e a interface mostra a lixeira das menções e o "Sincronizar bases" para esse perfil. Decidir se `user` deve ser somente leitura e, se sim, exigir `master` nessas rotas e esconder os botões.
 - **Histórico do git:** uma lista antiga de CNPJs (`dag_confs/Pesquisa_cnpj.yaml`) continua no histórico e no instalador da release `v1.0.0`. Opções: manter, substituir o asset da release ou reescrever o histórico (`git filter-repo` + force-push coordenado).
 
 ## 5. Backlog

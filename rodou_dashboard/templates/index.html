@@ -676,9 +676,9 @@
                 <h2 class="text-xl font-semibold tracking-tight mb-4 xl:mb-6">Configurações</h2>
                 <div class="relative xl:static"
                      x-data="{ canLeft: false, canRight: false, update() { const n = this.$refs.nav; if (!n) return; this.canLeft = n.scrollLeft > 4; this.canRight = n.scrollLeft + n.clientWidth < n.scrollWidth - 4; }, scrollBy(dx) { this.$refs.nav?.scrollBy({ left: dx, behavior: 'smooth' }); } }"
-                     x-init="$nextTick(() => update()); $watch('activeTab', () => $nextTick(() => update())); $watch('settingsSubTab', () => $nextTick(() => { const el = this.$refs.nav?.querySelector('[data-active=true]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); setTimeout(() => update(), 150); }))"
+                     x-init="$nextTick(() => update()); if (window.ResizeObserver && $refs.nav) new ResizeObserver(() => update()).observe($refs.nav); $watch('activeTab', () => $nextTick(() => update())); $watch('settingsSubTab', () => $nextTick(() => { const el = this.$refs.nav?.querySelector('[data-active=true]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); setTimeout(() => update(), 150); }))"
                      @resize.window="update()">
-                    <div x-show="canLeft" x-cloak class="xl:hidden absolute left-0 top-0 bottom-2 z-10 flex items-center pr-4 bg-gradient-to-r from-[var(--bg)] via-[var(--bg)]/90 to-transparent pointer-events-none">
+                    <div x-show="canLeft" x-cloak class="xl:hidden absolute left-0 top-0 bottom-2 z-10 flex items-center pr-4 pointer-events-none" style="background: linear-gradient(to right, var(--bg) 65%, transparent)">
                         <button type="button" @click="scrollBy(-180)" class="btn btn-secondary btn-sm btn-icon pointer-events-auto shadow-sm" aria-label="Rolar seções para a esquerda" title="Rolar para a esquerda">
                             <i data-lucide="chevron-left"></i>
                         </button>
@@ -694,7 +694,7 @@
                     <button type="button" :data-active="(settingsSubTab === 'logs').toString()" @click="settingsSubTab = 'logs'; fetchSystemLogs();" :class="settingsSubTab === 'logs' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-text" class="w-4 h-4"></i> Logs do sistema</button>
                     <button type="button" :data-active="(settingsSubTab === 'system').toString()" @click="settingsSubTab = 'system'; fetchSystemUpdateInfo();" :class="settingsSubTab === 'system' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="download-cloud" class="w-4 h-4"></i> Sistema e atualizações</button>
                     </nav>
-                    <div x-show="canRight" x-cloak class="xl:hidden absolute right-0 top-0 bottom-2 z-10 flex items-center pl-4 bg-gradient-to-l from-[var(--bg)] via-[var(--bg)]/90 to-transparent pointer-events-none">
+                    <div x-show="canRight" x-cloak class="xl:hidden absolute right-0 top-0 bottom-2 z-10 flex items-center pl-4 pointer-events-none" style="background: linear-gradient(to left, var(--bg) 65%, transparent)">
                         <button type="button" @click="scrollBy(180)" class="btn btn-secondary btn-sm btn-icon pointer-events-auto shadow-sm" aria-label="Rolar seções para a direita" title="Rolar para a direita">
                             <i data-lucide="chevron-right"></i>
                         </button>
@@ -5535,6 +5535,7 @@
                             this.newU = {username:'', password:'', role:'user'};
                             const list = await fetch('/api/users');
                             this.internalUsers = await list.json();
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                         } else { this.showAlert(res.message, 'error'); }
                     } catch(e) { this.showAlert('Erro ao salvar', 'error'); }
                 },
@@ -5548,6 +5549,7 @@
                             this.showAlert(res.message || 'Removido', 'success');
                             const list = await fetch('/api/users');
                             this.internalUsers = await list.json();
+                            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                         } else {
                             this.showAlert(res.message || 'Erro ao deletar', 'error');
                         }
