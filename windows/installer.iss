@@ -2,7 +2,7 @@
 ; Compilado por windows/build.ps1 via ISCC.exe /DAppVersion=x.y.z
 
 #ifndef AppVersion
-  #define AppVersion "1.3.2"
+  #define AppVersion "1.0.0"
 #endif
 
 #ifndef StageDir

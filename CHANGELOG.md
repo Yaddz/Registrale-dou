@@ -5,7 +5,9 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [Não publicado]
+## [1.0.0] — 2026-11-26 (nova numeração)
+
+> A numeração recomeçou: esta 1.0.0 é posterior à antiga 1.3.2. O atualizador de uma instalação 1.3.2 não a oferece (compara números); instale o `Registrale-Setup-1.0.0.exe` por cima uma vez. Dados, rotinas e PDFs são preservados.
 
 ### Documentação
 - **Manual reescrito** em linguagem direta, organizado por tarefa (primeiros passos, empresas, rotinas e buscas, menções e relatórios, PDFs, configurações, problemas comuns e glossário) e conferido contra a interface atual.
@@ -48,7 +50,11 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [1.3.2] — 2026-11-25 (Avisos, SMTP, contador de menções e responsividade)
+## Numeração anterior (1.0.0 a 1.3.2)
+
+As releases e tags `v1.0.0` a `v1.3.2` foram removidas do GitHub em 26/11/2026 e a numeração recomeçou na 1.0.0. O histórico abaixo fica como referência.
+
+## [1.3.2 — numeração anterior] — 2026-11-25 (Avisos, SMTP, contador de menções e responsividade)
 
 ### Corrigido
 - **Aviso "Integrações pendentes" permanente removido**, junto com o assistente antigo de integrações. A Visão geral só avisa sobre problema real: envio de e-mail ligado sem servidor, rotina principal sem destinatário com o SMTP ligado, Google Sheets/GestãoClick com sincronização automática ligada e sem credenciais, ou erro de integração nas últimas 24 h. Integração desligada nunca gera aviso. O botão **Resolver** leva direto à aba certa (`/api/system/health_alerts`).
@@ -69,7 +75,7 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [1.3.1] — 2026-11-25 (Hotfix: buscas sem resultado)
+## [1.3.1 — numeração anterior] — 2026-11-25 (Hotfix: buscas sem resultado)
 
 ### Corrigido
 - **Busca mensal não executava nenhum dia.** Os disparos da thread de fundo (`routes/dags.py::api_trigger_monthly`) rodavam fora do app context e o executor falhava com `Working outside of application context`, erro que era engolido; a busca terminava como "Nenhuma menção encontrada". Agora cada disparo roda dentro do app context, o servidor vincula o app ao executor na inicialização (`get_executor(app)`) e falhas de disparo geram o evento **"Erro (Busca Mensal)"** com o motivo.
@@ -79,7 +85,7 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [1.3.0] — 2026-11-25 (Sprints 11 a 16)
+## [1.3.0 — numeração anterior] — 2026-11-25 (Sprints 11 a 16)
 
 ### Busca e confiabilidade (Sprint 11)
 - Busca diária sem dependência do PostgreSQL portátil do INLABS quando ausente no instalador (`-SkipPostgresDownload`).
@@ -110,7 +116,7 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [1.2.0] — 2026-11-24 (Sprints 9 e 10)
+## [1.2.0 — numeração anterior] — 2026-11-24 (Sprints 9 e 10)
 
 ### Novidades
 - Janela própria no Windows via `pywebview` (WebView2), com fallback automático para o navegador padrão e minimização para a bandeja do sistema.
@@ -122,7 +128,7 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [1.1.0] — 2026-11-24 (Sprints 6.1 a 8)
+## [1.1.0 — numeração anterior] — 2026-11-24 (Sprints 6.1 a 8)
 
 ### Novidades
 - Remoção completa de Docker, Apache Airflow e gunicorn; execução 100% local com **Waitress** + **APScheduler** e shim de compatibilidade (`compat/airflow_shim/`).
@@ -131,7 +137,7 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [1.0.0] — 2026-11-23 (Sprints 0 a 6)
+## [1.0.0 — numeração anterior] — 2026-11-23 (Sprints 0 a 6)
 
 ### Lançamento do aplicativo Windows
 - Instalador nativo para Windows (`Registrale-Setup-x.y.z.exe`) com Python 3.11 *embeddable* e Inno Setup, sem necessidade de Docker ou WSL.
