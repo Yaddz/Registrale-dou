@@ -159,11 +159,16 @@ def _open_path(path: Path) -> None:
 # (Gerenciador de Tarefas, travamento, logoff), o Windows não encerra o filho e ele fica
 # órfão segurando a porta e o `registrale.lock`. Três proteções:
 #   1. Job Object com KILL_ON_JOB_CLOSE: o Windows mata o servidor quando o launcher some.
-#   2. Mutex nomeado: só um launcher por sessão (o segundo avisa e sai).
+#   2. Mutex nomeado: só um launcher por sessão. O segundo sinaliza o evento nomeado
+#      `_SHOW_PANEL_EVENT_NAME` (a primeira instância traz o painel para a frente) e sai;
+#      só mostra a caixa de mensagem se não conseguir sinalizar (ex.: instância antiga).
 #   3. Na partida, um servidor órfão (PID em `registrale.pid`, mesmo python.exe do app)
 #      é encerrado antes de subir o novo.
 
 _LAUNCHER_MUTEX_NAME = "Local\\RegistraleDOU.Launcher"
+_SHOW_PANEL_EVENT_NAME = "Local\\RegistraleDOU_ShowPanel"
+_EVENT_MODIFY_STATE = 0x0002
+_WAIT_TIMEOUT = 0x00000102
 _ERROR_ALREADY_EXISTS = 183
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
@@ -226,7 +231,17 @@ def _kernel32() -> Any:
     k32.WaitForSingleObject.restype = dword
     k32.CloseHandle.argtypes = [handle]
     k32.CloseHandle.restype = boolean
+    k32.CreateEventW.argtypes = [ctypes.c_void_p, boolean, boolean, ctypes.c_wchar_p]
+    k32.CreateEventW.restype = handle
+    k32.OpenEventW.argtypes = [dword, boolean, ctypes.c_wchar_p]
+    k32.OpenEventW.restype = handle
+    k32.SetEvent.argtypes = [handle]
+    k32.SetEvent.restype = boolean
     return k32
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
 
 
 def acquire_launcher_mutex(name: str = _LAUNCHER_MUTEX_NAME) -> tuple[bool, Any]:
@@ -241,6 +256,62 @@ def acquire_launcher_mutex(name: str = _LAUNCHER_MUTEX_NAME) -> tuple[bool, Any]
         logger.warning("Não foi possível criar o mutex do launcher (%s); seguindo sem trava.", exc)
         return True, None
     return (not already), handle
+
+
+def create_show_panel_event(name: str = _SHOW_PANEL_EVENT_NAME) -> Any:
+    """Primeira instância: cria o evento nomeado (auto-reset) que pede "abrir o painel"."""
+    if not _is_windows():
+        return None
+    try:
+        handle = _kernel32().CreateEventW(None, False, False, name)
+    except (OSError, AttributeError) as exc:
+        logger.warning("Não foi possível criar o evento de abrir o painel (%s).", exc)
+        return None
+    return handle or None
+
+
+def signal_running_instance(name: str = _SHOW_PANEL_EVENT_NAME) -> bool:
+    """Segunda instância: pede à primeira que abra o painel. False se não conseguir sinalizar."""
+    if not _is_windows():
+        return False
+    try:
+        k32 = _kernel32()
+        handle = k32.OpenEventW(_EVENT_MODIFY_STATE, False, name)
+        if not handle:
+            return False  # instância antiga, sem o evento
+        try:
+            return bool(k32.SetEvent(handle))
+        finally:
+            k32.CloseHandle(handle)
+    except (OSError, AttributeError) as exc:
+        logger.warning("Não foi possível sinalizar a instância em execução (%s).", exc)
+        return False
+
+
+def wait_show_panel_requests(
+    event: Any,
+    on_signal: Callable[[], None],
+    should_stop: Callable[[], bool],
+    timeout_ms: int = 1000,
+) -> None:
+    """Laço da thread da primeira instância: a cada sinal, chama ``on_signal``.
+
+    Espera em fatias de ``timeout_ms`` para poder sair quando ``should_stop()`` ficar True.
+    """
+    k32 = _kernel32()
+    while not should_stop():
+        rc = k32.WaitForSingleObject(event, timeout_ms)
+        if should_stop():
+            return
+        if rc == _WAIT_OBJECT_0:
+            logger.info("Outra abertura do app pediu o painel: trazendo a janela para a frente.")
+            try:
+                on_signal()
+            except Exception as exc:  # noqa: BLE001 - a thread não pode morrer por um erro de janela
+                logger.warning("Falha ao abrir o painel a pedido de outra instância: %s", exc)
+        elif rc != _WAIT_TIMEOUT:
+            logger.warning("Espera pelo evento de abrir o painel falhou (código %s); escuta encerrada.", rc)
+            return
 
 
 def create_kill_on_close_job() -> Any:
@@ -444,6 +515,7 @@ class RegistraleTrayController:
         self._use_webview = False
         self._js_api = RegistraleJsApi()
         self._job: Any = None
+        self._show_event: Any = None
 
     def is_server_running(self) -> bool:
         with self._lock:
@@ -644,6 +716,26 @@ class RegistraleTrayController:
             self._window = None
             return False
 
+    def start_show_panel_listener(self) -> bool:
+        """Escuta o pedido de "abrir o painel" feito por uma segunda abertura do app.
+
+        ``open_panel`` roda nesta thread daemon, como já roda na thread da bandeja: o
+        ``window.show()/restore()`` do pywebview (WinForms/EdgeChromium) despacha para a
+        thread da janela por conta própria.
+        """
+        if not _is_windows():
+            return False
+        self._show_event = create_show_panel_event()
+        if not self._show_event:
+            return False
+        threading.Thread(
+            target=wait_show_panel_requests,
+            args=(self._show_event, self.open_panel, lambda: self._stopping),
+            name="registrale-show-panel",
+            daemon=True,
+        ).start()
+        return True
+
     def run(self) -> int:
         import pystray
 
@@ -684,6 +776,7 @@ class RegistraleTrayController:
         )
 
         threading.Thread(target=_boot, daemon=True).start()
+        self.start_show_panel_listener()
 
         # Bandeja em background para liberar a thread principal para o WebView2 (pywebview).
         if hasattr(self.icon, "run_detached"):
@@ -714,7 +807,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     is_first, _mutex = acquire_launcher_mutex()  # handle mantido vivo até o fim de main()
     if not is_first:
-        logger.info("Launcher já em execução; esta cópia vai encerrar.")
+        if signal_running_instance():
+            logger.info("Launcher já em execução; pedido de abrir o painel enviado à primeira instância.")
+            return 0
+        logger.info("Launcher já em execução e sem resposta ao pedido de abrir o painel; esta cópia vai encerrar.")
         _show_message_box(
             "Registrale-DOU",
             "O Registrale-DOU já está aberto.\n"
