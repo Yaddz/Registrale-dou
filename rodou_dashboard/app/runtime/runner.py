@@ -426,6 +426,119 @@ def _run_inlabs_fallback(
     return result, source, coverage, list(report.get("notes") or [])
 
 
+def _dou_contingency_enabled(active_searchers: Dict[str, Any]) -> bool:
+    """Mesma condição de ``_use_inlabs_fallback``, sem perguntar se o INLABS tem o dia."""
+    if "INLABS_FALLBACK" not in active_searchers:
+        return False
+    from .pdf_search import FALLBACK_OFF, get_fallback_mode
+
+    return get_fallback_mode() != FALLBACK_OFF
+
+
+def _unanswered_detail(terms: List[str]) -> str:
+    shown = ", ".join(terms[:5])
+    more = f" e mais {len(terms) - 5}" if len(terms) > 5 else ""
+    return f"{len(terms)} CNPJ(s) sem resposta do portal: {shown}{more}"
+
+
+def _run_dou_with_contingency(
+    subsearch: Any,
+    term_list: Any,
+    reference_date: date,
+    active_searchers: Dict[str, Any],
+) -> tuple[Dict[str, Any], str, List[Dict[str, str]], List[str]]:
+    """Rotina de fonte DOU: API do DOU e, para o que ela não respondeu, o PDF integral.
+
+    * Portal fora (``DouPortalUnavailable`` ou erro de rede que escapou do buscador): os termos
+      sem resposta vão para ``_run_inlabs_fallback`` (PDF integral do dia).
+    * Falhas isoladas (``failed_terms``): só esses termos vão ao PDF; o resultado é mesclado.
+    * Contingência desligada ou também sem resposta: nenhuma exceção; as seções do bloco ficam
+      ``pendente`` com o motivo (execução "com pendências" e nova tentativa automática).
+
+    Retorna ``(resultado_xcom, fonte_efetiva, cobertura_por_seção, avisos)``.
+    """
+    import requests
+
+    from .dou_resilient import DouPortalUnavailable
+    from .pdf_search import section_keys_from_dou_sections
+
+    log = logging.getLogger(__name__)
+    keys = section_keys_from_dou_sections(subsearch.dou_sections)
+    dou = active_searchers["DOU"]
+    portal_error = ""
+    try:
+        result = dou.exec_search(
+            term_list=term_list,
+            dou_sections=subsearch.dou_sections,
+            search_date=subsearch.date,
+            field=subsearch.field,
+            is_exact_search=subsearch.is_exact_search,
+            ignore_signature_match=subsearch.ignore_signature_match,
+            force_rematch=subsearch.force_rematch,
+            department=subsearch.department,
+            department_ignore=subsearch.department_ignore,
+            terms_ignore=subsearch.terms_ignore,
+            pubtype=subsearch.pubtype,
+            reference_date=reference_date,
+        )
+        unanswered = [str(t) for t in (getattr(dou, "failed_terms", None) or [])]
+    except DouPortalUnavailable as exc:
+        result = exc.partial_result or {}
+        portal_error = exc.last_error or str(exc)
+        unanswered = [str(t) for t in exc.failed_terms]
+    except requests.exceptions.RequestException as exc:
+        # Rede de segurança: buscador sem o breaker (ou erro fora da busca por termo).
+        result = {}
+        portal_error = f"{type(exc).__name__}: {exc}"
+        unanswered = []
+    if portal_error and not unanswered:
+        parsed = _parse_term_list(term_list)
+        unanswered = [parsed] if isinstance(parsed, str) else [str(t) for t in (parsed or [])]
+
+    if not portal_error and not unanswered:
+        return result, "API do DOU", _api_coverage(keys, "API do DOU"), []
+
+    reason = _unanswered_detail(unanswered) if unanswered else ""
+    if portal_error:
+        reason = f"Portal do DOU indisponível: {portal_error}" + (f"; {reason}" if reason else "")
+
+    if not unanswered or not _dou_contingency_enabled(active_searchers):
+        if portal_error:
+            log.error("API do DOU indisponível (%s) e contingência desligada: seções pendentes.", portal_error)
+        else:
+            log.warning("%s; contingência desligada: seções pendentes.", reason)
+        return result, "API do DOU", [_coverage_entry(k, "pendente", "API do DOU", reason) for k in keys], []
+
+    if portal_error:
+        log.warning("API do DOU indisponível (%s): usando contingência PDF integral.", portal_error)
+    else:
+        log.warning("%s: usando contingência PDF integral para esses termos.", reason)
+    fb_result, fb_source, fb_coverage, notes = _run_inlabs_fallback(
+        subsearch, unanswered, reference_date, active_searchers
+    )
+    result = _merge_term_results(result, fb_result)
+    source = " + ".join(dict.fromkeys(["API do DOU", *fb_source.split(" + ")]))
+    still_failed = [str(t) for t in (getattr(dou, "failed_terms", None) or [])]
+    if fb_source == "API do DOU" and still_failed:
+        # Contingência sem PDF (modo ``api`` ou PDF fora) e a API de novo sem resposta.
+        detail = "; ".join(d for d in (reason, _unanswered_detail(still_failed)) if d)
+        return result, source, [_coverage_entry(k, "pendente", source, detail) for k in keys], notes
+
+    by_section = {c.get("section"): c for c in fb_coverage}
+    coverage: List[Dict[str, str]] = []
+    for key in keys:
+        fb = by_section.get(_SECTION_LABELS.get(key, (key, key))[0]) or {}
+        status = fb.get("status") or "pendente"
+        if status == "pendente":
+            detail = "; ".join(d for d in (reason, fb.get("detail", "")) if d)
+            coverage.append(_coverage_entry(key, "pendente", fb.get("source") or source, detail))
+        elif status == "sem_edicao":
+            coverage.append(_coverage_entry(key, "sem_edicao", fb.get("source") or source, fb.get("detail", "")))
+        else:
+            coverage.append(_coverage_entry(key, "coberta", source, fb.get("detail", "")))
+    return result, source, coverage, notes
+
+
 def run_search_block(
     specs: Any,
     subsearch: Any,
@@ -464,23 +577,10 @@ def run_search_block(
     notes: List[str] = []
 
     if "DOU" in sources:
-        dou_result = active_searchers["DOU"].exec_search(
-            term_list=term_list,
-            dou_sections=subsearch.dou_sections,
-            search_date=subsearch.date,
-            field=subsearch.field,
-            is_exact_search=subsearch.is_exact_search,
-            ignore_signature_match=subsearch.ignore_signature_match,
-            force_rematch=subsearch.force_rematch,
-            department=subsearch.department,
-            department_ignore=subsearch.department_ignore,
-            terms_ignore=subsearch.terms_ignore,
-            pubtype=subsearch.pubtype,
-            reference_date=reference_date,
+        dou_result, dou_source, coverage, notes = _run_dou_with_contingency(
+            subsearch, term_list, reference_date, active_searchers
         )
-        sources_used.append("API do DOU")
-        from .pdf_search import section_keys_from_dou_sections
-        coverage = _api_coverage(section_keys_from_dou_sections(subsearch.dou_sections), "API do DOU")
+        sources_used.append(dou_source)
     elif "INLABS" in sources and _use_inlabs_fallback(subsearch, reference_date, searchers):
         inlabs_result, fallback_source, coverage, notes = _run_inlabs_fallback(
             subsearch, term_list, reference_date, active_searchers

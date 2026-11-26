@@ -93,9 +93,22 @@ def test_search_three_consecutive_failures_raise_portal_unavailable(monkeypatch,
     with pytest.raises(DouPortalUnavailable) as info:
         _run(searcher, [CNPJ_A, CNPJ_B, CNPJ_C, CNPJ_D])
     assert "502" in str(info.value)
-    assert info.value.failed_terms == [CNPJ_A, CNPJ_B, CNPJ_C]
+    assert info.value.failed_terms == [CNPJ_A, CNPJ_B, CNPJ_C, CNPJ_D]  # D nem foi consultado
     assert ROOT[CNPJ_D] not in hook.calls  # parou antes do 4º CNPJ
     assert len(hook.calls) == 6
+
+
+def test_search_breaker_keeps_partial_result_of_answered_terms(monkeypatch, sleeps):
+    item = {"abstract": "Empresa CNPJ 24.684.423/0001-36", "section": "do1", "hierarchyStr": "", "arttype": "Portaria",
+            "title": "t", "href": "h", "date": "26/11/2026", "id": "1", "hierarchyList": []}
+    err = requests.exceptions.ReadTimeout("35 s")
+    plan = {ROOT[CNPJ_A]: [[item]], ROOT[CNPJ_B]: [err], ROOT[CNPJ_C]: [err], ROOT[CNPJ_D]: [err]}
+    searcher, _hook = _searcher(monkeypatch, plan)
+    monkeypatch.setenv("REGISTRALE_DOU_BREAKER", "2")
+    with pytest.raises(DouPortalUnavailable) as info:
+        _run(searcher, [CNPJ_A, CNPJ_B, CNPJ_C, CNPJ_D])
+    assert CNPJ_A in info.value.partial_result["single_group"]
+    assert info.value.failed_terms == [CNPJ_B, CNPJ_C, CNPJ_D]
 
 
 def test_search_success_resets_consecutive_counter(monkeypatch, sleeps):

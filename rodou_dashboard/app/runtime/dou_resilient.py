@@ -13,8 +13,10 @@ Este buscador troca só a camada de fora:
   ``REGISTRALE_DOU_TERM_RETRY_SLEEP`` segundos (padrão 10); ``SSLError`` não repete;
 * falha isolada de um termo: ``WARNING``, termo guardado em ``failed_terms`` e ``[]``
   (a rotina segue para o próximo CNPJ);
-* ``REGISTRALE_DOU_BREAKER`` falhas **consecutivas** (padrão 3) levantam
-  ``DouPortalUnavailable``; um sucesso zera o contador.
+* ``REGISTRALE_DOU_BREAKER`` falhas **consecutivas** (padrão 3) abrem o breaker: os termos
+  restantes não são consultados e ``exec_search`` levanta ``DouPortalUnavailable`` com o
+  resultado parcial (termos respondidos antes da queda) e a lista de termos sem resposta;
+  um sucesso zera o contador.
 
 Pior caso com o portal fora (padrões; hook com ``REGISTRALE_DOU_TIMEOUT=20`` e
 ``REGISTRALE_DOU_MAX_RETRIES=2``):
@@ -53,10 +55,19 @@ DEFAULT_BREAKER = 3
 class DouPortalUnavailable(RuntimeError):
     """O portal do DOU falhou em ``threshold`` termos seguidos: a API foi abandonada."""
 
-    def __init__(self, last_error: str, failures: int, failed_terms: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        last_error: str,
+        failures: int,
+        failed_terms: Optional[List[str]] = None,
+        partial_result: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.last_error = last_error
         self.failures = failures
+        # Termos sem resposta: os que falharam e os que nem chegaram a ser consultados.
         self.failed_terms = list(failed_terms or [])
+        # Resultado dos termos respondidos antes da parada (formato de ``exec_search``).
+        self.partial_result = partial_result or {}
         super().__init__(f"{failures} consultas seguidas sem resposta; último erro: {last_error}")
 
 
@@ -82,15 +93,25 @@ class ResilientDOUSearcher(DOUSearcher):
         self.failed_terms: List[str] = []
         self.consecutive_failures = 0
         self.last_error = ""
+        self.tripped = False
         self._query_to_terms: Dict[str, List[str]] = {}
 
     def exec_search(self, *args: Any, **kwargs: Any) -> Any:
+        """Busca normal; com o breaker aberto, levanta ``DouPortalUnavailable`` levando o parcial."""
         self.failed_terms = []
         self.consecutive_failures = 0
         self.last_error = ""
+        self.tripped = False
+        self.__dict__.pop("SCRAPPING_INTERVAL", None)  # volta ao intervalo da classe
         term_list = kwargs.get("term_list", args[0] if args else None)
         self._query_to_terms = self._map_queries(term_list)
-        return super().exec_search(*args, **kwargs)
+        try:
+            result = super().exec_search(*args, **kwargs)
+        finally:
+            self.__dict__.pop("SCRAPPING_INTERVAL", None)
+        if self.tripped:
+            raise DouPortalUnavailable(self.last_error, self.consecutive_failures, self.failed_terms, result)
+        return result
 
     def _map_queries(self, term_list: Any) -> Dict[str, List[str]]:
         """Consulta enviada à API (raiz ``XX.XXX.XXX`` para CNPJ) → termos originais da rotina."""
@@ -119,6 +140,11 @@ class ResilientDOUSearcher(DOUSearcher):
         retries = _env_int("REGISTRALE_DOU_TERM_RETRIES", DEFAULT_TERM_RETRIES) if max_retries is None else max_retries
         pause = _env_float("REGISTRALE_DOU_TERM_RETRY_SLEEP", DEFAULT_TERM_RETRY_SLEEP)
         threshold = _env_int("REGISTRALE_DOU_BREAKER", DEFAULT_BREAKER, minimum=1)
+
+        if self.tripped:
+            # Breaker aberto: os termos restantes não são consultados, só registrados como sem resposta.
+            self._add_failed(search_term)
+            return []
 
         attempt = 0
         while True:
@@ -150,13 +176,21 @@ class ResilientDOUSearcher(DOUSearcher):
     def _register_failure(self, search_term: str, exc: BaseException, threshold: int) -> list:
         self.consecutive_failures += 1
         self.last_error = f"{type(exc).__name__}: {exc}"
-        for term in self._query_to_terms.get(search_term) or [search_term]:
-            if term not in self.failed_terms:
-                self.failed_terms.append(term)
+        self._add_failed(search_term)
         logger.warning(
             "API do DOU sem resposta para '%s' (%d falha(s) seguida(s)): %s",
             search_term, self.consecutive_failures, self.last_error,
         )
         if self.consecutive_failures >= threshold:
-            raise DouPortalUnavailable(self.last_error, self.consecutive_failures, self.failed_terms) from exc
+            logger.error(
+                "API do DOU: %d consultas seguidas sem resposta; os termos restantes não serão consultados.",
+                self.consecutive_failures,
+            )
+            self.tripped = True
+            self.SCRAPPING_INTERVAL = 0  # não espera entre termos que não serão consultados
         return []
+
+    def _add_failed(self, search_term: str) -> None:
+        for term in self._query_to_terms.get(search_term) or [search_term]:
+            if term not in self.failed_terms:
+                self.failed_terms.append(term)
