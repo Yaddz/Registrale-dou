@@ -226,3 +226,123 @@ def test_executor_block_pending_by_portal_down_finishes_partial(tmp_path, monkey
         assert job.status == "partial"
         assert "Seção 1" in (job.erro or "")
     executor.shutdown(wait=True)
+
+
+# ─── Histórico e e-mail (watcher) ─────────────────────────────────────────────
+
+
+@pytest.fixture
+def watcher_app(tmp_path, monkeypatch):
+    from app import create_app
+    from app.models import Settings, db
+
+    monkeypatch.setenv("REGISTRALE_DB_PATH", str(tmp_path / "registrale_data" / "database.db"))
+    app = create_app({"TESTING": True})
+    with app.app_context():
+        db.create_all()
+        rec = Settings.query.filter_by(key="global_settings").first() or Settings(key="global_settings")
+        rec.set_value({"smtp": {"enabled": True, "server": "smtp.example.com", "port": "587",
+                                "user": "remetente@example.com", "from_email": "remetente@example.com"}})
+        db.session.add(rec)
+        db.session.commit()
+    sent = []
+
+    class FakeSender:
+        def __init__(self, *_a):
+            pass
+
+        def send_custom_email(self, to_emails, subject, html_content, attachments=None):
+            sent.append(html_content)
+
+    monkeypatch.setattr("app.services.email_service.EmailSender", FakeSender)
+    monkeypatch.setattr("app.services.email_service.is_smtp_ready", lambda: True)
+    monkeypatch.setattr("app.routes.dags._prepare_highlight_pdfs", lambda *a, **k: False)
+    return app, sent
+
+
+def _store_job(app, run_id, status, coverage=None, erro=None):
+    from app.models import JobRun, db
+
+    with app.app_context():
+        job = JobRun(id=run_id, rotina="Pesquisa_cnpj.yaml", data="2026-11-26", status=status)
+        job.erro = erro
+        job.set_resultado([] if status == "failed" else [{
+            "result": {}, "header": "P1", "source_used": "API do DOU", "coverage": coverage or [],
+        }])
+        db.session.add(job)
+        db.session.commit()
+
+
+def _watch(app, run_id, status, monkeypatch, mentions=()):
+    from unittest.mock import patch
+    from app.routes.dags import watch_dag_and_update_mentions
+
+    monkeypatch.setattr("app.routes.dags.fetch_mentions_from_dag_run", lambda *a, **k: [dict(m) for m in mentions])
+    with patch("app.runtime.executor.LocalExecutor.wait", return_value=(True, {run_id: status})):
+        watch_dag_and_update_mentions(
+            app.app_context(),
+            [{"dag_id": "pesquisa_cnpj", "dag_run_id": run_id}],
+            "Pesquisa_cnpj.yaml",
+            routine_emails=["analista@example.com"],
+            logical_date="2026-11-26",
+        )
+
+
+def _history(app):
+    from app.models import SyncHistory
+
+    with app.app_context():
+        return [(h.evento, h.detalhes) for h in SyncHistory.query.order_by(SyncHistory.id).all()]
+
+
+PORTAL_DOWN_COVERAGE = [{
+    "section": "SECAO_1", "label": "Seção 1", "status": "pendente", "source": "API do DOU",
+    "detail": "Portal do DOU indisponível: ReadTimeout: 35 s; 122 CNPJ(s) sem resposta do portal: ...",
+}]
+
+
+def test_watcher_partial_by_portal_down_not_recorded_as_zero_mentions(watcher_app, monkeypatch):
+    app, sent = watcher_app
+    _store_job(app, "run-down", "partial", coverage=PORTAL_DOWN_COVERAGE)
+    _watch(app, "run-down", "partial", monkeypatch)
+    events = _history(app)
+    assert not any(e == "Busca Concluída" for e, _ in events)
+    assert not any("0 menções encontradas" in d for _, d in events)
+    pend = [d for e, d in events if e == "Busca Concluída com Pendências"]
+    assert pend and "INCOMPLETO" in pend[0]
+    assert "Portal do DOU indisponível: ReadTimeout: 35 s" in pend[0]
+    assert sent == []  # 0 menções: nenhum e-mail
+
+
+def test_watcher_failed_run_records_busca_falhou(watcher_app, monkeypatch):
+    app, sent = watcher_app
+    _store_job(app, "run-err", "failed", erro="KeyError: 'dou_sections'")
+    _watch(app, "run-err", "failed", monkeypatch)
+    events = _history(app)
+    assert not any(e.startswith("Busca Concluída") for e, _ in events)
+    failed = [d for e, d in events if e == "Busca Falhou"]
+    assert failed and failed[0].startswith("Busca falhou: KeyError: 'dou_sections'")
+    assert sent == []
+
+
+def test_watcher_partial_with_mentions_sends_email_with_incomplete_warning(watcher_app, monkeypatch):
+    app, sent = watcher_app
+    _store_job(app, "run-part", "partial", coverage=PORTAL_DOWN_COVERAGE)
+    mention = {"id": f"{A}_123", "empresa": "Empresa A", "cnpj": "24.684.423/0001-36", "cnpj_norm": A,
+               "secao": "Seção 1", "data": "26/11/2026", "detected_at": "26/11/2026 10:00",
+               "trecho": "CNPJ 24.684.423/0001-36", "link": "https://www.in.gov.br/web/dou/-/x"}
+    _watch(app, "run-part", "partial", monkeypatch, mentions=[mention])
+    assert len(sent) == 1
+    assert "resultado INCOMPLETO" in sent[0]
+    assert any(e == "Busca com Pendências" and "Portal do DOU indisponível" in d for e, d in _history(app))
+
+
+def test_pending_in_runs_schedules_retry_for_portal_down(watcher_app):
+    from app.runtime.scheduler import _pending_in_runs
+
+    app, _sent = watcher_app
+    _store_job(app, "run-down-2", "partial", coverage=PORTAL_DOWN_COVERAGE)
+    _store_job(app, "run-err-2", "failed", erro="x")
+    with app.app_context():
+        assert _pending_in_runs(["run-down-2"]) is True
+        assert _pending_in_runs(["run-err-2"]) is False

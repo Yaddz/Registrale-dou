@@ -97,6 +97,34 @@ def _extract_sources_used_from_runs(run_ids) -> str:
         return ""
 
 
+def _run_failures_and_pending_reasons(run_ids):
+    """``(erros das execuções que falharam, motivos legíveis das seções pendentes)``.
+
+    Falha (exceção inesperada) e pendência (ex.: portal do DOU fora) nunca devem aparecer
+    no histórico como "Busca Concluída ... 0 menções".
+    """
+    if not run_ids:
+        return [], []
+    try:
+        from ..models import JobRun
+        failures, reasons = [], []
+        for job in JobRun.query.filter(JobRun.id.in_(list(run_ids))).all():
+            if job.status == "failed":
+                failures.append(job.erro or "erro desconhecido")
+                continue
+            for block in job.get_resultado():
+                if not isinstance(block, dict):
+                    continue
+                for cov in block.get("coverage") or []:
+                    if isinstance(cov, dict) and cov.get("status") == "pendente":
+                        detail = str(cov.get("detail") or "").strip()
+                        if detail and detail not in reasons:
+                            reasons.append(detail)
+        return failures, reasons
+    except Exception:
+        return [], []
+
+
 def _summarize_coverage_from_runs(run_ids):
     """Resume a cobertura por seção das execuções: ``(texto, pendentes)``.
 
@@ -1086,6 +1114,8 @@ def watch_dag_and_update_mentions(app_context,runs_to_watch, routine_name, routi
             coverage_text, pending_sections = _summarize_coverage_from_runs(run_ids)
             if coverage_text:
                 source_tag += f" [Seções: {coverage_text}]"
+            run_failures, pending_reasons = _run_failures_and_pending_reasons(run_ids)
+            pending_reason_str = f" Motivo: {'; '.join(pending_reasons[:3])}." if pending_reasons else ""
 
             # 5. Envio do E-mail Formatado
             from ..services.email_service import is_smtp_enabled, is_smtp_ready, SMTP_NOT_READY_EVENT
@@ -1117,11 +1147,19 @@ def watch_dag_and_update_mentions(app_context,runs_to_watch, routine_name, routi
                     routine_subject, relevant_mentions, template_name='Padrão Registrale',
                     date_str=target_date_str,
                     fallback=f"Registrale - Alerta DOU ({routine_name}) - {target_date_str}")
+                subtitle = f"Foram identificadas {len(relevant_mentions)} publicações no Diário Oficial da União para a data {target_date_str}:"
+                if pending_sections or run_failures:
+                    # Menções achadas antes da falha: avisa que a lista pode não estar completa.
+                    subtitle = (
+                        "Atenção: resultado INCOMPLETO, a busca não cobriu "
+                        + (", ".join(pending_sections) if pending_sections else "todas as seções")
+                        + ". " + subtitle
+                    )
                 html = build_mentions_email_html(
                     relevant_mentions,
                     template_name='Padrão Registrale',
                     title=routine_subject or f"Notificação DOU: {routine_name}",
-                    subtitle=f"Foram identificadas {len(relevant_mentions)} publicações no Diário Oficial da União para a data {target_date_str}:"
+                    subtitle=subtitle
                 )
                 email_error_msg = None
                 try:
@@ -1173,23 +1211,38 @@ def watch_dag_and_update_mentions(app_context,runs_to_watch, routine_name, routi
                     motivo.append("SMTP sem servidor configurado")
                 elif not emails:
                     motivo.append("nenhum destinatário configurado")
-                if not relevant_mentions:
+                if not relevant_mentions and not (pending_sections or run_failures):
+                    # Só um resultado completo prova "0 menções"; incompleto ou com falha, não.
                     motivo.append(f"0 menções encontradas para {target_date_str}")
+                elif not relevant_mentions:
+                    motivo.append("nenhuma menção nas partes que foram pesquisadas")
                 motivo_str = f" ({'; '.join(motivo)})" if motivo else ""
-                if pending_sections:
+                if run_failures:
+                    add_history_event(
+                        "Busca Falhou",
+                        f"Busca falhou: {'; '.join(dict.fromkeys(run_failures))}. Rotina {routine_name}, data {target_date_str}: "
+                        f"o resultado não está completo{motivo_str}{source_tag}."
+                    )
+                elif pending_sections:
                     add_history_event(
                         "Busca Concluída com Pendências",
                         f"Rotina {routine_name} concluída com pendências: {', '.join(pending_sections)} não foram cobertas por nenhuma fonte, "
-                        f"então o resultado de {target_date_str} está INCOMPLETO{motivo_str}{source_tag}."
+                        f"então o resultado de {target_date_str} está INCOMPLETO.{pending_reason_str}{motivo_str}{source_tag}."
                     )
                 else:
                     add_history_event("Busca Concluída", f"Rotina {routine_name} concluída{motivo_str}{source_tag}. Total no painel: {total} ({hoje} hoje).")
                 if email_failed:
                     add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail da rotina {routine_name}: {email_error_msg}")
+            elif run_failures:
+                add_history_event(
+                    "Busca Falhou",
+                    f"Busca falhou: {'; '.join(dict.fromkeys(run_failures))}. Rotina {routine_name}, data {target_date_str}: "
+                    f"o e-mail saiu só com o que foi achado antes da falha{source_tag}."
+                )
             elif pending_sections:
                 add_history_event(
                     "Busca com Pendências",
-                    f"Atenção: {', '.join(pending_sections)} não foram cobertas em {target_date_str}; o resultado está incompleto{source_tag}."
+                    f"Atenção: {', '.join(pending_sections)} não foram cobertas em {target_date_str}; o resultado está incompleto.{pending_reason_str}{source_tag}"
                 )
 
         except Exception as e:
