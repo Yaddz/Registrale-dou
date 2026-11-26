@@ -17,7 +17,7 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - **Página destacada do DOU por menção:** ao gravar menções com PDF do dia arquivado, o painel gera em segundo plano `<pasta_pdfs>/destaques/<AAAA-MM-DD>/<cnpj_raiz>_<id>.pdf` contendo a página da ocorrência com anotações `Highlight` nas citações do CNPJ (ou da raiz isolada). Botão **Página destacada** (`file-search`) disponível na aba **Menções** (`/api/mention_highlight_pdf`) e opção `email_attach_highlight` (desligada por padrão) em **Configurações → Integrações**.
 
 ### Melhorado
-- **API do DOU (`DOUHook._request_page`):** timeout padrão reduzido para 10 s com até 5 tentativas (`REGISTRALE_DOU_TIMEOUT` e `REGISTRALE_DOU_MAX_RETRIES` configuráveis por ambiente), mantendo o pior caso abaixo de 105 s após medição ao vivo de 40 consultas (p50 = 0,45 s, p95 = 0,68 s, máx = 1,02 s).
+- **API do DOU (`DOUHook._request_page`):** timeout padrão de 20 s com até 5 tentativas (`REGISTRALE_DOU_TIMEOUT` e `REGISTRALE_DOU_MAX_RETRIES` configuráveis por ambiente), pior caso ≈ 100 s + backoff (antes 105 s). A medição ao vivo de 40 consultas (p50 = 0,45 s, p95 = 0,68 s, máx = 1,02 s) foi feita num momento tranquilo; 10 s foi descartado porque o portal às vezes trava até 35 s e 5 × 10 s falharia inteiro nesses períodos.
 
 ### Interface
 - Submenu de Configurações (abaixo de 1280 px) passa a exibir degradê nas bordas e setas (`chevron-left`/`chevron-right`) quando há pílulas fora da área visível, rolando automaticamente para manter a seção ativa visível.

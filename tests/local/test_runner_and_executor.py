@@ -548,7 +548,7 @@ def test_dou_hook_request_page_timeout_and_retries_env(monkeypatch):
     monkeypatch.delenv("REGISTRALE_DOU_MAX_RETRIES", raising=False)
     with pytest.raises(requests.exceptions.Timeout):
         hook._request_page(with_retry=True, payload={"q": "teste"})
-    assert timeouts_seen == [10, 10, 10, 10, 10]
+    assert timeouts_seen == [20, 20, 20, 20, 20]
 
     timeouts_seen.clear()
     monkeypatch.setenv("REGISTRALE_DOU_TIMEOUT", "15")
