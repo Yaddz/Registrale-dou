@@ -67,8 +67,6 @@ Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/
 ## 4. Pendências conhecidas
 
 - **Nova tentativa automática ao vivo:** o status "Concluída com pendências" e o reagendamento foram validados por testes, não numa busca real à tarde.
-- **E-mail com falha:** quando o envio falha, o histórico não registra "Busca Concluída"/"Busca Mensal Concluída" (as menções são gravadas).
-- **Rotinas personalizadas antigas com sigla de órgão** só são convertidas ao salvar de novo ou na busca avulsa/mensal.
 - **Testes de `tests/local/`** gravam logs vazios em `%LOCALAPPDATA%\Registrale\logs\runs` (isolamento incompleto).
 - **`test_open_pdf_storage_folder_validation_and_launch`** falha no Windows: mocka `subprocess.Popen`, mas lá a rota usa `os.startfile`.
 - **Interface:** as pílulas de Configurações (abaixo de 1280 px) não indicam que há mais itens para rolar; checklist manual com login ligado ainda não feito.

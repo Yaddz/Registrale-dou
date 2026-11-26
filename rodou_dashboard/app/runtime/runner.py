@@ -153,6 +153,30 @@ def routine_has_no_terms(yaml_source: Union[str, Path, Dict[str, Any]]) -> bool:
     )
 
 
+def _expand_organ_filters_in_memory(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Expande siglas de órgão em `dag.search[].department` em memória sem alterar o YAML em disco."""
+    import copy
+    from ..services.organ_aliases import expand_organ_filters
+
+    dag_section = data.get("dag")
+    if not isinstance(dag_section, dict):
+        return data
+    search = dag_section.get("search")
+    if not search:
+        return data
+
+    cloned = copy.deepcopy(data)
+    blocks = cloned["dag"]["search"]
+    if isinstance(blocks, dict):
+        if blocks.get("department"):
+            blocks["department"] = expand_organ_filters(blocks["department"])
+    elif isinstance(blocks, list):
+        for block in blocks:
+            if isinstance(block, dict) and block.get("department"):
+                block["department"] = expand_organ_filters(block["department"])
+    return cloned
+
+
 def load_specs(yaml_source: Union[str, Path, Dict[str, Any]]) -> Any:
     """Carrega um arquivo YAML ou dicionário em memória para `DAGConfig`."""
     _ensure_src_imports()
@@ -160,8 +184,11 @@ def load_specs(yaml_source: Union[str, Path, Dict[str, Any]]) -> Any:
     from schemas import RoDouConfig
 
     if isinstance(yaml_source, dict):
-        return RoDouConfig(**yaml_source).dag
-    return YAMLParser(os.fspath(yaml_source)).parse()
+        data = yaml_source
+    else:
+        data = YAMLParser(os.fspath(yaml_source)).read()
+    expanded = _expand_organ_filters_in_memory(data) if isinstance(data, dict) else data
+    return RoDouConfig(**expanded).dag
 
 
 def _resolve_terms(subsearch: Any) -> Any:

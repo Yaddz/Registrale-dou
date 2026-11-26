@@ -1079,6 +1079,7 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                     title=routine_subject or f"Notificação DOU: {routine_name}",
                     subtitle=f"Foram identificadas {len(relevant_mentions)} publicações no Diário Oficial da União para a data {target_date_str}:"
                 )
+                email_error_msg = None
                 try:
                     sender = EmailSender(None)
                     sender.send_custom_email(
@@ -1090,12 +1091,14 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                     add_history_event("E-mail Enviado", f"Alerta {routine_name} enviado para {', '.join(emails)} ({len(relevant_mentions)} menções){source_tag}.")
                 except Exception as e_mail:
                     email_failed = True
+                    email_error_msg = str(e_mail)
                     logging.error(f"Erro ao enviar e-mail da rotina {routine_name}: {e_mail}")
-                    add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail da rotina {routine_name}: {str(e_mail)}")
 
-            if not email_sent and not email_failed:
+            if not email_sent:
                 motivo = []
-                if not smtp_enabled:
+                if email_failed:
+                    motivo.append("e-mail falhou; menções gravadas")
+                elif not smtp_enabled:
                     motivo.append("e-mail desativado")
                 elif not smtp_ready:
                     motivo.append("SMTP sem servidor configurado")
@@ -1112,6 +1115,8 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                     )
                 else:
                     add_history_event("Busca Concluída", f"Rotina {routine_name} concluída{motivo_str}{source_tag}. Total no painel: {total} ({hoje} hoje).")
+                if email_failed:
+                    add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail da rotina {routine_name}: {email_error_msg}")
             elif pending_sections:
                 add_history_event(
                     "Busca com Pendências",
@@ -2168,6 +2173,10 @@ def api_trigger_monthly():
                             f"Relatório mensal {month}/{year} enviado com {len(relevant_monthly_mentions)} menções para {len(emails)} destinatário(s){monthly_source_tag}.")
                     except Exception as e_mail:
                         logging.error(f"Erro ao enviar e-mail da busca mensal {month}/{year}: {e_mail}")
+                        add_history_event(
+                            "Busca Mensal Concluída",
+                            f"{len(relevant_monthly_mentions)} menções gravadas; o envio do relatório falhou{monthly_source_tag}."
+                        )
                         add_history_event("Erro Envio E-mail", f"Falha ao enviar e-mail do relatório mensal {month}/{year}: {str(e_mail)}")
             except Exception as e:
                 logging.error(f"Erro ao consolidar busca mensal: {e}")

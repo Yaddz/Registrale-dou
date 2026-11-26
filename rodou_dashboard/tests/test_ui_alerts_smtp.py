@@ -234,3 +234,88 @@ def test_email_errors_ignored_when_smtp_disabled() -> None:
     assert compute_health_alerts({"smtp": {"enabled": False}}, {}, rows, NOW) == []
     on = compute_health_alerts({"smtp": {"enabled": True, "server": "smtp.ex.com"}}, {"active": True, "emails": ["a@ex.com"]}, rows, NOW)
     assert [a.id for a in on] == ["email_send_error"]
+
+
+def test_daily_search_email_failure_logs_conclusion_before_error(app: Flask) -> None:
+    import smtplib
+    _set_global({"smtp": {"enabled": True, "server": "smtp.ex.com"}})
+    fake = [{
+        "id": "m-fail-1", "empresa": "EMPRESA", "cnpj": "24.684.423/0001-01", "cnpj_norm": "24684423000101",
+        "secao": "DO1", "data": "24/11/2026", "trecho": "x", "link": "https://www.in.gov.br/web/dou/-/x",
+    }]
+    with patch("rodou_dashboard.app.runtime.executor.LocalExecutor.wait", return_value=None), \
+         patch("rodou_dashboard.app.routes.dags.fetch_mentions_from_dag_run", return_value=fake), \
+         patch("rodou_dashboard.app.services.email_service.EmailSender.send_custom_email", side_effect=smtplib.SMTPException("SMTP down")):
+        watch_dag_and_update_mentions(
+            app.app_context(), [{"dag_id": "Pesquisa_cnpj.yaml", "dag_run_id": "run-fail-1"}],
+            "Pesquisa_cnpj.yaml", ["dest@ex.com"], "Assunto", "2026-11-24",
+        )
+    assert Mention.query.count() == 1
+    rows = SyncHistory.query.order_by(SyncHistory.id.asc()).all()
+    eventos = [r.evento for r in rows]
+    assert "Busca Concluída" in eventos
+    assert "Erro Envio E-mail" in eventos
+    idx_conc = eventos.index("Busca Concluída")
+    idx_err = eventos.index("Erro Envio E-mail")
+    assert idx_conc < idx_err
+    assert "e-mail falhou; menções gravadas" in rows[idx_conc].detalhes
+
+
+def test_monthly_search_email_failure_logs_conclusion_before_error(app: Flask, client: FlaskClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import smtplib
+    import threading
+    from rodou_dashboard.app.routes import dags
+    from rodou_dashboard.app.services import dag_config_service, inlabs_service
+
+    _set_global({"smtp": {"enabled": True, "server": "smtp.ex.com"}})
+    yaml_path = Path(dag_config_service.get_base_yaml_path())
+    yaml_path.parent.mkdir(parents=True, exist_ok=True)
+    yaml_path.write_text(
+        "dag:\n  id: Pesquisa_cnpj\n  description: Teste\n  search:\n    - terms:\n        - '24.684.423'\n"
+        "  report:\n    emails:\n      - dest@ex.com\n",
+        encoding="utf-8",
+    )
+
+    fake = [{
+        "id": "m-mfail-1", "empresa": "EMPRESA", "cnpj": "24.684.423/0001-01", "cnpj_norm": "24684423000101",
+        "secao": "DO1", "data": "24/11/2026", "trecho": "x", "link": "https://www.in.gov.br/web/dou/-/x",
+    }]
+
+    class FakeExec:
+        def trigger(self, routine, date=None, **conf):
+            return "run-m-1"
+        def wait(self, run_ids, timeout=None):
+            return True, {r: "success" for r in run_ids}
+        def result(self, run_id, routine=None):
+            return []
+
+    def run_inline(target=None, args=(), kwargs=None, daemon=True):
+        class InlineThread:
+            def start(self):
+                target(*args, **(kwargs or {}))
+        return InlineThread()
+
+    monkeypatch.setattr(dags, "get_executor", lambda app=None: FakeExec())
+    monkeypatch.setattr(inlabs_service, "get_downloaded_dates", lambda start=None, end=None: set())
+    monkeypatch.setattr(inlabs_service, "enforce_inlabs_retention_limit", lambda max_days=120, protected_dates=None: None)
+
+    with patch.object(threading, "Thread", side_effect=run_inline), \
+         patch("rodou_dashboard.app.services.holiday_service.get_business_days_for_month", return_value=["2026-11-24"]), \
+         patch("rodou_dashboard.app.routes.dags._summarize_coverage_from_runs", return_value=("", [])), \
+         patch("rodou_dashboard.app.routes.dags._extract_sources_used_from_runs", return_value=""), \
+         patch("rodou_dashboard.app.routes.dags.fetch_mentions_from_dag_run", return_value=fake), \
+         patch("rodou_dashboard.app.services.email_service.EmailSender.send_custom_email", side_effect=smtplib.SMTPException("SMTP down")):
+        resp = client.post("/api/routines/trigger_monthly", json={
+            "month": 11, "year": 2026, "mode": "api_dou_only", "routines": ["Pesquisa_cnpj.yaml"],
+        })
+        assert resp.status_code == 200
+
+    assert Mention.query.count() == 1
+    rows = SyncHistory.query.order_by(SyncHistory.id.asc()).all()
+    eventos = [r.evento for r in rows]
+    assert "Busca Mensal Concluída" in eventos
+    assert "Erro Envio E-mail" in eventos
+    idx_conc = eventos.index("Busca Mensal Concluída")
+    idx_err = eventos.index("Erro Envio E-mail")
+    assert idx_conc < idx_err
+    assert "menções gravadas; o envio do relatório falhou" in rows[idx_conc].detalhes

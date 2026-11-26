@@ -14,6 +14,8 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - `AGENTS.md` sem dependência do plano de sprints, com roteiro "Comece aqui" e as regras de filtro de órgão e SMTP.
 
 ### Corrigido
+- **Histórico de buscas quando o envio de e-mail falha:** buscas diárias e mensais passam a registrar `Busca Concluída` (ou `Busca Concluída com Pendências`) / `Busca Mensal Concluída` antes do evento `Erro Envio E-mail`, preservando todas as menções gravadas no banco.
+- **Siglas de órgão em rotinas personalizadas antigas:** o executor local expande siglas de `department` em memória ao carregar qualquer rotina (`runner.load_specs`), sem exigir que a rotina seja salva novamente.
 - **Sincronização do GestãoClick (duplicidade, erros silenciosos, URL padrão, precedência e contagens):**
   - Segundo clique ou agendamento simultâneo de sincronização do GestãoClick agora retorna HTTP 409 ("Já existe uma sincronização do GestãoClick em andamento") e o botão **Sincronizar** fica desabilitado enquanto `sync_active` estiver ativo.
   - HTTP 404 ou 401/403 na página 1 e retorno vazio da API do GestãoClick passam a gerar erro explícito no histórico em vez de "Sincronização OK" com 0 clientes.

@@ -108,3 +108,25 @@ def test_rebuild_yaml_clears_previous_organ_filter_when_setting_is_empty(app_ctx
         assert block["department"] == []
         assert "organs" not in block
         assert block["dou_sections"] == sections
+
+
+def test_runner_load_specs_expands_organ_acronyms_in_memory(tmp_path: Path) -> None:
+    from rodou_dashboard.app.runtime.runner import load_specs
+
+    custom_yaml = tmp_path / "rotina_anvisa.yaml"
+    original_text = (
+        "dag:\n"
+        "  id: rotina_anvisa\n"
+        "  description: Rotina personalizada ANVISA\n"
+        "  search:\n"
+        "    - header: ANVISA\n"
+        "      terms:\n"
+        "        - '24.684.423'\n"
+        "      department:\n"
+        "        - ANVISA\n"
+    )
+    custom_yaml.write_text(original_text, encoding="utf-8")
+
+    dag_cfg = load_specs(custom_yaml)
+    assert dag_cfg.search[0].department == [ANVISA]
+    assert custom_yaml.read_text(encoding="utf-8") == original_text
