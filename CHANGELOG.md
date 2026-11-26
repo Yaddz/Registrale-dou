@@ -5,18 +5,6 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
-## [Não publicado]
-
-### Corrigido
-- **Busca diária presa por horas com o portal do DOU fora do ar** (26/11/2026: ReadTimeout de 35 s e 502 em `www.in.gov.br/consulta`). As duas camadas de retry empilhadas (hook × buscador) deixavam cada CNPJ ~12 min preso; com 122 CNPJs a rotina passaria de 24 h. O novo `ResilientDOUSearcher` (`runtime/dou_resilient.py`) faz 1 nova tentativa por CNPJ após 10 s e o hook passa a 2 tentativas de 20 s: pior caso **~100 s por CNPJ**. Depois de **3 CNPJs seguidos** sem resposta a API é abandonada (circuit breaker): **~5 min** no pior caso para a rotina inteira desistir do portal, qualquer que seja o número de CNPJs. Ajustes por ambiente: `REGISTRALE_DOU_TERM_RETRIES` (1), `REGISTRALE_DOU_TERM_RETRY_SLEEP` (10), `REGISTRALE_DOU_BREAKER` (3), `REGISTRALE_DOU_MAX_RETRIES` (agora 2).
-- **Um CNPJ com erro abortava a rotina inteira.** Falha isolada agora devolve "sem resultado" para aquele CNPJ, guarda-o como sem resposta e a busca segue.
-- **Rotina principal (fonte DOU) sem plano B.** Os CNPJs que a API não respondeu (portal fora ou falhas isoladas) são procurados no **PDF integral** do dia, como já acontecia no ramo INLABS, e o resultado é mesclado (`source_used` = `API do DOU + PDF integral`). Sem contingência (`inlabs_fallback = off`) ou com o PDF também fora, nenhuma exceção sobe: as seções ficam **pendentes** com o motivo, a execução termina "com pendências" e a nova tentativa automática é agendada.
-- **Falha aparecia como "0 menções".** Execução que falhou registra **"Busca Falhou"** com o erro (nunca "Busca Concluída"); execução com pendências mostra o motivo legível (ex.: "Portal do DOU indisponível: ...", "N CNPJ(s) sem resposta do portal: ...") e não diz "0 menções encontradas". E-mail com menções achadas antes da falha leva o aviso "resultado INCOMPLETO"; sem menções, nada é enviado.
-- **Abrir o atalho com o app já aberto mostrava uma caixa de aviso.** A segunda abertura agora sinaliza a primeira (evento nomeado `Local\RegistraleDOU_ShowPanel`), que traz o painel para a frente; o aviso antigo só aparece se a cópia em execução for de versão anterior.
-
-### Testes
-- `tests/local/test_dou_resilient.py` (retry, breaker, reset, SSL), `tests/local/test_dou_contingency.py` (contingência no runner, `partial` no executor, histórico e e-mail no watcher) e `tests/local/test_launcher_show_panel.py` (evento nomeado com `kernel32` simulado).
-
 ## [1.0.0] — 2026-11-26 (nova numeração)
 
 > A numeração recomeçou: esta 1.0.0 é posterior à antiga 1.3.2. O atualizador de uma instalação 1.3.2 não a oferece (compara números); instale o `Registrale-Setup-1.0.0.exe` por cima uma vez. Dados, rotinas e PDFs são preservados.
@@ -31,9 +19,10 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - **Página destacada do DOU por menção:** ao gravar menções com PDF do dia arquivado, o painel gera em segundo plano `<pasta_pdfs>/destaques/<AAAA-MM-DD>/<cnpj_raiz>_<id>.pdf` contendo a página da ocorrência com anotações `Highlight` nas citações do CNPJ (ou da raiz isolada). Botão **Página destacada** (`file-search`) disponível na aba **Menções** (`/api/mention_highlight_pdf`) e opção `email_attach_highlight` (desligada por padrão) em **Configurações → Integrações**.
 
 ### Melhorado
-- **API do DOU (`DOUHook._request_page`):** timeout padrão de 20 s com até 5 tentativas (`REGISTRALE_DOU_TIMEOUT` e `REGISTRALE_DOU_MAX_RETRIES` configuráveis por ambiente), pior caso ≈ 100 s + backoff (antes 105 s). A medição ao vivo de 40 consultas (p50 = 0,45 s, p95 = 0,68 s, máx = 1,02 s) foi feita num momento tranquilo; 10 s foi descartado porque o portal às vezes trava até 35 s e 5 × 10 s falharia inteiro nesses períodos.
+- **API do DOU (`DOUHook._request_page`):** timeout padrão de 20 s com até 2 tentativas por consulta (`REGISTRALE_DOU_TIMEOUT` e `REGISTRALE_DOU_MAX_RETRIES` configuráveis por ambiente); a camada de fora (`ResilientDOUSearcher`) repete 1 vez após 10 s, pior caso ≈ 100 s por CNPJ (ver **Corrigido**). A medição ao vivo de 40 consultas (p50 = 0,45 s, p95 = 0,68 s, máx = 1,02 s) foi feita num momento tranquilo; 10 s foi descartado porque o portal às vezes trava até 35 s.
 
 ### Testes
+- `tests/local/test_dou_resilient.py` (retry, breaker, reset, SSL), `tests/local/test_dou_contingency.py` (contingência no runner, `partial` no executor, histórico e e-mail no watcher) e `tests/local/test_launcher_show_panel.py` (evento nomeado com `kernel32` simulado).
 - **Nova tentativa automática de ponta a ponta** (`tests/local/test_retry_ponta_a_ponta.py`), offline e com relógio simulado, sobre o agendador e o executor reais: cadeia `partial` → retry às 15h → concluída com e-mail só das menções novas, limite de 4 tentativas, corte das 22h, retry perdido com o PC desligado e menções preservadas com SMTP falhando.
 
 ### Interface
@@ -42,6 +31,11 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - A lixeira da linha de usuário recém-criado (ou depois de remover outro) aparecia sem ícone até recarregar a página.
 
 ### Corrigido
+- **Busca diária presa por horas com o portal do DOU fora do ar** (26/11/2026: ReadTimeout de 35 s e 502 em `www.in.gov.br/consulta`). As duas camadas de retry empilhadas (hook × buscador) deixavam cada CNPJ ~12 min preso; com 122 CNPJs a rotina passaria de 24 h. O novo `ResilientDOUSearcher` (`runtime/dou_resilient.py`) faz 1 nova tentativa por CNPJ após 10 s e o hook passa a 2 tentativas de 20 s: pior caso **~100 s por CNPJ**. Depois de **3 CNPJs seguidos** sem resposta a API é abandonada (circuit breaker): **~5 min** no pior caso para a rotina inteira desistir do portal, qualquer que seja o número de CNPJs. Ajustes por ambiente: `REGISTRALE_DOU_TERM_RETRIES` (1), `REGISTRALE_DOU_TERM_RETRY_SLEEP` (10), `REGISTRALE_DOU_BREAKER` (3), `REGISTRALE_DOU_MAX_RETRIES` (agora 2).
+- **Um CNPJ com erro abortava a rotina inteira.** Falha isolada agora devolve "sem resultado" para aquele CNPJ, guarda-o como sem resposta e a busca segue.
+- **Rotina principal (fonte DOU) sem plano B.** Os CNPJs que a API não respondeu (portal fora ou falhas isoladas) são procurados no **PDF integral** do dia, como já acontecia no ramo INLABS, e o resultado é mesclado (`source_used` = `API do DOU + PDF integral`). Sem contingência (`inlabs_fallback = off`) ou com o PDF também fora, nenhuma exceção sobe: as seções ficam **pendentes** com o motivo, a execução termina "com pendências" e a nova tentativa automática é agendada.
+- **Falha aparecia como "0 menções".** Execução que falhou registra **"Busca Falhou"** com o erro (nunca "Busca Concluída"); execução com pendências mostra o motivo legível (ex.: "Portal do DOU indisponível: ...", "N CNPJ(s) sem resposta do portal: ...") e não diz "0 menções encontradas". E-mail com menções achadas antes da falha leva o aviso "resultado INCOMPLETO"; sem menções, nada é enviado.
+- **Abrir o atalho com o app já aberto mostrava uma caixa de aviso.** A segunda abertura agora sinaliza a primeira (evento nomeado `Local\RegistraleDOU_ShowPanel`), que traz o painel para a frente; o aviso antigo só aparece se a cópia em execução for de versão anterior.
 - **Anexo da página destacada no e-mail nunca era anexado.** A geração rodava em segundo plano e o e-mail saía antes de o arquivo existir. Com `email_attach_highlight` ligado e e-mail a enviar, as páginas das menções do e-mail são geradas antes do envio (até 60 s no total; o que não ficar pronto vai sem anexo e o log diz quantas ficaram de fora). As demais continuam em segundo plano; com a opção desligada nada muda. Arquivo temporário com nome único evita colisão entre as duas gerações.
 - **Página destacada errada quando a empresa aparece em mais de uma matéria do dia.** Entre as páginas com a raiz do CNPJ, passa a valer a que contém um trecho (≈ 50 caracteres) do resumo gravado da menção; sem trecho que bata, continua a primeira.
 - **Aviso de sincronização travada dizia sempre "GestãoClick".** Quando quem está parada é a planilha, o aviso fala em **Google Sheets** (`sheets_sync_stalled`) e o **Resolver** leva à aba da planilha; com as duas paradas, aparece um aviso para cada (`sync_state.get_sync_state` expõe início e tempo de cada origem).
