@@ -67,9 +67,6 @@ Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/
 ## 4. Pendências conhecidas
 
 - **Nova tentativa automática ao vivo:** o status "Concluída com pendências" e o reagendamento foram validados por testes, não numa busca real à tarde.
-- **Testes de `tests/local/`** gravam logs vazios em `%LOCALAPPDATA%\Registrale\logs\runs` (isolamento incompleto).
-- **`test_open_pdf_storage_folder_validation_and_launch`** falha no Windows: mocka `subprocess.Popen`, mas lá a rota usa `os.startfile`.
-- **Interface:** as pílulas de Configurações (abaixo de 1280 px) não indicam que há mais itens para rolar; checklist manual com login ligado ainda não feito.
 - **Histórico do git:** uma lista antiga de CNPJs (`dag_confs/Pesquisa_cnpj.yaml`) continua no histórico e no instalador da release `v1.0.0`. Opções: manter, substituir o asset da release ou reescrever o histórico (`git filter-repo` + force-push coordenado).
 
 ## 5. Backlog

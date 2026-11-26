@@ -671,8 +671,16 @@
             <!-- Submenu: lista lateral em telas largas; pílulas roláveis abaixo de 1280 px -->
             <div class="w-full xl:w-64 shrink-0 min-w-0">
                 <h2 class="text-xl font-semibold tracking-tight mb-4 xl:mb-6">Configurações</h2>
-                <nav class="flex xl:flex-col gap-1 xl:gap-2 overflow-x-auto xl:overflow-visible pb-2 xl:pb-0 -mx-1 px-1" aria-label="Seções de configuração"
-                     x-init="$watch('settingsSubTab', () => $nextTick(() => { const el = $el.querySelector('[data-active=true]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }))">
+                <div class="relative xl:static"
+                     x-data="{ canLeft: false, canRight: false, update() { const n = this.$refs.nav; if (!n) return; this.canLeft = n.scrollLeft > 4; this.canRight = n.scrollLeft + n.clientWidth < n.scrollWidth - 4; }, scrollBy(dx) { this.$refs.nav?.scrollBy({ left: dx, behavior: 'smooth' }); } }"
+                     x-init="$nextTick(() => update()); $watch('activeTab', () => $nextTick(() => update())); $watch('settingsSubTab', () => $nextTick(() => { const el = this.$refs.nav?.querySelector('[data-active=true]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); setTimeout(() => update(), 150); }))"
+                     @resize.window="update()">
+                    <div x-show="canLeft" x-cloak class="xl:hidden absolute left-0 top-0 bottom-2 z-10 flex items-center pr-4 bg-gradient-to-r from-[var(--bg)] via-[var(--bg)]/90 to-transparent pointer-events-none">
+                        <button type="button" @click="scrollBy(-180)" class="btn btn-secondary btn-sm btn-icon pointer-events-auto shadow-sm" aria-label="Rolar seções para a esquerda" title="Rolar para a esquerda">
+                            <i data-lucide="chevron-left"></i>
+                        </button>
+                    </div>
+                    <nav x-ref="nav" @scroll="update()" class="flex xl:flex-col gap-1 xl:gap-2 overflow-x-auto xl:overflow-visible pb-2 xl:pb-0 -mx-1 px-1" aria-label="Seções de configuração">
                     <button type="button" :data-active="(settingsSubTab === 'users').toString()" @click="settingsSubTab = 'users'" :class="settingsSubTab === 'users' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="users" class="w-4 h-4"></i> Usuários</button>
                     <button type="button" :data-active="(settingsSubTab === 'google_sheets').toString()" @click="settingsSubTab = 'google_sheets'" :class="settingsSubTab === 'google_sheets' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Google Sheets</button>
                     <button type="button" :data-active="(settingsSubTab === 'integrations').toString()" @click="settingsSubTab = 'integrations'" :class="settingsSubTab === 'integrations' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="plug-zap" class="w-4 h-4"></i> Integrações</button>
@@ -682,7 +690,13 @@
                     <button type="button" :data-active="(settingsSubTab === 'storage').toString()" @click="settingsSubTab = 'storage'" :class="settingsSubTab === 'storage' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="hard-drive" class="w-4 h-4"></i> Armazenamento</button>
                     <button type="button" :data-active="(settingsSubTab === 'logs').toString()" @click="settingsSubTab = 'logs'; fetchSystemLogs();" :class="settingsSubTab === 'logs' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="file-text" class="w-4 h-4"></i> Logs do sistema</button>
                     <button type="button" :data-active="(settingsSubTab === 'system').toString()" @click="settingsSubTab = 'system'; fetchSystemUpdateInfo();" :class="settingsSubTab === 'system' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100'" class="shrink-0 whitespace-nowrap xl:w-full text-left flex items-center gap-2 xl:gap-3 px-3 h-9 rounded-lg text-sm font-medium transition-colors"><i data-lucide="download-cloud" class="w-4 h-4"></i> Sistema e atualizações</button>
-                </nav>
+                    </nav>
+                    <div x-show="canRight" x-cloak class="xl:hidden absolute right-0 top-0 bottom-2 z-10 flex items-center pl-4 bg-gradient-to-l from-[var(--bg)] via-[var(--bg)]/90 to-transparent pointer-events-none">
+                        <button type="button" @click="scrollBy(180)" class="btn btn-secondary btn-sm btn-icon pointer-events-auto shadow-sm" aria-label="Rolar seções para a direita" title="Rolar para a direita">
+                            <i data-lucide="chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
             
             <!-- Content Area -->

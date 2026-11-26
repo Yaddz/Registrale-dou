@@ -53,6 +53,8 @@ class TestPathsAndLock:
 
         monkeypatch.delenv("REGISTRALE_DATA_DIR", raising=False)
         monkeypatch.delenv("DATA_DIR", raising=False)
+        monkeypatch.delenv("REGISTRALE_LOGS_DIR", raising=False)
+        monkeypatch.delenv("LOGS_DIR", raising=False)
         fake_user_dir = tmp_path / "AppData" / "Local" / "Registrale"
         monkeypatch.setattr(platformdirs, "user_data_dir", lambda appname, appauthor=False: str(fake_user_dir))
 
@@ -285,5 +287,6 @@ class TestSmtpErrorLabel:
             assert Mention.query.count() == 1
             events = [h.evento for h in SyncHistory.query.order_by(SyncHistory.id.asc()).all()]
             assert "Erro Envio E-mail" in events
-            assert "Busca Concluída" not in events
+            assert "Busca Concluída" in events
+            assert events.index("Busca Concluída") < events.index("Erro Envio E-mail")
             assert "Erro (Busca Mensal)" not in events

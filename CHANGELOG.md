@@ -13,7 +13,11 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - Decisões de arquitetura, baseline, resultado da homologação, pendências e backlog consolidados em `docs/tecnico/02_decisoes_e_historico.md`. Plano de migração, prompts de sprint, homologação e inventário do Airflow saíram do git (`docs/projeto/` agora é local e ignorado).
 - `AGENTS.md` sem dependência do plano de sprints, com roteiro "Comece aqui" e as regras de filtro de órgão e SMTP.
 
+### Interface
+- Submenu de Configurações (abaixo de 1280 px) passa a exibir degradê nas bordas e setas (`chevron-left`/`chevron-right`) quando há pílulas fora da área visível, rolando automaticamente para manter a seção ativa visível.
+
 ### Corrigido
+- Isolamento de `tests/local/`: fixture `autouse` em `tests/local/conftest.py` redireciona `REGISTRALE_DATA_DIR` e `REGISTRALE_LOGS_DIR` para `tmp_path`.
 - **Histórico de buscas quando o envio de e-mail falha:** buscas diárias e mensais passam a registrar `Busca Concluída` (ou `Busca Concluída com Pendências`) / `Busca Mensal Concluída` antes do evento `Erro Envio E-mail`, preservando todas as menções gravadas no banco.
 - **Siglas de órgão em rotinas personalizadas antigas:** o executor local expande siglas de `department` em memória ao carregar qualquer rotina (`runner.load_specs`), sem exigir que a rotina seja salva novamente.
 - **Sincronização do GestãoClick (duplicidade, erros silenciosos, URL padrão, precedência e contagens):**
@@ -32,7 +36,11 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ## [1.3.2] — 2026-11-25 (Avisos, SMTP, contador de menções e responsividade)
 
+### Interface
+- Submenu de Configurações (abaixo de 1280 px) passa a exibir degradê nas bordas e setas (`chevron-left`/`chevron-right`) quando há pílulas fora da área visível, rolando automaticamente para manter a seção ativa visível.
+
 ### Corrigido
+- Isolamento de `tests/local/`: fixture `autouse` em `tests/local/conftest.py` redireciona `REGISTRALE_DATA_DIR` e `REGISTRALE_LOGS_DIR` para `tmp_path`.
 - **Aviso "Integrações pendentes" permanente removido**, junto com o assistente antigo de integrações. A Visão geral só avisa sobre problema real: envio de e-mail ligado sem servidor, rotina principal sem destinatário com o SMTP ligado, Google Sheets/GestãoClick com sincronização automática ligada e sem credenciais, ou erro de integração nas últimas 24 h. Integração desligada nunca gera aviso. O botão **Resolver** leva direto à aba certa (`/api/system/health_alerts`).
 - **SMTP desligado por padrão.** Sem a chave `enabled`, o envio fica desligado (antes valia como ligado e cada busca gerava "conexão recusada"). Ligado sem servidor, nada é enviado e a execução registra um único evento "SMTP ligado sem servidor configurado". A tela segue a mesma regra. Instalações antigas com servidor e usuário configurados continuam ligadas.
 - **Contador de menções da tela Empresas** soma as menções pela raiz do CNPJ (matriz, filiais e menções só pela raiz) e é atualizado sozinho quando uma busca termina.
@@ -53,7 +61,11 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ## [1.3.1] — 2026-11-25 (Hotfix: buscas sem resultado)
 
+### Interface
+- Submenu de Configurações (abaixo de 1280 px) passa a exibir degradê nas bordas e setas (`chevron-left`/`chevron-right`) quando há pílulas fora da área visível, rolando automaticamente para manter a seção ativa visível.
+
 ### Corrigido
+- Isolamento de `tests/local/`: fixture `autouse` em `tests/local/conftest.py` redireciona `REGISTRALE_DATA_DIR` e `REGISTRALE_LOGS_DIR` para `tmp_path`.
 - **Busca mensal não executava nenhum dia.** Os disparos da thread de fundo (`routes/dags.py::api_trigger_monthly`) rodavam fora do app context e o executor falhava com `Working outside of application context`, erro que era engolido; a busca terminava como "Nenhuma menção encontrada". Agora cada disparo roda dentro do app context, o servidor vincula o app ao executor na inicialização (`get_executor(app)`) e falhas de disparo geram o evento **"Erro (Busca Mensal)"** com o motivo.
 - **Filtro de órgão por sigla descartava todas as publicações.** O núcleo compara o filtro com os elementos de `hierarchyList` do DOU (nome oficial). Siglas comuns (ANVISA, INPI, MS, MAPA, INMETRO, ANP, ANATEL, ANS, ANEEL, ANTT, IBAMA, CADE, RFB…) agora são convertidas para o nome oficial ao gravar o YAML (`services/organ_aliases.py`); o painel continua mostrando o que o usuário digitou.
 - Limpar o filtro de órgão na rotina principal não tinha efeito: `rebuild_yaml_from_db()` tratava a lista vazia salva como ausente e herdava o filtro antigo do YAML. Agora lista vazia significa "todos os órgãos" e a chave `organs` antiga sai do bloco.
