@@ -760,29 +760,33 @@ def open_pdf_storage_folder():
 @admin_bp.route('/manual', methods=['GET'])
 @login_required
 def get_user_manual():
-    """Retorna o conteúdo do Manual único (docs/manual/) em Markdown ou como download."""
+    """Retorna o Manual único (docs/manual/) em Markdown, em capítulos HTML (``?format=sections``) ou como download."""
     import io
     from pathlib import Path
     from flask import send_file, request
+    from ..services.manual_service import (
+        build_manual_markdown,
+        build_manual_sections,
+        find_manual_dir,
+        list_manual_files,
+    )
 
-    manual_dir_candidates = [
+    manual_dir = find_manual_dir([
         Path(BASE_DIR) / 'docs' / 'manual',
         Path(__file__).resolve().parents[3] / 'docs' / 'manual',
-    ]
-    manual_dir = next((d for d in manual_dir_candidates if d.is_dir()), None)
-
-    content = None
-    if manual_dir is not None:
-        files = sorted(
-            [f for f in manual_dir.glob('*.md') if f.is_file()],
-            key=lambda p: (0 if p.name.lower() == 'readme.md' else 1, p.name),
-        )
-        if files:
-            parts = [f.read_text(encoding='utf-8').strip() for f in files]
-            content = '\n\n---\n\n'.join(p for p in parts if p) + '\n'
+    ])
+    files = list_manual_files(manual_dir) if manual_dir is not None else []
+    content = build_manual_markdown(files)
 
     if not content:
         return jsonify({"status": "error", "message": "Manual não encontrado."}), 404
+
+    if request.args.get('format', '').lower() == 'sections':
+        sections = [
+            {"id": s.id, "title": s.title, "html": s.html}
+            for s in build_manual_sections(files)
+        ]
+        return jsonify({"status": "success", "sections": sections})
 
     if request.args.get('download', '').lower() in ('true', '1', 'yes'):
         buf = io.BytesIO(content.encode('utf-8'))

@@ -93,10 +93,8 @@ O painel configura automaticamente `WAL` e `busy_timeout=5000` na inicializaçã
 
 ---
 
-## ⚙️ 7. Configuração Inicial Obrigatória
+## ⚙️ 7. Configuração inicial
 
-No primeiro deploy, o administrador deve realizar as seguintes configurações iniciais obrigatórias (exibidas via banner de alerta amarelo na tela inicial do dashboard):
+Na primeira abertura, o painel mostra o **assistente de primeiro uso** de 9 passos (importação, pasta dos PDFs, forma de abertura do painel, rotina inicial, empresas, GestãoClick, SMTP, fonte da busca e resumo). Pular um passo desliga a função correspondente sem gerar aviso; o assistente pode ser reaberto em **Configurações → Sistema e atualizações → Refazer configuração inicial** sem apagar dados. Descrição completa no [manual](../manual/01_primeiros_passos.md).
 
-1. **Rotina Principal**: E-mails de destino, assunto e agendamento via modal na tela inicial.
-2. **Servidor SMTP**: Configurado dentro do mesmo modal ou na aba de configurações.
-3. **Credenciais INLABS**: Usuário e senha do portal da Imprensa Nacional.
+Para testar a interface sem tocar nos dados reais (cópia dos dados em porta separada) e para homologar em VM Windows, veja [`02_decisoes_e_historico.md`](02_decisoes_e_historico.md#6-como-validar-mudanças-sem-tocar-no-app-instalado).

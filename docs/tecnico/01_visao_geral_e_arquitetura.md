@@ -1,6 +1,6 @@
 # 01. Visão Geral e Arquitetura do Sistema
 
-O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossistema de monitoramento de Diários Oficiais da Registrale. Ele centraliza a gestão de empresas cadastradas, controla o disparo das rotinas de busca no Diário Oficial da União (DOU) e na base histórica do INLABS, gerencia notificações e exporta relatórios executivos.
+O painel do **Registrale-DOU** é a interface web (servida localmente no Windows) que orquestra o monitoramento de Diários Oficiais da Registrale. Ele centraliza a gestão de empresas cadastradas, controla o disparo das rotinas de busca no Diário Oficial da União (DOU) e na base histórica do INLABS, gerencia notificações e exporta relatórios executivos.
 
 ---
 
@@ -32,7 +32,9 @@ O **Ro-DOU Dashboard** é a interface web corporativa e orquestradora do ecossis
        ├───────────────────────────────┤
        │ • GestãoClick (API Clientes)  │
        │ • Google Sheets API v4        │
-       │ • PostgreSQL INLABS (Matérias)│
+       │ • API do DOU (in.gov.br)      │
+       │ • PDF integral (pesquisa.in)  │
+       │ • PostgreSQL INLABS (opcional)│
        │ • Servidor SMTP (E-mails)     │
        │ • LocalExecutor + APScheduler   │
        └───────────────────────────────┘
@@ -130,7 +132,7 @@ Para garantir alta performance e tempo de resposta instantâneo na interface web
 ### 1. Mentions Watcher (`start_mentions_watcher()`)
 * Monitora a execução local (`JobRun`) em busca de novos resultados gerados pelas rotinas de busca.
 * Ao identificar novas detecções, extrai as informações estruturadas (data, empresa, CNPJ, seção, trecho limpo e link da publicação), insere de forma atômica no banco SQLite (`Mention`) e registra o evento em `SyncHistory`.
-* Permite que o dashboard exiba alertas sonoros e notificações em tempo real sem precisar reiniciar a aplicação.
+* Permite que o painel mostre as menções novas (contador no menu lateral) sem precisar reiniciar a aplicação.
 
 ### 2. Google Sheets Auto-Sync Scheduler (`GoogleSheetsScheduler`)
 * Thread daemon dedicada que verifica a cada 60 segundos se o recurso de sincronização automática com o Google Sheets está ativo nas configurações (`settings.google_sheets.auto_sync`).

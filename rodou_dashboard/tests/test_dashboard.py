@@ -4,6 +4,7 @@ import pytest
 import sys
 import os
 import json
+import re
 
 
 class TestLogin:
@@ -722,6 +723,20 @@ class TestNewOptimizedFeatures:
         assert data.get('status') == 'success'
         assert 'Manual do Usuário' in data.get('content')
         assert 'Concluída com pendências' in data.get('content')
+
+    def test_user_manual_sections_render_html_with_internal_links(self, auth_client):
+        resp = auth_client.get('/api/manual?format=sections')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get('status') == 'success'
+        sections = data.get('sections')
+        assert sections and sections[0]['id'] == 'manual-readme'
+        assert all(s['id'] and s['title'] and s['html'] for s in sections)
+        html = ''.join(s['html'] for s in sections)
+        assert '<table>' in html
+        assert '.md' not in ''.join(re.findall(r'href="([^"]*)"', html))
+        ids = {s['id'] for s in sections} | set(re.findall(r'id="([^"]+)"', html))
+        assert set(re.findall(r'href="#([^"]+)"', html)) <= ids
 
     def test_download_user_manual_endpoint(self, auth_client):
         resp = auth_client.get('/api/manual?download=true')

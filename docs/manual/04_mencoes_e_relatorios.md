@@ -1,32 +1,62 @@
-# 4. Menções, relatórios e atividade
+# 4. Menções e relatórios
 
-## Registro garantido antes do e-mail
+Uma **menção** é uma publicação do DOU em que apareceu o CNPJ de uma empresa monitorada.
 
-Toda menção encontrada é gravada no banco SQLite local (`mentions`) **antes** de qualquer tentativa de envio de e-mail. Se o servidor SMTP estiver desligado ou falhar, as menções continuam salvas no painel e a execução registra o status apropriado (como `Erro Envio E-mail` quando apenas o envio falhou).
+> **As menções nunca se perdem por causa do e-mail.** Toda menção é gravada no computador **antes** de qualquer envio. Se o e-mail estiver desligado ou falhar, ela continua na aba **Menções**.
 
-## Filtros e visualização
+## Aba Menções
 
-Na aba **Menções**, há uma busca por empresa, CNPJ, data ou trecho e um filtro de data (`DD/MM/AAAA`). A listagem inicial é limitada; use **Carregar mais** ou **Exibir todas**.
+Lista tudo o que já foi encontrado, da mais nova para a mais antiga. Um ponto verde indica menção encontrada hoje, e o número vermelho no menu lateral mostra quantas você ainda não viu.
 
-Na aba **Relatórios**, é possível filtrar por empresas (uma ou várias), seção do DOU (Seção 1, 2, 3 ou Edições Extras) e período (data inicial e final).
+- **Pesquisar:** por empresa, CNPJ ou trecho do texto.
+- **Filtrar por data:** digite `DD/MM/AAAA`.
+- A lista começa limitada; use **Carregar mais (+100)** ou **Exibir todas**.
 
-Cada menção tem os atalhos **Abrir DOU** (matéria oficial em `in.gov.br`, quando disponível/confirmado) e **Abrir PDF integral do dia** (arquivado localmente), além de ver detalhes, enviar por e-mail (com o SMTP ligado) e excluir.
+### O que dá para fazer com cada menção
 
-## Exportação de relatórios
+| Botão | O que faz |
+|---|---|
+| **Ver detalhes** | Mostra o trecho em que a empresa aparece, a seção e a data |
+| **Abrir DOU** | Abre a matéria oficial no site da Imprensa Nacional (`in.gov.br`) |
+| **Abrir PDF integral do dia** | Abre o PDF da edição guardado no seu computador (se o arquivamento estiver ligado) |
+| **Enviar e-mail** | Envia a menção para alguém, com prévia antes do envio (precisa do e-mail ligado) |
+| **Excluir menção** | Remove a menção do painel |
 
-Na aba **Relatórios** (botões **Excel**, **PDF** e **Enviar por e-mail**):
+Para excluir várias de uma vez, marque as caixas de seleção e clique em **Excluir selecionadas**.
 
-- **Excel (`.xlsx`):** exporta a listagem filtrada.
-- **PDF:** gera relatório formatado para envio ao cliente ou arquivo interno.
-- **Enviar por e-mail:** disponível com o SMTP ligado.
+Na janela de detalhes há também **Parar de monitorar empresa**, para quando a menção mostra que o cliente não precisa mais ser acompanhado.
 
-A aba **Empresas** tem seu próprio **Exportar Excel**.
+## Aba Relatórios
 
-## Template de e-mail
+Serve para montar um recorte e exportar.
 
-Em **Configurações → Templates de e-mail**, você pode personalizar o assunto e o corpo HTML dos alertas usando as variáveis disponíveis (exibidas em painel lateral organizado sem quebra de layout).
+1. **Período:** use os atalhos (**Hoje**, **Últimos 7 dias**, **Este mês**, **Últimos 30 dias**, **Ano atual**) ou preencha **Data inicial** e **Data final**.
+2. **Empresas:** escolha uma ou várias (deixe vazio para todas).
+3. **Seção DOU:** uma seção ou **Todas as seções**.
+4. Exporte pelo botão do topo:
 
-## Painel de atividade e botão Atualizar
+| Botão | Resultado |
+|---|---|
+| **Excel** | Planilha `.xlsx` com empresa, seção, data, trecho e link de cada menção |
+| **PDF** | Relatório formatado, pronto para mandar ao cliente ou arquivar |
+| **Enviar por e-mail** | Manda o relatório por e-mail (precisa do e-mail ligado) |
 
-- Tarefas em segundo plano (buscas diárias, busca mensal, sincronização de empresas e arquivamento de PDFs) exibem progresso visível na barra de atividade.
-- O botão **Atualizar** na barra de ações permite recarregar imediatamente o estado das execuções, menções e sincronizações.
+A tela mostra até 100 resultados; a exportação leva todos os do filtro.
+
+## Modelo do e-mail
+
+Em **Configurações → Templates de e-mail** você muda o assunto e a aparência do e-mail de alerta. O editor tem modo visual, prévia com publicações de exemplo e código HTML.
+
+Use as **variáveis** para o Registrale preencher sozinho cada e-mail:
+
+| Variável | Vira |
+|---|---|
+| `{content}` | O bloco com todas as menções |
+| `{empresa}` | Nome da empresa |
+| `{cnpj}` | CNPJ da empresa |
+| `{secao}` | Seção do DOU |
+| `{data}` | Data da publicação |
+| `{trecho}` | Trecho com o CNPJ destacado em amarelo |
+| `{link}` | Link para a matéria no DOU |
+
+Com o envio de e-mail desligado, essa tela fica travada.

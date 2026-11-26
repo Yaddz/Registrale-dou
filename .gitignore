@@ -21,6 +21,8 @@ __pycache__/
 client_secret*.json
 CONFIGURACOES_SISTEMA.md
 *CONFIGURACOES*.md
+# Capítulo do manual (o padrão acima o pegaria no Windows, que ignora maiúsculas)
+!docs/manual/06_configuracoes.md
 
 # Virtual Environments
 .venv/
@@ -135,3 +137,7 @@ test_notrack/
 values-local.yaml
 
 docs/CODEBASE_MAP.md
+
+# Planos, prompts e rascunhos de trabalho com agentes (ficam só na máquina local;
+# o que for relevante vai para docs/tecnico/ e CHANGELOG.md)
+docs/projeto/

@@ -1,6 +1,6 @@
 # 03. Integrações do Sistema
 
-O **Ro-DOU Dashboard** atua como uma ponte de dados entre o ERP corporativo, planilhas colaborativas, a base de dados oficial da Imprensa Nacional e servidores de e-mail. A seguir, detalha-se o funcionamento de cada uma das 4 principais integrações:
+O painel do **Registrale-DOU** atua como uma ponte de dados entre o ERP corporativo, planilhas colaborativas, a base de dados oficial da Imprensa Nacional e servidores de e-mail. A seguir, detalha-se o funcionamento de cada uma das 4 principais integrações:
 
 ---
 

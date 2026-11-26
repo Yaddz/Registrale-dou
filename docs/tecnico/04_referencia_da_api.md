@@ -1,6 +1,6 @@
 # 04. Referência Completa da API REST
 
-Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja autenticado via sessão HTTP (exceto rotas públicas de login).
+Todas as rotas da API do painel do **Registrale-DOU** requerem que o usuário esteja autenticado via sessão HTTP (exceto rotas públicas de login).
 
 ---
 
@@ -183,7 +183,7 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
   * `"api_dou_only"`: Executa todas as buscas diretamente via API Oficial do DOU (para meses fora da janela de 120 dias).
 
 ### `GET /api/system/integrations_status` / `GET /api/system/main_dag_status`
-* **Descrição:** Retorna o diagnóstico completo de todas as 4 integrações do sistema para o Assistente de Configuração (Setup Wizard) e o alerta do painel.
+* **Descrição:** Retorna o estado de cada integração (`configured`, `pending` ou `disabled`), usado pelo assistente de primeiro uso de 9 passos e pelos selos de Configurações. Os avisos da Visão geral usam `GET /api/system/health_alerts`.
 * **Resposta de Sucesso (200):**
 ```json
 {
@@ -239,6 +239,10 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
   }
 }
 ```
+
+### `GET /api/system/health_alerts`
+* **Descrição:** Lista só os problemas reais exibidos na Visão geral (`services/health_alerts.py`): envio de e-mail ligado sem servidor, rotina principal sem destinatário com o SMTP ligado, Google Sheets/GestãoClick com sincronização automática ligada e sem credenciais, e erros de integração das últimas 24 h. Integração desligada nunca gera aviso.
+* **Resposta (200):** `{"status": "ok", "alerts": [...]}`; cada aviso indica a aba de destino do botão **Resolver**.
 
 ### `POST /api/system/configure_main_dag`
 * **Descrição:** Configura atomicamente os e-mails de destino, assunto, agendamento (cron) da rotina principal e servidor SMTP. Requer perfil `master`.
@@ -434,6 +438,14 @@ Todas as rotas da API do **Ro-DOU Dashboard** requerem que o usuário esteja aut
 
 ### `GET /api/inlabs_stats`
 * **Descrição:** Retorna o espaço utilizado pelo banco PostgreSQL do INLABS e a listagem de dias armazenados.
+
+### `GET /api/manual`
+* **Descrição:** Retorna o Manual do usuário montado a partir de `docs/manual/` (fonte única; `README.md` primeiro, depois os capítulos em ordem de nome).
+* **Parâmetros (query):**
+  * sem parâmetros → `{"status": "success", "content": "<Markdown completo>"}`;
+  * `format=sections` → `{"status": "success", "sections": [{"id", "title", "html"}]}`, um item por capítulo, já em HTML, com os links entre capítulos apontando para âncoras da própria página (usado pela aba **Manual**);
+  * `download=true` → arquivo `MANUAL.md` (`text/markdown`).
+* **Erro (404):** `docs/manual/` ausente ou vazio.
 
 ---
 

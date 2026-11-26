@@ -460,3 +460,26 @@ html.dark .bg-amber-50 .bg-white { background-color: var(--surface) !important; 
 
 /* Overlays de modal */
 html.dark [class*="backdrop-blur"] { background-color: var(--overlay) !important; }
+
+/* Manual do usuário -------------------------------------------------------
+ * Texto do docs/manual/ renderizado em HTML na aba Manual. Tipografia de
+ * leitura com os tokens do design system (claro e escuro). */
+.manual-prose { color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.65; }
+.manual-prose > * + * { margin-top: 0.875rem; }
+.manual-prose h1 { color: var(--text); font-size: 1.375rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.manual-prose h2 { color: var(--text); font-size: 1.0625rem; font-weight: 600; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--border); scroll-margin-top: 6rem; }
+.manual-prose h3 { color: var(--text); font-size: 0.9375rem; font-weight: 600; margin-top: 1.25rem; scroll-margin-top: 6rem; }
+.manual-prose strong { color: var(--text); font-weight: 600; }
+.manual-prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.manual-prose a:hover { color: var(--accent-hover); }
+.manual-prose ul { list-style: disc; padding-left: 1.25rem; }
+.manual-prose ol { list-style: decimal; padding-left: 1.25rem; }
+.manual-prose li + li { margin-top: 0.3rem; }
+.manual-prose li > ul, .manual-prose li > ol { margin-top: 0.3rem; }
+.manual-prose code { font-family: var(--font-mono); font-size: 0.8125rem; background: var(--surface-sunken); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.05rem 0.3rem; overflow-wrap: anywhere; }
+.manual-prose blockquote { background: var(--surface-sunken); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: inset 3px 0 0 var(--accent); padding: 0.75rem 1rem; color: var(--text-secondary); }
+.manual-prose hr { border: 0; border-top: 1px solid var(--border); }
+.manual-prose table { width: 100%; border-collapse: collapse; font-size: 0.875rem; display: block; overflow-x: auto; }
+.manual-prose thead th { text-align: left; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-sunken); }
+.manual-prose th, .manual-prose td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.manual-prose tbody tr:last-child td { border-bottom: 0; }

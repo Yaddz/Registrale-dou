@@ -5,6 +5,22 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
+## [Não publicado]
+
+### Documentação
+- **Manual reescrito** em linguagem direta, organizado por tarefa (primeiros passos, empresas, rotinas e buscas, menções e relatórios, PDFs, configurações, problemas comuns e glossário) e conferido contra a interface atual.
+- **Aba Manual do painel** passa a mostrar o próprio `docs/manual/` (`GET /api/manual?format=sections`), com índice e pesquisa. O manual antigo em HTML fixo, que ainda falava em "Ro-DOU Dashboard" e no assistente de integrações removido, saiu da tela.
+- Decisões de arquitetura, baseline, resultado da homologação, pendências e backlog consolidados em `docs/tecnico/02_decisoes_e_historico.md`. Plano de migração, prompts de sprint, homologação e inventário do Airflow saíram do git (`docs/projeto/` agora é local e ignorado).
+- `AGENTS.md` sem dependência do plano de sprints, com roteiro "Comece aqui" e as regras de filtro de órgão e SMTP.
+
+### Corrigido
+- **Sincronização do GestãoClick não gravava as empresas no banco.** A busca terminava, gerava o JSON e o YAML e registrava "Sincronização OK", mas a tabela `companies` ficava intacta: a thread do botão rodava sem app context e o passo de reserva (`sync_json_to_db`) lia o JSON numa pasta errada. Agora a gravação acontece dentro de `executar_sincronizacao` (origem "Manual" preservada) e erro de banco vira "Erro Sync" no histórico.
+- **Sincronização travava com mais de 1.500 empresas.** `get_routines()` comparava com o banco só os CNPJs do 1º bloco da rotina principal, reconstruía o YAML a cada listagem e, dentro do `reload` do agendador (trava não reentrante), entrava em deadlock. A contagem soma todos os blocos e a trava do agendador passou a ser reentrante.
+- **Servidor órfão depois de fechar o programa.** Se o launcher morresse sem passar pelo **Sair** (Gerenciador de Tarefas, travamento, logoff), o servidor continuava rodando com o código antigo e segurando a porta 5000; ao reabrir, o servidor novo falhava com "Outra instância" e o painel seguia no processo velho. Agora o servidor fica num Job Object do Windows (morre junto com o launcher), o servidor grava o PID em `registrale.pid` e o launcher encerra um órfão desse mesmo `python.exe` antes de subir, e uma segunda cópia do launcher só avisa que o programa já está aberto.
+- Legendas da **Limpeza do sistema** diziam o contrário do que os botões fazem: **Limpar menções** apaga todas as menções (não só as "lidas") e **Limpar histórico** apaga o histórico de eventos (não "arquivos de cache").
+
+---
+
 ## [1.3.2] — 2026-11-25 (Avisos, SMTP, contador de menções e responsividade)
 
 ### Corrigido

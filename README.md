@@ -26,20 +26,25 @@ O **Registrale-DOU** é um aplicativo desktop para Windows para monitoramento au
 2. Execute o instalador. Não é necessário Docker, WSL, terminal ou instalação prévia de Python.
 3. O instalador grava o aplicativo em `%LOCALAPPDATA%\Programs\Registrale`, cria o atalho na Área de Trabalho e registra a inicialização automática com o Windows (`Startup\Registrale-DOU.lnk`).
 4. Ao iniciar, o ícone do Registrale aparece na **bandeja do sistema** (ao lado do relógio) e abre o painel em uma **janela própria** (ou no navegador padrão em `http://localhost:5000`, caso o WebView2 não esteja disponível).
-5. No primeiro acesso como administrador (`master`), o assistente pergunta **onde guardar os PDFs do DOU** e qual organização de pastas usar (`Por ano e mês`, `Só por ano` ou `Tudo na mesma pasta`).
+5. Na primeira abertura, o **assistente de primeiro uso** (9 passos) configura tudo; veja a seção abaixo.
 
 ---
 
 ## Primeiro uso
 
-Na primeira abertura do painel:
+O assistente guia a configuração inicial e pode ser interrompido e retomado. Cada passo pode ser pulado: a função fica desligada, sem gerar aviso, até ser ligada em **Configurações**.
 
-1. **Importação opcional:** se você utilizava uma instalação anterior, o assistente permite importar o banco `database.db` e as rotinas YAML existentes.
-2. **Credenciais e integrações:** acesse **Configurações** para informar:
-   - **SMTP (opcional):** servidor, porta, usuário, senha e remetente para envio dos alertas por e-mail (pode ser desligado pelo interruptor em *Configurações → Integrações*; quando desligado, as menções continuam sendo gravadas no painel);
-   - **Google Sheets / GestãoClick:** credenciais da planilha ou ERP para sincronização automática da lista de CNPJs;
-   - **INLABS (opcional):** usuário e senha do portal `inlabs.in.gov.br`. Quando o INLABS estiver indisponível ou em manutenção, a contingência configurada (`inlabs_fallback`: `pdf` padrão ou `api`) usa o PDF integral do dia confirmado na API do DOU.
-3. **Empresas e rotina principal (`Pesquisa_cnpj.yaml`):** uma instalação limpa começa com 0 CNPJs monitorados; sincronize com o Google Sheets/GestãoClick ou adicione empresas manualmente e defina os destinatários da rotina.
+1. **Importação opcional** de uma instalação anterior (`database.db` e rotinas YAML).
+2. **Pasta e organização dos PDFs** do DOU (`Por ano e mês`, `Só por ano` ou `Tudo na mesma pasta`).
+3. **Abertura do painel:** direto neste computador ou com usuário e senha.
+4. **Rotina inicial:** 8h em dias úteis, Seções 1, 2, 3 e Extra, todos os órgãos.
+5. **Empresas:** Google Sheets, API do GestãoClick ou cadastro manual (instalação limpa começa com 0 CNPJs).
+6. **GestãoClick:** endereço, tokens e sincronização automática.
+7. **E-mail (SMTP):** desligado por padrão; quando desligado, as menções continuam sendo gravadas no painel.
+8. **Fonte da busca:** sem o INLABS local (padrão do instalador), a busca usa o PDF integral do dia confirmado na API do DOU (`inlabs_fallback`: `pdf` padrão, `api` ou `off`).
+9. **Resumo** com o botão **Buscar agora** para testar.
+
+O passo a passo completo está no [manual](docs/manual/01_primeiros_passos.md).
 
 ---
 
@@ -65,7 +70,7 @@ Na primeira abertura do painel:
 ## Atualização e desinstalação
 
 - **Atualização:** pelo próprio painel (**Configurações → Verificar atualizações**) ou executando o novo `Registrale-Setup-x.y.z.exe` por cima da instalação atual. Os dados em `%LOCALAPPDATA%\Registrale` são preservados.
-- **Desinstalação:** via *Configurações do Windows → Aplicativos* (ou `unins000.exe` na pasta do programa). A desinstalação remove o aplicativo e os atalhos, preservando seus dados locais.
+- **Desinstalação:** via *Configurações do Windows → Aplicativos* (ou `unins000.exe` na pasta do programa). A desinstalação remove o aplicativo e os atalhos e pergunta se os dados locais também devem ser apagados (a resposta recomendada é **Não**, que os preserva).
 
 ---
 
@@ -99,11 +104,12 @@ uv run python tools/sync_upstream.py
 
 ## Documentação
 
-- [`docs/manual/`](docs/manual/README.md) — Manual único do analista (também acessível dentro do painel)
-- [`docs/tecnico/`](docs/tecnico/01_visao_geral_e_arquitetura.md) — Arquitetura, funcionalidades, integrações, API REST, build Windows e Design System
+- [`docs/manual/`](docs/manual/README.md) — Manual do analista (o mesmo texto aparece na aba **Manual** do painel)
+- [`docs/tecnico/`](docs/tecnico/01_visao_geral_e_arquitetura.md) — Arquitetura, integrações, API REST, build Windows e Design System
+- [`docs/tecnico/02_decisoes_e_historico.md`](docs/tecnico/02_decisoes_e_historico.md) — Decisões de arquitetura, baseline de paridade, homologação, pendências e backlog
 - [`docs/upstream/`](docs/upstream/pesquisa_dou.md) — Guias de pesquisa, operadores e parâmetros do Ro-DOU aplicáveis ao app
-- [`docs/projeto/PLANO.md`](docs/projeto/PLANO.md) — Plano de migração, decisões de arquitetura e histórico dos sprints
 - [`CHANGELOG.md`](CHANGELOG.md) — Histórico de versões do Registrale-DOU
+- [`AGENTS.md`](AGENTS.md) — Regras para quem desenvolve no projeto (pessoas ou agentes de IA)
 
 ---
 

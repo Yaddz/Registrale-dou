@@ -195,7 +195,7 @@ Superfície neutra (igual a um cartão) com uma faixa de 3 px à esquerda na cor
 | Erro | `callout-danger` | Falhas |
 | Neutro | só `callout` | Nota sem estado |
 
-**Recolhível.** Para avisos persistentes (como "Integrações pendentes" na Visão geral), use um cabeçalho `.callout-toggle` com a seta `.callout-chevron` (gira com `.is-open`) e o corpo em `x-show`. O cabeçalho recolhido resume o conteúdo numa linha e mantém a ação principal visível. O estado recolhido fica em `localStorage` com a lista de pendências como chave, então o aviso reabre sozinho quando surge uma pendência nova.
+**Recolhível.** Para avisos persistentes (como os avisos de problema da Visão geral), use um cabeçalho `.callout-toggle` com a seta `.callout-chevron` (gira com `.is-open`) e o corpo em `x-show`. O cabeçalho recolhido resume o conteúdo numa linha e mantém a ação principal visível. O estado recolhido fica em `localStorage` com a lista de pendências como chave, então o aviso reabre sozinho quando surge uma pendência nova.
 
 Não use fundo colorido em caixas. Fundo tingido fica restrito a `.badge`.
 
