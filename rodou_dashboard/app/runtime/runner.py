@@ -218,12 +218,14 @@ def _resolve_terms(subsearch: Any) -> Any:
 
 def _build_default_searchers() -> Dict[str, Any]:
     _ensure_src_imports()
-    from searchers import DOESPSearcher, DOUSearcher, INLABSSearcher, QDSearcher
+    from searchers import DOESPSearcher, INLABSSearcher, QDSearcher
 
+    from .dou_resilient import ResilientDOUSearcher
     from .pdf_search import search_day_via_pdf
 
     return {
-        "DOU": DOUSearcher(),
+        # Limite de tempo por CNPJ e parada antecipada com o portal fora (ver dou_resilient.py)
+        "DOU": ResilientDOUSearcher(),
         "QD": QDSearcher(),
         "INLABS": INLABSSearcher(),
         "DOESP": DOESPSearcher(),

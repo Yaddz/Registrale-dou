@@ -64,10 +64,11 @@ class DOUHook(BaseHook):
             "Cache-Control": "no-cache",
         }
 
-        # Patch local: timeout e tentativas configuráveis por ambiente (padrão 20s x 5, ~100s + backoff no pior caso;
-        # o portal in.gov.br às vezes trava até 35s, então 10s falharia nesses períodos)
+        # Patch local: timeout e tentativas configuráveis por ambiente (padrão 20s x 2 = 20 + 5 de backoff + 20 = 45s
+        # no pior caso; o portal in.gov.br às vezes trava até 35s, então 10s falharia nesses períodos). A camada de
+        # fora (rodou_dashboard/app/runtime/dou_resilient.py) repete 1 vez após 10s: ~100s por CNPJ com o portal fora.
         timeout = int(os.getenv("REGISTRALE_DOU_TIMEOUT", "20"))
-        max_retries = int(os.getenv("REGISTRALE_DOU_MAX_RETRIES", "5")) if max_retries is None else max_retries
+        max_retries = int(os.getenv("REGISTRALE_DOU_MAX_RETRIES", "2")) if max_retries is None else max_retries
         for attempt in range(1, max_retries + 1):
             try:
                 # First try with HTTPS
