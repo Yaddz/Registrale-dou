@@ -5,6 +5,18 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 
 ---
 
+## [Não publicado]
+
+### Corrigido
+- **Busca diária presa por horas com o portal do DOU fora do ar** (26/11/2026: ReadTimeout de 35 s e 502 em `www.in.gov.br/consulta`). As duas camadas de retry empilhadas (hook × buscador) deixavam cada CNPJ ~12 min preso; com 122 CNPJs a rotina passaria de 24 h. O novo `ResilientDOUSearcher` (`runtime/dou_resilient.py`) faz 1 nova tentativa por CNPJ após 10 s e o hook passa a 2 tentativas de 20 s: pior caso **~100 s por CNPJ**. Depois de **3 CNPJs seguidos** sem resposta a API é abandonada (circuit breaker): **~5 min** no pior caso para a rotina inteira desistir do portal, qualquer que seja o número de CNPJs. Ajustes por ambiente: `REGISTRALE_DOU_TERM_RETRIES` (1), `REGISTRALE_DOU_TERM_RETRY_SLEEP` (10), `REGISTRALE_DOU_BREAKER` (3), `REGISTRALE_DOU_MAX_RETRIES` (agora 2).
+- **Um CNPJ com erro abortava a rotina inteira.** Falha isolada agora devolve "sem resultado" para aquele CNPJ, guarda-o como sem resposta e a busca segue.
+- **Rotina principal (fonte DOU) sem plano B.** Os CNPJs que a API não respondeu (portal fora ou falhas isoladas) são procurados no **PDF integral** do dia, como já acontecia no ramo INLABS, e o resultado é mesclado (`source_used` = `API do DOU + PDF integral`). Sem contingência (`inlabs_fallback = off`) ou com o PDF também fora, nenhuma exceção sobe: as seções ficam **pendentes** com o motivo, a execução termina "com pendências" e a nova tentativa automática é agendada.
+- **Falha aparecia como "0 menções".** Execução que falhou registra **"Busca Falhou"** com o erro (nunca "Busca Concluída"); execução com pendências mostra o motivo legível (ex.: "Portal do DOU indisponível: ...", "N CNPJ(s) sem resposta do portal: ...") e não diz "0 menções encontradas". E-mail com menções achadas antes da falha leva o aviso "resultado INCOMPLETO"; sem menções, nada é enviado.
+- **Abrir o atalho com o app já aberto mostrava uma caixa de aviso.** A segunda abertura agora sinaliza a primeira (evento nomeado `Local\RegistraleDOU_ShowPanel`), que traz o painel para a frente; o aviso antigo só aparece se a cópia em execução for de versão anterior.
+
+### Testes
+- `tests/local/test_dou_resilient.py` (retry, breaker, reset, SSL), `tests/local/test_dou_contingency.py` (contingência no runner, `partial` no executor, histórico e e-mail no watcher) e `tests/local/test_launcher_show_panel.py` (evento nomeado com `kernel32` simulado).
+
 ## [1.0.0] — 2026-11-26 (nova numeração)
 
 > A numeração recomeçou: esta 1.0.0 é posterior à antiga 1.3.2. O atualizador de uma instalação 1.3.2 não a oferece (compara números); instale o `Registrale-Setup-1.0.0.exe` por cima uma vez. Dados, rotinas e PDFs são preservados.

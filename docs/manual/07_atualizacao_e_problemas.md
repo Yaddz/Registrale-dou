@@ -37,6 +37,17 @@ Pelo Windows: **Configurações → Aplicativos → Registrale-DOU → Desinstal
 
 Alguma seção do DOU do dia ainda não tinha saído ou não respondeu a tempo. As menções já encontradas estão gravadas. O Registrale tenta de novo sozinho a cada hora (até 4 vezes, até as 22h) e o e-mail das novas tentativas traz só o que for novo. Não precisa fazer nada.
 
+O evento no **Histórico** traz o **Motivo**. Os mais comuns:
+
+- **"Portal do DOU indisponível"**: o site `in.gov.br` ficou fora do ar durante a busca. O Registrale desiste da consulta pelo site em poucos minutos (em vez de ficar horas tentando) e procura as empresas no **PDF integral** do dia; só fica pendente o que nem o PDF conseguiu cobrir.
+- **"N CNPJ(s) sem resposta do portal"**: o site falhou só para algumas empresas; elas foram procuradas no PDF integral e, se ainda faltar alguma, aparecem listadas aqui.
+
+Se o e-mail sair com o aviso **"resultado INCOMPLETO"**, as publicações listadas são reais; o que faltou será procurado nas novas tentativas. Um dia com o portal fora **nunca** aparece como "0 menções encontradas".
+
+### Apareceu "Busca Falhou"
+
+A busca parou por um erro inesperado (a mensagem vem no evento). O resultado daquele dia não está completo: rode **Pesquisar no DOU** na rotina principal mais tarde. Se repetir, envie o arquivo de log (ícone da bandeja → **Ver logs**) para o suporte.
+
 ### A busca não encontrou nenhuma menção
 
 Na maioria dos dias isso é normal: nenhum cliente apareceu no DOU. Para ter certeza:
@@ -61,7 +72,7 @@ A planilha não foi compartilhada com a conta de serviço. No Google Sheets, cli
 
 Clique com o botão direito no ícone da bandeja e escolha **Abrir painel**. Se não houver ícone, abra o Registrale-DOU pelo atalho da Área de Trabalho. Se a janela não aparecer, acesse `http://127.0.0.1:5000` no navegador. Persistindo, use **Reiniciar** no menu da bandeja.
 
-Se aparecer o aviso **"O Registrale-DOU já está aberto"**, o programa já está rodando: use o ícone da bandeja → **Abrir painel**. Não é preciso finalizar processos no Gerenciador de Tarefas; se o programa tiver sido encerrado à força, ele mesmo fecha o servidor antigo na próxima abertura.
+Se o programa já estiver rodando, abrir o atalho de novo traz a janela do painel para a frente (nada de abrir uma segunda cópia). O aviso **"O Registrale-DOU já está aberto"** só aparece se a cópia em execução for de uma versão antiga: nesse caso use o ícone da bandeja → **Abrir painel**. Não é preciso finalizar processos no Gerenciador de Tarefas; se o programa tiver sido encerrado à força, ele mesmo fecha o servidor antigo na próxima abertura.
 
 ### O computador estava desligado no horário da busca
 
