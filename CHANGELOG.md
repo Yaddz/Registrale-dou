@@ -19,6 +19,9 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 ### Melhorado
 - **API do DOU (`DOUHook._request_page`):** timeout padrão de 20 s com até 5 tentativas (`REGISTRALE_DOU_TIMEOUT` e `REGISTRALE_DOU_MAX_RETRIES` configuráveis por ambiente), pior caso ≈ 100 s + backoff (antes 105 s). A medição ao vivo de 40 consultas (p50 = 0,45 s, p95 = 0,68 s, máx = 1,02 s) foi feita num momento tranquilo; 10 s foi descartado porque o portal às vezes trava até 35 s e 5 × 10 s falharia inteiro nesses períodos.
 
+### Testes
+- **Nova tentativa automática de ponta a ponta** (`tests/local/test_retry_ponta_a_ponta.py`), offline e com relógio simulado, sobre o agendador e o executor reais: cadeia `partial` → retry às 15h → concluída com e-mail só das menções novas, limite de 4 tentativas, corte das 22h, retry perdido com o PC desligado e menções preservadas com SMTP falhando.
+
 ### Interface
 - Submenu de Configurações (abaixo de 1280 px) passa a exibir degradê nas bordas e setas (`chevron-left`/`chevron-right`) quando há pílulas fora da área visível, rolando automaticamente para manter a seção ativa visível. O degradê usa `linear-gradient` com `var(--bg)` (a classe Tailwind anterior não era gerada e a seta ficava por cima do texto) e as setas são recalculadas quando a faixa muda de tamanho (antes não apareciam ao abrir Configurações pelo menu).
 - Negrito (`<b>`, `<strong>`) e cabeçalhos de tabela (`<th>`) limitados ao peso 600 do design system (vinham com 700 do navegador).
