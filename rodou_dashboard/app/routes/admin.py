@@ -382,12 +382,10 @@ def manual_sync_route():
                 logging.info("Iniciando sincronização de CNPJs em segundo plano...")
                 from ..services.dag_config_service import COMPANY_SYNC_LOCK
                 with COMPANY_SYNC_LOCK:
-                    executar_sincronizacao()
-
-                    # Sincronizar JSON com o banco de dados
+                    # executar_sincronizacao precisa de app context: é ele que grava as
+                    # empresas no SQLite e lê as credenciais salvas no dashboard.
                     with app_context:
-                        from ..services.dag_config_service import sync_json_to_db
-                        sync_json_to_db()
+                        executar_sincronizacao()
                         clear_admin_caches()
                         
                 from datetime import datetime, timezone, timedelta

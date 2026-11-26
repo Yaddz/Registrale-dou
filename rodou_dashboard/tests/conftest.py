@@ -17,6 +17,12 @@ def preserve_dag_confs():
         with open(target_yaml, 'w', encoding='utf-8') as f:
             f.write(initial_content)
 
+@pytest.fixture(autouse=True)
+def _isolate_gestaoclick_env(monkeypatch):
+    """A rota de configurações grava os tokens direto em os.environ; sem isso eles vazam entre testes."""
+    for var in ('ACCESS_TOKEN', 'SECRET_ACCESS_TOKEN', 'BASE_URL', 'YAML_PATH'):
+        monkeypatch.delenv(var, raising=False)
+
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv('REGISTRALE_DATA_DIR', str(tmp_path / 'registrale_data'))

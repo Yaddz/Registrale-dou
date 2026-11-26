@@ -239,7 +239,7 @@ def _run_scheduled_gestaoclick_sync() -> None:
     """Sincroniza os CNPJs do GestãoClick (mesmo fluxo do botão "Sincronizar")."""
     app = _get_app()
     from ..models import SyncHistory
-    from ..services.dag_config_service import COMPANY_SYNC_LOCK, sync_json_to_db
+    from ..services.dag_config_service import COMPANY_SYNC_LOCK
     from ..services.sync_cnpj import executar_sincronizacao
 
     logger.info("Executando sincronização agendada do GestãoClick...")
@@ -247,7 +247,6 @@ def _run_scheduled_gestaoclick_sync() -> None:
         try:
             with COMPANY_SYNC_LOCK:
                 executar_sincronizacao()
-                sync_json_to_db()
             from ..routes.admin import clear_admin_caches
 
             clear_admin_caches()
@@ -306,7 +305,8 @@ class RegistraleScheduler:
         self._timezone = timezone_name
         self._db_path = Path(db_path) if db_path is not None else get_scheduler_db_path()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        # Reentrante: reload() -> get_routines() pode reconstruir o YAML, que chama reload() de novo.
+        self._lock = threading.RLock()
         self._started = False
 
         jobstores = {"default": SQLAlchemyJobStore(url=f"sqlite:///{self._db_path.as_posix()}")}

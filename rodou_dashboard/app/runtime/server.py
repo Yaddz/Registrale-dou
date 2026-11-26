@@ -63,6 +63,7 @@ def acquire_instance_lock(lock_path: Optional[Path] = None) -> Iterator[Path]:
 
     # Abre em r+/a+ para não truncar antes de obter o lock
     fh = open(target, "a+", encoding="utf-8")
+    pid_file: Optional[Path] = None
     try:
         try:
             _lock_file_descriptor(fh)
@@ -75,8 +76,21 @@ def acquire_instance_lock(lock_path: Optional[Path] = None) -> Iterator[Path]:
         fh.truncate()
         fh.write(f"{os.getpid()}\n")
         fh.flush()
+        # No Windows o byte travado do lock não pode ser lido por outro processo; o PID
+        # também vai para `registrale.pid` para o launcher achar um servidor órfão.
+        candidate = target.with_suffix(".pid")
+        try:
+            candidate.write_text(f"{os.getpid()}\n", encoding="utf-8")
+            pid_file = candidate
+        except OSError:
+            pid_file = None
         yield target
     finally:
+        if pid_file is not None:
+            try:
+                pid_file.unlink()
+            except OSError:
+                pass
         _unlock_file_descriptor(fh)
         try:
             fh.close()

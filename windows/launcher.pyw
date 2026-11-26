@@ -154,6 +154,180 @@ def _open_path(path: Path) -> None:
         webbrowser.open(path.as_uri())
 
 
+# --- Ciclo de vida do servidor no Windows -------------------------------------------------
+# O servidor é um processo filho comum: se o launcher morrer sem passar pelo "Sair"
+# (Gerenciador de Tarefas, travamento, logoff), o Windows não encerra o filho e ele fica
+# órfão segurando a porta e o `registrale.lock`. Três proteções:
+#   1. Job Object com KILL_ON_JOB_CLOSE: o Windows mata o servidor quando o launcher some.
+#   2. Mutex nomeado: só um launcher por sessão (o segundo avisa e sai).
+#   3. Na partida, um servidor órfão (PID em `registrale.pid`, mesmo python.exe do app)
+#      é encerrado antes de subir o novo.
+
+_LAUNCHER_MUTEX_NAME = "Local\\RegistraleDOU.Launcher"
+_ERROR_ALREADY_EXISTS = 183
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_PROCESS_TERMINATE = 0x0001
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_SYNCHRONIZE = 0x00100000
+_WAIT_OBJECT_0 = 0
+
+
+class _IoCounters(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_ulonglong) for name in (
+        "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+        "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
+    )]
+
+
+class _JobBasicLimitInformation(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_longlong),
+        ("PerJobUserTimeLimit", ctypes.c_longlong),
+        ("LimitFlags", ctypes.c_uint32),
+        ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t),
+        ("ActiveProcessLimit", ctypes.c_uint32),
+        ("Affinity", ctypes.c_size_t),
+        ("PriorityClass", ctypes.c_uint32),
+        ("SchedulingClass", ctypes.c_uint32),
+    ]
+
+
+class _JobExtendedLimitInformation(ctypes.Structure):
+    _fields_ = [
+        ("BasicLimitInformation", _JobBasicLimitInformation),
+        ("IoInfo", _IoCounters),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+def _kernel32() -> Any:
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    handle, dword, boolean = ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, boolean, ctypes.c_wchar_p]
+    k32.CreateMutexW.restype = handle
+    k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    k32.CreateJobObjectW.restype = handle
+    k32.SetInformationJobObject.argtypes = [handle, ctypes.c_int, ctypes.c_void_p, dword]
+    k32.SetInformationJobObject.restype = boolean
+    k32.AssignProcessToJobObject.argtypes = [handle, handle]
+    k32.AssignProcessToJobObject.restype = boolean
+    k32.OpenProcess.argtypes = [dword, boolean, dword]
+    k32.OpenProcess.restype = handle
+    k32.QueryFullProcessImageNameW.argtypes = [handle, dword, ctypes.c_wchar_p, ctypes.POINTER(dword)]
+    k32.QueryFullProcessImageNameW.restype = boolean
+    k32.TerminateProcess.argtypes = [handle, ctypes.c_uint]
+    k32.TerminateProcess.restype = boolean
+    k32.WaitForSingleObject.argtypes = [handle, dword]
+    k32.WaitForSingleObject.restype = dword
+    k32.CloseHandle.argtypes = [handle]
+    k32.CloseHandle.restype = boolean
+    return k32
+
+
+def acquire_launcher_mutex(name: str = _LAUNCHER_MUTEX_NAME) -> tuple[bool, Any]:
+    """Retorna `(é_o_primeiro, handle)`. O handle precisa viver enquanto o launcher viver."""
+    if os.name != "nt":
+        return True, None
+    try:
+        k32 = _kernel32()
+        handle = k32.CreateMutexW(None, False, name)
+        already = ctypes.get_last_error() == _ERROR_ALREADY_EXISTS  # type: ignore[attr-defined]
+    except (OSError, AttributeError) as exc:
+        logger.warning("Não foi possível criar o mutex do launcher (%s); seguindo sem trava.", exc)
+        return True, None
+    return (not already), handle
+
+
+def create_kill_on_close_job() -> Any:
+    """Cria um Job Object que encerra os processos associados quando o launcher fecha."""
+    if os.name != "nt":
+        return None
+    try:
+        k32 = _kernel32()
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = _JobExtendedLimitInformation()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        ok = k32.SetInformationJobObject(
+            job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)
+        )
+        if not ok:
+            k32.CloseHandle(job)
+            return None
+        return job
+    except (OSError, AttributeError) as exc:
+        logger.warning("Job Object indisponível (%s); o servidor pode ficar órfão se o launcher cair.", exc)
+        return None
+
+
+def assign_process_to_job(job: Any, proc: subprocess.Popen) -> bool:
+    if os.name != "nt" or not job:
+        return False
+    proc_handle = getattr(proc, "_handle", None)
+    if proc_handle is None:
+        return False
+    try:
+        return bool(_kernel32().AssignProcessToJobObject(job, int(proc_handle)))
+    except (OSError, AttributeError) as exc:
+        logger.warning("Não foi possível vincular o servidor ao Job Object (%s).", exc)
+        return False
+
+
+def read_lock_pid(pid_path: Path) -> int | None:
+    try:
+        text = pid_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return int(text) if text.isdigit() else None
+
+
+def process_image_path(pid: int) -> str | None:
+    if os.name != "nt":
+        return None
+    k32 = _kernel32()
+    handle = k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        size = ctypes.c_uint32(1024)
+        buf = ctypes.create_unicode_buffer(size.value)
+        if not k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return None
+        return buf.value
+    finally:
+        k32.CloseHandle(handle)
+
+
+def terminate_orphan_server(pid_path: Path, server_exe: str, timeout_ms: int = 8000) -> bool:
+    """Encerra o servidor órfão cujo PID está em `pid_path`, se for o `python.exe` deste app.
+
+    Só é chamado pelo launcher que detém o mutex, então nenhum outro launcher vivo é dono dele.
+    """
+    pid = read_lock_pid(pid_path)
+    if pid is None or pid == os.getpid():
+        return False
+    image = process_image_path(pid)
+    if image is None or os.path.normcase(os.path.abspath(image)) != os.path.normcase(os.path.abspath(server_exe)):
+        return False
+    k32 = _kernel32()
+    handle = k32.OpenProcess(_PROCESS_TERMINATE | _SYNCHRONIZE, False, pid)
+    if not handle:
+        return False
+    try:
+        logger.warning("Servidor órfão de uma execução anterior encontrado (pid=%s); encerrando.", pid)
+        if not k32.TerminateProcess(handle, 1):
+            return False
+        return k32.WaitForSingleObject(handle, timeout_ms) == _WAIT_OBJECT_0
+    finally:
+        k32.CloseHandle(handle)
+
+
 class RegistraleJsApi:
     """Ponte JS exposta ao painel dentro da janela pywebview."""
 
@@ -269,6 +443,7 @@ class RegistraleTrayController:
         self._window: Any = None
         self._use_webview = False
         self._js_api = RegistraleJsApi()
+        self._job: Any = None
 
     def is_server_running(self) -> bool:
         with self._lock:
@@ -290,8 +465,17 @@ class RegistraleTrayController:
             }
             if os.name == "nt":
                 kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            if os.name == "nt":
+                try:
+                    terminate_orphan_server(get_data_dir(create=True) / "registrale.pid", cmd[0])
+                except OSError as exc:
+                    logger.warning("Falha ao verificar servidor órfão (%s).", exc)
+                if self._job is None:
+                    self._job = create_kill_on_close_job()
             logger.info("Iniciando servidor: %s", " ".join(cmd))
             self._proc = subprocess.Popen(cmd, **kwargs)
+            if self._job is not None and not assign_process_to_job(self._job, self._proc):
+                logger.warning("Servidor (pid=%s) sem Job Object: pode ficar órfão se o launcher cair.", self._proc.pid)
 
         ready = wait_for_server(
             host=self.host,
@@ -528,6 +712,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     _configure_launcher_logging()
     args = _parse_args(argv)
+    is_first, _mutex = acquire_launcher_mutex()  # handle mantido vivo até o fim de main()
+    if not is_first:
+        logger.info("Launcher já em execução; esta cópia vai encerrar.")
+        _show_message_box(
+            "Registrale-DOU",
+            "O Registrale-DOU já está aberto.\n"
+            "Use o ícone na bandeja do sistema (perto do relógio) e clique em 'Abrir painel'.",
+        )
+        return 0
     controller = RegistraleTrayController(
         host=args.host,
         port=args.port,

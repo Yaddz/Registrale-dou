@@ -4,7 +4,7 @@ import yaml
 import re
 from datetime import datetime, timezone, timedelta
 
-from ..runtime.paths import get_logs_dir, get_routines_dir
+from ..runtime.paths import get_data_dir, get_logs_dir, get_routines_dir
 from .organ_aliases import expand_organ_filters
 
 # Replicando a lógica do BASE_DIR usada no app antigo
@@ -212,6 +212,7 @@ def get_routines():
     routines = []
     sync_parts = []
     sync_base_data = None
+    main_terms_total = 0
     
     for f_path in yaml_files:
         name = os.path.basename(f_path)
@@ -231,6 +232,10 @@ def get_routines():
                         if data and 'dag' in data:
                             dag = data.get('dag', {})
                             search = dag.get('search', {})
+                            # Total de CNPJs somando todos os blocos (até 1.500 cada); comparar só
+                            # o 1º bloco com o banco forçava rebuild a cada listagem (e deadlock no reload do agendador).
+                            all_blocks = search if isinstance(search, list) else [search]
+                            main_terms_total = sum(len(b.get('terms') or []) for b in all_blocks if isinstance(b, dict))
                             if isinstance(search, list): search = search[0] if search else {}
                             report = dag.get('report', {})
                             active_val = dag.get('active', not dag.get('is_paused', False))
@@ -286,7 +291,7 @@ def get_routines():
             logger.error(f"Erro ao ler rotina {name}: {e}")
             continue
     
-    total_cnpjs = len(sync_base_data.get('terms', [])) if sync_base_data else 0
+    total_cnpjs = main_terms_total if sync_base_data else 0
     for sp in sync_parts:
         try:
             with open(sp, 'r', encoding='utf-8') as f:
@@ -626,7 +631,7 @@ def sync_json_to_db():
     import json
     from ..models import db, Company
 
-    metadata_file = os.path.join(BASE_DIR, "data", "monitored_companies.json")
+    metadata_file = os.path.join(str(get_data_dir(create=True)), "monitored_companies.json")
     if not os.path.exists(metadata_file):
         return
 
@@ -643,7 +648,7 @@ def sync_json_to_db():
             existing = Company(
                 cnpj=cnpj, cnpj_norm=cnpj_norm,
                 nome=emp.get('razao_social', emp.get('nome', 'N/A')),
-                origem='GestaoClick',
+                origem='GestãoClick',
                 status=emp.get('status', True)
             )
             db.session.add(existing)

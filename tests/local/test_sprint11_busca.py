@@ -800,8 +800,9 @@ def test_execucao_agendada_do_gestaoclick_sincroniza_e_registra_no_historico(tmp
     monkeypatch.setattr(scheduler, "_APP_REF", app)
     chamadas = []
     monkeypatch.setattr("app.services.sync_cnpj.executar_sincronizacao", lambda: chamadas.append("sync"))
+    # A gravação no SQLite acontece dentro de executar_sincronizacao (sem passo extra via JSON).
     monkeypatch.setattr("app.services.dag_config_service.sync_json_to_db", lambda: chamadas.append("db"))
     scheduler._run_scheduled_gestaoclick_sync()
-    assert chamadas == ["sync", "db"]
+    assert chamadas == ["sync"]
     with app.app_context():
         assert any("GestãoClick" in (h.detalhes or "") for h in SyncHistory.query.all())

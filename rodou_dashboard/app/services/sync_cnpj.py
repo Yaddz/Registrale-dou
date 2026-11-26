@@ -21,10 +21,15 @@ logging.basicConfig(level=logging.INFO)
 # Dinamicamente descobre o BASE_DIR baseado no app/services/sync_cnpj.py
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
-from ..runtime.paths import get_data_dir, get_routines_dir
+from flask import has_app_context
 
-DATA_DIR = str(get_data_dir(create=True))
-METADATA_FILE = os.path.join(DATA_DIR, "monitored_companies.json")
+from ..models import db, Company, Settings
+from ..runtime.paths import get_data_dir, get_routines_dir
+from .dag_config_service import rebuild_yaml_from_db
+
+def _metadata_file() -> str:
+    """Backup JSON da última sincronização, no diretório de dados atual (resolve REGISTRALE_DATA_DIR em tempo de execução)."""
+    return os.path.join(str(get_data_dir(create=True)), "monitored_companies.json")
 
 GESTAOCLICK_DEFAULT_BASE_URL = "https://api.gestaoclick.com/franquias"
 
@@ -152,16 +157,73 @@ def get_monitored_data(url_base: str, endpoint: str, headers: dict) -> List[Dict
     logging.info(f"Total de registros obtidos da API: {len(clientes_completos)}")
     return clientes_completos
 
+def _norm(cnpj: str) -> str:
+    return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
+
+
+def salvar_clientes_no_banco(clientes: List[Dict]) -> tuple[int, int]:
+    """Grava os clientes do GestãoClick na tabela companies (origem 'Manual' é preservada).
+
+    Requer app context. Retorna (novas, atualizadas).
+    """
+    comp_by_norm = {c.cnpj_norm: c for c in Company.query.all() if c.cnpj_norm}
+    novas, atualizadas = 0, 0
+    try:
+        for item in clientes:
+            cnpj = item.get('cnpj')
+            if not cnpj:
+                continue
+            cnpj_norm = _norm(cnpj)
+            status = item.get('status', True)
+            existing = comp_by_norm.get(cnpj_norm)
+            if existing is None:
+                new_comp = Company(
+                    nome=item.get('nome', 'N/A'),
+                    cnpj=cnpj,
+                    cnpj_norm=cnpj_norm,
+                    origem='GestãoClick',
+                    status=status,
+                )
+                db.session.add(new_comp)
+                comp_by_norm[cnpj_norm] = new_comp
+                novas += 1
+                continue
+            if existing.origem == 'Manual':
+                continue
+            existing.nome = item.get('nome', existing.nome)
+            existing.status = status
+            atualizadas += 1
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return novas, atualizadas
+
+
 def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
     if not caminho_arquivo:
         logging.error("Caminho do arquivo YAML não fornecido.")
         return
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    
-    with open(METADATA_FILE, 'w', encoding='utf-8') as f:
+    metadata_file = _metadata_file()
+    with open(metadata_file, 'w', encoding='utf-8') as f:
         json.dump(clientes, f, indent=4, ensure_ascii=False)
-    logging.info(f"Metadados salvos em {METADATA_FILE}")
+    logging.info(f"Metadados salvos em {metadata_file}")
+
+    cnpjs_ativos: List[str] | None = None
+    if has_app_context():
+        # Persistência no SQLite (fonte de verdade). Erros aqui sobem para o chamador
+        # registrar "Erro Sync" no histórico em vez de um falso "Sincronização OK".
+        novas, atualizadas = salvar_clientes_no_banco(clientes)
+        logging.info(f"Sync GestãoClick->DB: {novas} novas, {atualizadas} atualizadas")
+        try:
+            # Reconstrói o YAML preservando as preferências persistidas no SQLite
+            rebuild_yaml_from_db()
+            logging.info("YAML Pesquisa_cnpj.yaml reconstruído com sucesso a partir do banco de dados.")
+            return
+        except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as e_reb:
+            logging.warning(f"Fallback para montagem padrão do YAML após erro no rebuild_yaml_from_db: {e_reb}")
+        cnpjs_ativos = sorted(set(c.cnpj for c in Company.query.filter_by(status=True).all() if c.cnpj))
 
     # Fallback paths for DAG configs
     if not os.path.exists(caminho_arquivo):
@@ -171,7 +233,7 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
             os.path.join(str(get_routines_dir()), nome_arquivo),
             os.path.join(BASE_DIR, "dag_confs", nome_arquivo),
             os.path.join("/dag_confs", nome_arquivo),
-            os.path.join(DATA_DIR, "..", "dag_confs", nome_arquivo),
+            os.path.join(str(get_data_dir(create=True)), "..", "dag_confs", nome_arquivo),
             nome_arquivo
         ]
         for t in tentativas:
@@ -191,59 +253,8 @@ def atualizar_configuracoes(caminho_arquivo: str, clientes: List[Dict]):
         return
 
     arquivo_sync = caminho_arquivo
-    cnpjs_ativos = []
-
-    def _norm(cnpj): return re.sub(r'[^A-Za-z0-9]', '', str(cnpj)).upper()
-
-    from flask import current_app
-    if current_app:
-        from app.models import db, Company
-        try:
-            # Sync to local DB (em batch)
-            all_existing = Company.query.all()
-            comp_by_norm = {c.cnpj_norm: c for c in all_existing if c.cnpj_norm}
-            
-            for item in clientes:
-                cnpj = item.get('cnpj')
-                if not cnpj: continue
-                cnpj_norm = _norm(cnpj)
-                status = item.get('status', True)
-                
-                existing = comp_by_norm.get(cnpj_norm)
-                if not existing:
-                    new_comp = Company(
-                        nome=item.get('nome', 'N/A'),
-                        cnpj=cnpj,
-                        cnpj_norm=cnpj_norm,
-                        origem='GestãoClick',
-                        status=status
-                    )
-                    db.session.add(new_comp)
-                    comp_by_norm[cnpj_norm] = new_comp
-                else:
-                    if existing.origem != 'Manual':
-                        existing.nome = item.get('nome', existing.nome)
-                        existing.status = status
-            
-            db.session.commit()
-            
-            # Reconstroi o YAML garantindo que todas as preferências (emails, horários, assunto) persistidas no SQLite sejam mantidas
-            try:
-                from .dag_config_service import rebuild_yaml_from_db
-                rebuild_yaml_from_db()
-                logging.info("YAML Pesquisa_cnpj.yaml reconstruído com sucesso a partir do banco de dados.")
-                return
-            except Exception as e_reb:
-                logging.warning(f"Fallback para montagem padrão do YAML após erro no rebuild_yaml_from_db: {e_reb}")
-            
-            # Puxa apenas CNPJs ativos e monitorados (status=True)
-            active_comps = Company.query.filter_by(status=True).all()
-            cnpjs_ativos = sorted(list(set([c.cnpj for c in active_comps])))
-        except Exception as e:
-            logging.error(f"Erro no banco de dados via SQLAlchemy: {e}")
-            cnpjs_ativos = sorted(list(set([c['cnpj'] for c in clientes if c.get('status', True)])))
-    else:
-        cnpjs_ativos = sorted(list(set([c['cnpj'] for c in clientes if c.get('status', True)])))
+    if cnpjs_ativos is None:
+        cnpjs_ativos = sorted(set(c['cnpj'] for c in clientes if c.get('status', True)))
 
     if not cnpjs_ativos:
         logging.warning("Nenhum CNPJ ativo para monitorar.")
@@ -296,9 +307,7 @@ def executar_sincronizacao():
 
     # Fallback para configurações salvas no banco SQLite (dashboard)
     if not all([url_api, access_token, secret_token]):
-        from flask import current_app
-        if current_app:
-            from app.models import Settings
+        if has_app_context():
             settings_record = Settings.query.filter_by(key='global_settings').first()
             if settings_record:
                 ak = settings_record.get_value().get('api_keys', {})
