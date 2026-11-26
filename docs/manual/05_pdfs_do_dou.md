@@ -21,6 +21,8 @@ Em **Configurações → Arquivo PDF DOU**:
 
 Os arquivos se chamam `DOU_<data>_Secao1.pdf`, `Secao2`, `Secao3` e `SecaoExtra`.
 
+Quando o PDF do dia já está arquivado, cada menção ganha também uma **Página destacada** em `<pasta dos PDFs>/destaques/<AAAA-MM-DD>/<cnpj_raiz>_<id>.pdf` (com a página da ocorrência e o CNPJ destacado). Você pode abri-la direto na aba **Menções** ou optar por anexá-la nos e-mails de alerta em **Configurações → Integrações**.
+
 Se mudar a organização, o botão **Reorganizar PDFs existentes** move os arquivos antigos para o novo formato (pede confirmação antes). Nada é sobrescrito.
 
 ## Baixar um dia ou um mês que ficou para trás

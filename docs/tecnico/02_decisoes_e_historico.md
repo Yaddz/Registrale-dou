@@ -72,7 +72,6 @@ Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/
 ## 5. Backlog
 
 - **PostgreSQL portátil no instalador:** embutir os binários com SHA-256 fixo ou aposentar o INLABS local em favor de PDF + API.
-- **Página destacada:** gerar, para cada menção, o PDF só da página do DOU onde a empresa aparece, com o CNPJ destacado.
 - **Busca por razão social** (citações sem CNPJ, como despachos do CADE), marcada "por nome" e sujeita a revisão por causa dos falsos positivos.
 - **Segredos na tela de Configurações:** `GET /api/settings` ainda envia senhas e a chave do Google ao navegador do master; campo enviado vazio não deve apagar token salvo.
 

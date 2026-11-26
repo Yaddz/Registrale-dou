@@ -19,6 +19,7 @@ Lista tudo o que já foi encontrado, da mais nova para a mais antiga. Um ponto v
 | **Ver detalhes** | Mostra o trecho em que a empresa aparece, a seção e a data |
 | **Abrir DOU** | Abre a matéria oficial no site da Imprensa Nacional (`in.gov.br`) |
 | **Abrir PDF integral do dia** | Abre o PDF da edição guardado no seu computador (se o arquivamento estiver ligado) |
+| **Página destacada** | Abre um PDF com apenas a página do DOU onde a empresa aparece e o CNPJ destacado (quando o PDF do dia estiver arquivado) |
 | **Enviar e-mail** | Envia a menção para alguém, com prévia antes do envio (precisa do e-mail ligado) |
 | **Excluir menção** | Remove a menção do painel |
 

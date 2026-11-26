@@ -20,6 +20,13 @@ def _load_smtp_config() -> dict:
     return smtp_config if isinstance(smtp_config, dict) else {}
 
 
+def is_email_attach_highlight_enabled(smtp_config=None) -> bool:
+    """True apenas se ``email_attach_highlight`` estiver ligado explicitamente (padrão: False)."""
+    if smtp_config is None:
+        smtp_config = _load_smtp_config()
+    return isinstance(smtp_config, dict) and bool(smtp_config.get('email_attach_highlight', False))
+
+
 def is_smtp_enabled(smtp_config=None) -> bool:
     """Indica se o envio de e-mails (SMTP) está ativado nas configurações globais.
 
@@ -98,7 +105,7 @@ class EmailSender:
         self._smtp_config = smtp_config
         return smtp_config
         
-    def send_custom_email(self, to_emails, subject, html_content):
+    def send_custom_email(self, to_emails, subject, html_content, attachments=None):
         smtp_config = self._get_smtp_config()
 
         if isinstance(to_emails, str):
@@ -128,13 +135,28 @@ class EmailSender:
             password = password.replace(' ', '')
         sender_email = (smtp_config.get('from_email') or smtp_config.get('sender') or user or 'rodou@gestao.gov.br').strip()
 
-        msg = MIMEMultipart("alternative")
+        valid_attachments = [p for p in (attachments or []) if p and os.path.isfile(p)]
+        if valid_attachments:
+            from email.mime.application import MIMEApplication
+            msg = MIMEMultipart("mixed")
+            alt = MIMEMultipart("alternative")
+            alt.attach(MIMEText(html_content, "html", "utf-8"))
+            msg.attach(alt)
+            for file_path in valid_attachments:
+                try:
+                    with open(file_path, "rb") as fh:
+                        att = MIMEApplication(fh.read(), _subtype="pdf")
+                    att.add_header("Content-Disposition", "attachment", filename=os.path.basename(file_path))
+                    msg.attach(att)
+                except OSError as att_err:
+                    logging.warning("Não foi possível anexar %s ao e-mail: %s", file_path, att_err)
+        else:
+            msg = MIMEMultipart("alternative")
+            part = MIMEText(html_content, "html", "utf-8")
+            msg.attach(part)
         msg["Subject"] = subject
         msg["From"] = sender_email
         msg["To"] = ", ".join(to_emails)
-
-        part = MIMEText(html_content, "html", "utf-8")
-        msg.attach(part)
 
         server_conn = None
         try:

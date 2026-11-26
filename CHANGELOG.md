@@ -13,6 +13,9 @@ O histórico anterior ao fork (base **Ro-DOU**, até `0.14.0`) está arquivado e
 - Decisões de arquitetura, baseline, resultado da homologação, pendências e backlog consolidados em `docs/tecnico/02_decisoes_e_historico.md`. Plano de migração, prompts de sprint, homologação e inventário do Airflow saíram do git (`docs/projeto/` agora é local e ignorado).
 - `AGENTS.md` sem dependência do plano de sprints, com roteiro "Comece aqui" e as regras de filtro de órgão e SMTP.
 
+### Adicionado
+- **Página destacada do DOU por menção:** ao gravar menções com PDF do dia arquivado, o painel gera em segundo plano `<pasta_pdfs>/destaques/<AAAA-MM-DD>/<cnpj_raiz>_<id>.pdf` contendo a página da ocorrência com anotações `Highlight` nas citações do CNPJ (ou da raiz isolada). Botão **Página destacada** (`file-search`) disponível na aba **Menções** (`/api/mention_highlight_pdf`) e opção `email_attach_highlight` (desligada por padrão) em **Configurações → Integrações**.
+
 ### Melhorado
 - **API do DOU (`DOUHook._request_page`):** timeout padrão reduzido para 10 s com até 5 tentativas (`REGISTRALE_DOU_TIMEOUT` e `REGISTRALE_DOU_MAX_RETRIES` configuráveis por ambiente), mantendo o pior caso abaixo de 105 s após medição ao vivo de 40 consultas (p50 = 0,45 s, p95 = 0,68 s, máx = 1,02 s).
 

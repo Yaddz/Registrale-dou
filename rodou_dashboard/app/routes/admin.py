@@ -42,8 +42,9 @@ def get_settings():
                     settings[k].update(v)
                 else:
                     settings[k] = v
-    from ..services.email_service import is_smtp_enabled
+    from ..services.email_service import is_email_attach_highlight_enabled, is_smtp_enabled
     settings["smtp"]["enabled"] = is_smtp_enabled(settings.get("smtp"))
+    settings["smtp"]["email_attach_highlight"] = is_email_attach_highlight_enabled(settings.get("smtp"))
     settings["api_keys"]["gestaoclick_auto_sync"] = bool(settings["api_keys"].get("gestaoclick_auto_sync", False))
     settings["google_sheets"]["auto_sync"] = bool(settings["google_sheets"].get("auto_sync", False))
     settings["google_sheets"]["delete_obsolete"] = bool(settings["google_sheets"].get("delete_obsolete", False))

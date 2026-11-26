@@ -119,6 +119,7 @@ class Mention(db.Model):
     trecho = db.Column(db.Text)
     link = db.Column(db.Text)
     pdf_path = db.Column(db.Text, nullable=True)
+    highlight_pdf_path = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         return {
@@ -132,6 +133,7 @@ class Mention(db.Model):
             "trecho": self.trecho,
             "link": self.link,
             "pdf_path": self.pdf_path,
+            "highlight_pdf_path": self.highlight_pdf_path,
         }
 
 class Settings(db.Model):

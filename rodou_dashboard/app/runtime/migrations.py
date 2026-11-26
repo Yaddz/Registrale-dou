@@ -48,9 +48,24 @@ def _mig_002_job_runs_indexes(conn) -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_runs_status ON job_runs (status);"))
 
 
+def _mig_003_mentions_highlight_pdf_path(conn) -> None:
+    """Garante coluna `mentions.highlight_pdf_path` para a página destacada do DOU."""
+    tables = {
+        row[0]
+        for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table';")
+        ).fetchall()
+    }
+    if "mentions" in tables:
+        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(mentions);")).fetchall()]
+        if "highlight_pdf_path" not in cols:
+            conn.execute(text("ALTER TABLE mentions ADD COLUMN highlight_pdf_path TEXT;"))
+
+
 MIGRATIONS: list[tuple[int, str, Callable]] = [
     (1, "baseline_indexes_and_pdf_path", _mig_001_baseline_indexes_and_pdf_path),
     (2, "job_runs_indexes", _mig_002_job_runs_indexes),
+    (3, "mentions_highlight_pdf_path", _mig_003_mentions_highlight_pdf_path),
 ]
 
 

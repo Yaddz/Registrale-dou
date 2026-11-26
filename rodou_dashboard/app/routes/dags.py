@@ -1010,6 +1010,13 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                             existing.pdf_path = pdf_path
                 db.session.commit()
                 clear_mentions_cache()
+                if m_ids:
+                    from flask import current_app
+                    from ..runtime.pdf_highlight import schedule_highlight_generation
+                    try:
+                        schedule_highlight_generation(current_app._get_current_object(), list(m_ids))
+                    except Exception:
+                        pass
                 relevant_mentions = direct_mentions
                 if notify_only_new:
                     # Nova tentativa do dia: só avisa o que ainda não tinha sido gravado/enviado.
@@ -1081,12 +1088,30 @@ def watch_dag_and_update_mentions(app_context, runs_to_watch, routine_name, rout
                 )
                 email_error_msg = None
                 try:
+                    from ..services.email_service import is_email_attach_highlight_enabled
+                    attachments = []
+                    if is_email_attach_highlight_enabled():
+                        rel_ids = [m.get('id') for m in relevant_mentions if m.get('id')]
+                        if rel_ids:
+                            attachments = [
+                                row.highlight_pdf_path
+                                for row in Mention.query.filter(Mention.id.in_(rel_ids)).all()
+                                if row.highlight_pdf_path and os.path.isfile(row.highlight_pdf_path)
+                            ]
                     sender = EmailSender(None)
-                    sender.send_custom_email(
-                        to_emails=emails,
-                        subject=subject,
-                        html_content=html
-                    )
+                    if attachments:
+                        sender.send_custom_email(
+                            to_emails=emails,
+                            subject=subject,
+                            html_content=html,
+                            attachments=attachments,
+                        )
+                    else:
+                        sender.send_custom_email(
+                            to_emails=emails,
+                            subject=subject,
+                            html_content=html
+                        )
                     email_sent = True
                     add_history_event("E-mail Enviado", f"Alerta {routine_name} enviado para {', '.join(emails)} ({len(relevant_mentions)} menções){source_tag}.")
                 except Exception as e_mail:
@@ -2101,6 +2126,13 @@ def api_trigger_monthly():
                             if pdf_path:
                                 existing.pdf_path = pdf_path
                     db.session.commit()
+                    if m_ids:
+                        from flask import current_app
+                        from ..runtime.pdf_highlight import schedule_highlight_generation
+                        try:
+                            schedule_highlight_generation(current_app._get_current_object(), list(m_ids))
+                        except Exception:
+                            pass
                 
                 clear_mentions_cache()
                 
@@ -2324,6 +2356,33 @@ def api_pdf_archive_open():
         return jsonify({"status": "error", "message": "PDF do dia não encontrado no arquivo local."}), 404
 
     resolved = Path(pdf_path_str).resolve()
+    if not resolved.is_relative_to(base_folder) or not resolved.is_file():
+        return jsonify({"status": "error", "message": "Acesso negado ao arquivo PDF."}), 403
+
+    return send_file(str(resolved), mimetype="application/pdf", as_attachment=False, download_name=resolved.name)
+
+
+@dags_bp.route('/mention_highlight_pdf', methods=['GET'])
+@login_required
+def api_mention_highlight_pdf():
+    from pathlib import Path
+    from flask import send_file
+    from ..runtime.pdf_archiver import get_pdf_archive_config
+
+    mention_id = request.args.get("mention_id")
+    if not mention_id:
+        return jsonify({"status": "error", "message": "Parâmetro mention_id obrigatório."}), 400
+
+    mention = db.session.get(Mention, mention_id)
+    if not mention:
+        return jsonify({"status": "error", "message": "Menção não encontrada."}), 404
+
+    if not mention.highlight_pdf_path:
+        return jsonify({"status": "error", "message": "Página destacada não disponível para esta menção."}), 404
+
+    cfg = get_pdf_archive_config()
+    base_folder = Path(cfg["folder"]).resolve()
+    resolved = Path(mention.highlight_pdf_path).resolve()
     if not resolved.is_relative_to(base_folder) or not resolved.is_file():
         return jsonify({"status": "error", "message": "Acesso negado ao arquivo PDF."}), 403
 
