@@ -528,3 +528,31 @@ def test_rotina_principal_vazia_nao_busca_todo_o_orgao():
             yaml.safe_load(_EMPTY_MAIN_ROUTINE_YAML), execution_date="2026-11-23", searchers=searchers
         )
     assert calls == []
+
+
+def test_dou_hook_request_page_timeout_and_retries_env(monkeypatch):
+    import requests
+    from hooks.dou_hook import DOUHook
+
+    hook = DOUHook()
+    timeouts_seen = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        timeouts_seen.append(timeout)
+        raise requests.exceptions.Timeout("timeout simulado")
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    monkeypatch.delenv("REGISTRALE_DOU_TIMEOUT", raising=False)
+    monkeypatch.delenv("REGISTRALE_DOU_MAX_RETRIES", raising=False)
+    with pytest.raises(requests.exceptions.Timeout):
+        hook._request_page(with_retry=True, payload={"q": "teste"})
+    assert timeouts_seen == [10, 10, 10, 10, 10]
+
+    timeouts_seen.clear()
+    monkeypatch.setenv("REGISTRALE_DOU_TIMEOUT", "15")
+    monkeypatch.setenv("REGISTRALE_DOU_MAX_RETRIES", "2")
+    with pytest.raises(requests.exceptions.Timeout):
+        hook._request_page(with_retry=True, payload={"q": "teste"})
+    assert timeouts_seen == [15, 15]

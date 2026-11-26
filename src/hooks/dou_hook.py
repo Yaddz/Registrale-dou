@@ -56,7 +56,7 @@ class DOUHook(BaseHook):
             return f"{field.value}-{term}"
 
 
-    def _request_page(self, with_retry: bool, payload: dict, max_retries: int = 3):
+    def _request_page(self, with_retry: bool, payload: dict, max_retries: int | None = None):
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -64,7 +64,9 @@ class DOUHook(BaseHook):
             "Cache-Control": "no-cache",
         }
 
-        timeout = 35
+        # Patch local: timeout e tentativas configuráveis por ambiente (padrão 10s x 5, <= 105s no pior caso)
+        timeout = int(os.getenv("REGISTRALE_DOU_TIMEOUT", "10"))
+        max_retries = int(os.getenv("REGISTRALE_DOU_MAX_RETRIES", "5")) if max_retries is None else max_retries
         for attempt in range(1, max_retries + 1):
             try:
                 # First try with HTTPS

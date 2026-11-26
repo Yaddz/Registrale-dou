@@ -75,7 +75,6 @@ Aprovação para remover Docker/Airflow dada pelo responsável do projeto em 24/
 - **Página destacada:** gerar, para cada menção, o PDF só da página do DOU onde a empresa aparece, com o CNPJ destacado.
 - **Busca por razão social** (citações sem CNPJ, como despachos do CADE), marcada "por nome" e sujeita a revisão por causa dos falsos positivos.
 - **Segredos na tela de Configurações:** `GET /api/settings` ainda envia senhas e a chave do Google ao navegador do master; campo enviado vazio não deve apagar token salvo.
-- **API do DOU instável:** tempo limite menor com mais tentativas (10 s × 5 em vez de 35 s × 3).
 
 ---
 
